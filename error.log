@@ -1,0 +1,16 @@
+
+form-handler.js:1192 Error loading next form page: ReferenceError: fillPackagingItemsFromSession is not defined
+    at updatePackagingItems (form-handler.js:716:9)
+    at updateFormPage4Sections (form-handler.js:1130:17)
+    at loadAndAppendNextPage (form-handler.js:1188:21)
+    at HTMLDivElement.<anonymous> (form-handler.js:924:21)
+loadAndAppendNextPage @ form-handler.js:1192
+(anonymous) @ form-handler.js:924Understand this error
+form-handler.js:1101 updateFormPage4Sections called
+form-handler.js:1111 Microplastics details section: shown
+form-handler.js:1119 Fragments details section: shown
+form-handler.js:610 Updating packaging items for count: 2
+form-handler.js:716 Uncaught ReferenceError: fillPackagingItemsFromSession is not defined
+    at updatePackagingItems (form-handler.js:716:9)
+    at updateFormPage4Sections (form-handler.js:1130:17)
+    at HTMLDivElement.<anonymous> (form-handler.js:936:21)

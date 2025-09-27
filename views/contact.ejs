@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Us - Microplastics Data System</title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
+    <!-- Add Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">
+    <!-- Add Custom JS -->
+    <script src="/js/common.js"></script>
+    <script src="/js/session-timeout.js"></script>
+    
+    <!-- Stagewise Toolbar for Development -->
+    <% if (process.env.NODE_ENV !== 'production') { %>
+        <script src="/js/stagewise-toolbar.js"></script>
+    <% } %>
+</head>
+<body>
+<div class="container">
+    <%- include('partials/header') %>
+    
+    <div class="content">
+        <%- include('partials/sidebar') %>
+        
+        <div class="main-content">
+            <div class="contact-header">
+                <div class="intro-header">
+                    <i class="fas fa-envelope intro-icon"></i>
+                    <h2>Contact Us</h2>
+                </div>
+                <p class="contact-description">
+                    Have questions about the microplastics data system? We're here to help! Please fill out the form below and we'll get back to you as soon as possible.
+                </p>
+            </div>
+
+            <div class="contact-form-section">
+                <div class="intro-card">
+                    <div class="card-header">
+                        <i class="fas fa-question-circle text-primary"></i>
+                        <h3>Get In Touch</h3>
+                    </div>
+                    
+                    <form id="contact-form" class="contact-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user_name" class="form-label">
+                                    <i class="fas fa-user"></i>
+                                    Your Name *
+                                </label>
+                                <input type="text" id="user_name" name="user_name" class="form-input" required 
+                                       placeholder="Enter your full name">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="user_email" class="form-label">
+                                    <i class="fas fa-envelope"></i>
+                                    Email Address *
+                                </label>
+                                <input type="email" id="user_email" name="user_email" class="form-input" required 
+                                       placeholder="Enter your email address">
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="user_organization" class="form-label">
+                                <i class="fas fa-building"></i>
+                                Organization (Optional)
+                            </label>
+                            <input type="text" id="user_organization" name="user_organization" class="form-input" 
+                                   placeholder="Enter your organization or institution">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="question_category" class="form-label">
+                                <i class="fas fa-tags"></i>
+                                Question Category *
+                            </label>
+                            <select id="question_category" name="question_category" class="form-select" required>
+                                <option value="">Select a category</option>
+                                <option value="general">General Information</option>
+                                <option value="data-entry">Data Entry System</option>
+                                <option value="data-analysis">Data Analysis & Download</option>
+                                <option value="technical">Technical Support</option>
+                                <option value="research">Research Collaboration</option>
+                                <option value="manuals">Manuals & Protocols</option>
+                                <option value="sample-analysis">Sample Analysis Services</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="user_question" class="form-label">
+                                <i class="fas fa-comment-dots"></i>
+                                Your Question *
+                            </label>
+                            <textarea id="user_question" name="user_question" class="form-textarea" required 
+                                      rows="6" placeholder="Please describe your question or how we can help you..."></textarea>
+                        </div>
+                        
+                        <div class="form-group checkbox-group">
+                            <label class="checkbox-label" style="display: flex; align-items: center;">
+                                <input type="checkbox" id="subscribe_updates" name="subscribe_updates" value="yes" style="width: 50px; flex-shrink: 0;">
+                                <span class="checkbox-text" style="flex: 1;">I would like to receive updates about the microplastics data system</span>
+                            </label>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="submit-btn">
+                                <i class="fas fa-paper-plane"></i>
+                                Send Message
+                            </button>
+                            <button type="reset" class="btn btn-outline">
+                                <i class="fas fa-undo"></i>
+                                Reset Form
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <div id="form-messages" class="form-messages hidden">
+                        <!-- Success/error messages will appear here -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="contact-info-section">
+                <div class="intro-card">
+                    <div class="card-header">
+                        <i class="fas fa-info-circle text-info"></i>
+                        <h3>About Our Project</h3>
+                    </div>
+                    <p>
+                        This microplastics data system is developed by Wayne State University in Detroit, Michigan, 
+                        with funding from the Great Lakes Protection Fund. We work with many local organizations 
+                        throughout the region to better understand and address microplastics pollution.
+                    </p>
+                    <div class="highlight-box">
+                        <i class="fas fa-clock"></i>
+                        <span>We typically respond to inquiries within 1-2 business days.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Session timeout modal -->
+<div class="modal-overlay" id="timeout-modal" data-timeout="1800">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Session Timeout</h3>
+        </div>
+        <div class="modal-body">
+            <p>Logging out after a long time of inactivity.</p>
+            <p>Please login again to continue your work.</p>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="modal-btn modal-btn-primary" onclick="logout()">Login Again</button>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const contactForm = document.getElementById('contact-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const messagesDiv = document.getElementById('form-messages');
+    
+    contactForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Disable submit button and show loading
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+        
+        // Collect form data
+        const formData = new FormData(contactForm);
+        const data = Object.fromEntries(formData.entries());
+        
+        // Send form data
+        fetch('/api/contact', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            messagesDiv.classList.remove('hidden');
+            
+            if (result.success) {
+                messagesDiv.innerHTML = `
+                    <div class="success-message">
+                        <i class="fas fa-check-circle"></i>
+                        Thank you for your message! We've received your inquiry and will respond within 1-2 business days.
+                    </div>
+                `;
+                contactForm.reset();
+            } else {
+                messagesDiv.innerHTML = `
+                    <div class="error-message">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        ${result.message || 'There was an error sending your message. Please try again.'}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            messagesDiv.classList.remove('hidden');
+            messagesDiv.innerHTML = `
+                <div class="error-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    There was an error sending your message. Please try again.
+                </div>
+            `;
+            console.error('Contact form error:', error);
+        })
+        .finally(() => {
+            // Re-enable submit button
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Message';
+        });
+    });
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,42 @@
+    <!-- Footer -->
+    <footer class="bg-light py-4 mt-5" style="text-align: center;">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-12">
+                    <p class="mb-2 text-muted">
+                        &copy; <%= new Date().getFullYear() %> Microplastics Data Entry System. 
+                        All rights reserved.
+                    </p>
+                    <div class="text-muted">
+                        Version 2.0 | 
+                        <a href="/pages/about" class="text-muted">About</a> | 
+                        <a href="/pages/documentation" class="text-muted">Documentation</a> |
+                        <a href="mailto:support@microplastics.org" class="text-muted">Support</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>    <!-- Bootstrap JS and dependencies -->
+    <!-- jQuery is conditionally loaded based on page needs -->
+    <script>
+        if (typeof $ === 'undefined') {
+            const jqueryScript = document.createElement('script');
+            jqueryScript.src = 'https://code.jquery.com/jquery-3.6.0.min.js';
+            document.head.appendChild(jqueryScript);
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    
+    <!-- Custom JS -->
+    <script src="/js/app.js"></script>
+    <!-- Only load session-timeout.js if not already loaded -->
+    <script>
+        if (typeof SESSION_CHECK_INTERVAL === 'undefined') {
+            const sessionScript = document.createElement('script');
+            sessionScript.src = '/js/session-timeout.js';
+            document.head.appendChild(sessionScript);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<div class="header">
+    <div class="logo-container">
+        <a href="/home">
+            <img src="/assets/Logo-MicroPlastics_09.png" alt="MicroPlastics Logo">
+        </a>
+    </div>    <div class="header-content">
+        <div class="header-title">Smart Management of Microplastics Pollution</div>
+        <div class="header-controls">
+            <% if (locals.user) { %>
+                <div class="user-dropdown">
+                    <button class="user-btn">
+                        <span class="username"><%= user.username %></span>
+                        <span>▾</span>
+                    </button>                    
+                    <div class="dropdown-content">
+                        <a href="/my-profile">My Profile</a>
+                        <a href="/my-locations-view">My Locations</a>
+                        <a href="/my-samples">My Samples</a>
+                        <a href="/logout">Log Out</a>
+                    </div>
+                </div>
+            <% } else { %>
+                <a href="/login" class="login-btn">Login/Sign up</a>
+            <% } %>
+            <input type="text" class="search-bar" placeholder="Searching Bar">
+        </div>
+    </div>
+</div>

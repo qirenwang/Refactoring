@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enter Data by Form - Microplastics Data Entry</title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
+    <!-- Add Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />    <!-- Add Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">
+    <!-- Add Fancy Modal CSS -->
+    <link rel="stylesheet" href="/css/fancy-modal.css">
+    <!-- Add Custom JS -->
+    <script src="/js/common.js"></script>
+    
+    <!-- Stagewise Toolbar for Development -->
+    <% if (process.env.NODE_ENV !== 'production') { %>
+        <script src="/js/stagewise-toolbar.js"></script>
+    <% } %>
+</head>
+<body>
+<div class="container">
+    <%- include('partials/header') %>
+    
+    <div class="content">
+        <%- include('partials/sidebar') %>
+      <div class="main-content">        <div class="form-progress-container">
+            <div class="form-progress">
+                <div class="progress-step active" data-step="1">
+                    <span class="step-number">1</span>
+                    <span class="step-label">Location</span>
+                </div>
+                <div class="progress-step" data-step="2">
+                    <span class="step-number">2</span>
+                    <span class="step-label">Sampling Event</span>
+                </div>
+                <div class="progress-step" data-step="3">
+                    <span class="step-number">3</span>
+                    <span class="step-label">Media Information</span>
+                </div>
+                <div class="progress-step" data-step="4">
+                    <span class="step-number">4</span>
+                    <span class="step-label">Additional Information</span>
+                </div>
+                <div class="progress-step" data-step="5">
+                    <span class="step-number">5</span>
+                    <span class="step-label">Particle Details</span>
+                </div>
+                <div class="progress-step" data-step="6">
+                    <span class="step-number">6</span>
+                    <span class="step-label">Review & Submit</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Form Pages Container -->
+        <div class="form-pages-container">
+            <%- include('data_forms/formpage1') %>
+        </div>
+          <!-- Templates for form pages that will be loaded progressively -->
+        <div style="display: none;" id="form-templates">
+            <%- include('data_forms/formpage2') %>
+            <%- include('data_forms/formpage3') %>
+            <%- include('data_forms/formpage4') %>
+            <%- include('data_forms/formpage5') %>
+            <%- include('data_forms/formpage6') %>
+        </div>
+        
+        <!-- Form data will be submitted through AJAX -->
+        <form id="data-entry-form" style="display:none;">
+            <input type="hidden" name="form_action" value="save_data">
+            <!-- Hidden inputs will be populated with form data before submission -->
+        </form>    </div>
+</div>
+
+<%- include('partials/timeout_modal') %>
+
+<!-- Load jQuery first -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- Load session timeout script -->
+<script src="/js/session-timeout.js"></script>
+<!-- Load other scripts -->
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="/js/map-data-entry.js"></script>
+<!-- Load fancy modal before form-handler -->
+<script src="/js/fancy-modal.js"></script>
+<script src="/js/form-handler.js"></script>
+
+<script>
+// Clear all form cache and initialize form data storage on page load
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== EJS DOMContentLoaded event triggered ===');
+    
+    // Clear all cached form data to start fresh
+    console.log('Clearing all form cache...');
+    sessionStorage.removeItem('microplastics_form_data');
+    
+    // Also clear any other potential form-related cache keys
+    const keysToRemove = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && (key.includes('form') || key.includes('microplastics') || key.includes('packaging'))) {
+            keysToRemove.push(key);
+        }
+    }
+    keysToRemove.forEach(key => sessionStorage.removeItem(key));
+      // Initialize fresh session storage for form data
+    sessionStorage.setItem('microplastics_form_data', JSON.stringify({}));
+    console.log('Form cache cleared and reinitialized.');
+    
+    // Clear all form fields in the visible page
+    clearAllFormFields();
+    
+    // Function to clear all form fields
+    function clearAllFormFields() {
+        console.log('Clearing all form fields...');
+        
+        // Clear all input fields
+        const inputs = document.querySelectorAll('input');
+        inputs.forEach(input => {
+            if (input.type === 'text' || input.type === 'number' || input.type === 'email' || 
+                input.type === 'date' || input.type === 'password' || input.type === 'tel' || 
+                input.type === 'url' || input.type === 'search') {
+                input.value = '';
+            } else if (input.type === 'checkbox' || input.type === 'radio') {
+                input.checked = false;
+            } else if (input.type === 'hidden') {
+                // Don't clear hidden inputs for CSRF tokens, etc.
+                if (!input.name.includes('csrf') && !input.name.includes('token')) {
+                    input.value = '';
+                }
+            }
+        });
+        
+        // Clear all select fields
+        const selects = document.querySelectorAll('select');
+        selects.forEach(select => {
+            select.selectedIndex = 0; // Reset to first option (usually empty option)
+        });
+        
+        // Clear all textarea fields
+        const textareas = document.querySelectorAll('textarea');
+        textareas.forEach(textarea => {
+            textarea.value = '';
+        });
+          console.log('All form fields cleared.');
+    }
+    
+    // Also disable browser autofill to prevent refilling after we clear
+    const formElements = document.querySelectorAll('input, select, textarea');
+    formElements.forEach(element => {
+        element.setAttribute('autocomplete', 'off');
+    });
+      // Force clear any browser-cached values after a short delay
+    setTimeout(() => {
+        clearAllFormFields();
+        console.log('Second pass form field clearing completed.');
+    }, 100);
+    
+    // Additional cleanup when page is fully loaded
+    window.addEventListener('load', function() {
+        console.log('Page fully loaded, performing final cache cleanup...');
+        clearAllFormFields();
+        
+        // Clear any localStorage items that might interfere
+        const localStorageKeysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.includes('form') || key.includes('microplastics') || key.includes('packaging'))) {
+                localStorageKeysToRemove.push(key);
+            }
+        }
+        localStorageKeysToRemove.forEach(key => localStorage.removeItem(key));
+          console.log('Final cleanup completed.');
+        
+        // Reset the initial page load flag to ensure proper behavior on refresh
+        if (typeof window.isPageInitialLoad !== 'undefined') {
+            window.isPageInitialLoad = true;
+        }
+    });
+    
+    // DEBUG: Check if elements exist
+    const container = document.querySelector('.form-pages-container');
+    const button = document.getElementById('page1-continue');
+    console.log('Container exists:', !!container);
+    console.log('Button exists:', !!button);
+    
+    // DEBUG: Add direct click listener to button as backup
+    if (button) {
+        console.log('Adding direct click listener to page1-continue button');
+        button.addEventListener('click', function(event) {
+            console.log('=== DIRECT BUTTON CLICK DETECTED ===');
+            console.log('Event:', event);
+            console.log('Target:', event.target);
+            console.log('Button ID:', event.target.id);
+            console.log('Button classes:', event.target.className);
+            
+            // Check if form-handler.js validation function exists
+            if (typeof validateAndProceedFromPage1 === 'function') {
+                console.log('form-handler.js validation function found, calling it');
+                event.preventDefault();
+                event.stopPropagation();
+                validateAndProceedFromPage1();
+            } else {
+                console.log('form-handler.js validation function NOT found');
+                alert('Validation function not available. Form-handler.js may not be loaded correctly.');
+            }
+        });
+    }
+      // DEBUG: Test if form-handler.js functions are available
+    setTimeout(() => {
+        console.log('=== Checking form-handler.js functions ===');
+        console.log('validateAndProceedFromPage1 exists:', typeof validateAndProceedFromPage1 !== 'undefined');
+        console.log('validateLocationInput exists:', typeof validateLocationInput !== 'undefined');
+        console.log('setupNavigationButtons exists:', typeof setupNavigationButtons !== 'undefined');
+        
+        if (typeof validateAndProceedFromPage1 === 'undefined') {
+            console.error('ERROR: validateAndProceedFromPage1 function not found!');
+            console.log('This means form-handler.js may not be loaded correctly.');
+        }
+    }, 1000);
+    
+    // Pre-fill form with any data already in the session
+    // const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
+    // for (const key in formData) {
+    //     const element = document.querySelector(`[name="${key}"]`);
+    //     if (element) {
+    //         if (element.type === 'checkbox' || element.type === 'radio') {
+    //             element.checked = formData[key];
+    //         } else {
+    //             element.value = formData[key];
+    //         }
+    //     }
+    // }
+      // Set up event listeners for Continue buttons - HANDLED BY form-handler.js
+    // document.querySelector('.form-pages-container').addEventListener('click', function(event) {
+    //     if (event.target.classList.contains('btn-continue')) {
+    //         const nextPage = parseInt(event.target.dataset.next);
+    //         
+    //         // Save current form data before moving to next page
+    //         saveCurrentFormData();
+    //         
+    //         // Load the next page
+    //         loadNextPage(nextPage);
+    //         
+    //         // Update progress indicator
+    //         updateProgressSteps(nextPage);
+    //     }
+    // });
+    
+    // Set up event listeners for media type selection changes
+    document.addEventListener('change', function(event) {
+        if (event.target.name === 'media_type') {
+            // Show/hide media-specific sections in page 3
+            const mediaSpecificSections = document.querySelectorAll('.media-specific-section');
+            mediaSpecificSections.forEach(section => {
+                if (section.dataset.mediaType === event.target.value) {
+                    section.style.display = 'block';
+                } else {
+                    section.style.display = 'none';
+                }
+            });
+        }
+        
+        if (event.target.classList.contains('toggle-additional-info')) {
+            const additionalInfoSections = document.getElementById('additional-info-sections');
+            if (event.target.value === 'yes') {
+                additionalInfoSections.style.display = 'block';
+            } else {
+                additionalInfoSections.style.display = 'none';
+            }
+        }
+        
+        if (event.target.name === 'has_quantitative_data') {
+            const quantitativeContainer = document.getElementById('quantitative-counts-container');
+            if (event.target.value === 'yes') {
+                quantitativeContainer.style.display = 'block';
+            } else {
+                quantitativeContainer.style.display = 'none';
+                // Also hide detail sections
+                document.getElementById('microplastics-details').style.display = 'none';
+                document.getElementById('fragments-details').style.display = 'none';
+                document.getElementById('packaging-details').style.display = 'none';
+            }
+        }
+    });
+    
+    // Set up event listeners for particle count inputs
+    document.addEventListener('input', function(event) {
+        if (event.target.id === 'microplastics-count') {
+            const count = parseInt(event.target.value) || 0;
+            const detailsSection = document.getElementById('microplastics-details');
+            detailsSection.style.display = count > 0 ? 'block' : 'none';
+        }
+        
+        if (event.target.id === 'fragments-count') {
+            const count = parseInt(event.target.value) || 0;
+            const detailsSection = document.getElementById('fragments-details');
+            detailsSection.style.display = count > 0 ? 'block' : 'none';
+        }
+        
+        if (event.target.id === 'packaging-count') {
+            const count = parseInt(event.target.value) || 0;
+            const detailsSection = document.getElementById('packaging-details');
+            const itemsContainer = document.getElementById('packaging-items-container');
+            
+            if (count > 0) {
+                detailsSection.style.display = 'block';
+                
+                // Create packaging item forms
+                itemsContainer.innerHTML = '';
+                const template = document.getElementById('packaging-item-template');
+                
+                for (let i = 1; i <= count; i++) {
+                    const itemElement = template.content.cloneNode(true);
+                    itemElement.querySelector('.item-number').textContent = i;
+                    itemsContainer.appendChild(itemElement);
+                }
+            } else {
+                detailsSection.style.display = 'none';
+            }
+        }
+    });
+    
+    // // Set up save button
+    // document.addEventListener('click', function(event) {
+    //     if (event.target.id === 'save-button') {
+    //         submitFormDataAndRedirect();
+    //     }
+    // });
+    
+    // Function to save current form data to session storage
+    function saveCurrentFormData() {
+        const currentFormData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
+        const formElements = document.querySelectorAll('.form-pages-container input, .form-pages-container select, .form-pages-container textarea');
+        
+        formElements.forEach(element => {
+            if (element.name) {
+                if (element.type === 'checkbox' || element.type === 'radio') {
+                    if (element.checked) {
+                        currentFormData[element.name] = element.value;
+                    }
+                } else {
+                    currentFormData[element.name] = element.value;
+                }
+            }
+        });
+        
+        sessionStorage.setItem('microplastics_form_data', JSON.stringify(currentFormData));
+    }
+    
+    // Function to load the next form page
+    function loadNextPage(pageNumber) {
+        // Get the template content
+        const template = document.getElementById('template-form-page' + pageNumber);
+        if (!template) return;
+        
+        // Clone the template content
+        const pageContent = template.content.cloneNode(true);
+        
+        // Append to the form pages container
+        document.querySelector('.form-pages-container').appendChild(pageContent);
+        
+        // // Pre-fill the newly added page with any existing data
+        // const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
+        // const newPage = document.getElementById('form-page' + pageNumber);
+        
+        // if (newPage) {
+        //     const formElements = newPage.querySelectorAll('input, select, textarea');
+        //     formElements.forEach(element => {
+        //         if (element.name && formData[element.name]) {
+        //             if (element.type === 'checkbox' || element.type === 'radio') {
+        //                 element.checked = (formData[element.name] === element.value);
+        //             } else {
+        //                 element.value = formData[element.name];
+        //             }
+        //         }
+        //     });
+        // }
+        
+        // Scroll to the new page
+        newPage.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    // Function to update progress steps
+    function updateProgressSteps(activeStep) {
+        const steps = document.querySelectorAll('.progress-step');
+        steps.forEach(step => {
+            const stepNumber = parseInt(step.dataset.step);
+            if (stepNumber <= activeStep) {
+                step.classList.add('active');
+            }
+        });
+    }
+    
+    // Function to submit the form data and redirect to review page
+    function submitFormDataAndRedirect() {
+        // Display a loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'loading-indicator';
+        loadingIndicator.innerHTML = '<div class="spinner"></div><p>Saving data...</p>';
+        document.body.appendChild(loadingIndicator);
+        
+        // Get all form data from session storage
+        const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
+        
+        // Submit via AJAX
+        fetch('/save-form-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Remove loading indicator
+            document.body.removeChild(loadingIndicator);
+            
+            if (data.success) {
+                // Clear session storage
+                sessionStorage.removeItem('microplastics_form_data');
+                
+                // Show success message and redirect
+                alert('Data saved successfully!');
+                window.location.href = '/review';
+            } else {
+                alert('Error saving data: ' + data.message);
+            }
+        })
+        .catch(error => {
+            // Remove loading indicator
+            document.body.removeChild(loadingIndicator);
+            console.error('Error:', error);
+            alert('Error saving data. Please try again.');
+        });
+    }
+    
+    // Add CSS for loading indicator and other form styles
+    const style = document.createElement('style');
+    style.textContent = `
+        .loading-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .loading-indicator p {
+            color: white;
+            margin-top: 10px;
+        }
+        .spinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    `;
+    document.head.appendChild(style);
+});
+</script>
+
+<%- include('partials/footer') %>

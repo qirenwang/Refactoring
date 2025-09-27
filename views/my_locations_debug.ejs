@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Locations - Microplastics Data Entry</title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
+    <!-- Add Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Add Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">
+</head>
+<body>
+<div class="container">
+    <%- include('partials/header') %>
+    
+    <div class="content">
+        <%- include('partials/sidebar') %>
+        
+        <div class="main-content">
+            <div class="page-header">
+                <h1><i class="fas fa-map-marker-alt"></i> My Locations</h1>
+                <p class="page-description">Manage your saved locations for microplastics sampling</p>
+            </div>
+
+            <!-- Action Bar -->
+            <div class="action-bar">
+                <button class="btn btn-primary" id="add-location-btn">
+                    <i class="fas fa-plus"></i> Add New Location
+                </button>
+                <div class="search-container">
+                    <input type="text" id="location-search" placeholder="Search locations..." class="search-input">
+                    <i class="fas fa-search search-icon"></i>
+                </div>
+                <div class="view-controls">
+                    <button class="view-btn active" data-view="grid" title="Grid View">
+                        <i class="fas fa-th"></i>
+                    </button>
+                    <button class="view-btn" data-view="list" title="List View">
+                        <i class="fas fa-list"></i>
+                    </button>
+                    <button class="view-btn" data-view="map" title="Map View">
+                        <i class="fas fa-map"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Statistics Cards -->
+            <div class="stats-section">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-map-marker-alt"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="total-locations">0</h3>
+                        <p>Total Locations</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-flask"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="total-samples">0</h3>
+                        <p>Total Samples</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="recent-activity">0</h3>
+                        <p>This Month</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Locations Content -->
+            <div class="locations-content">
+                <!-- Loading State -->
+                <div class="loading-state" id="loading-state" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p>Loading your locations...</p>
+                </div>
+
+                <!-- Empty State -->
+                <div class="empty-state" id="empty-state" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-map-marker-alt"></i>
+                    </div>
+                    <h3>No Locations Found</h3>
+                    <p>You haven't added any locations yet. Start by adding your first sampling location.</p>
+                    <button class="btn btn-primary" onclick="addFirstLocation()">
+                        <i class="fas fa-plus"></i> Add Your First Location
+                    </button>
+                </div>
+
+                <!-- Grid View -->
+                <div class="locations-grid" id="locations-grid">
+                    <!-- Location cards will be populated here -->
+                </div>
+
+                <!-- List View -->
+                <div class="locations-list" id="locations-list" style="display: none;">
+                    <div class="list-header">
+                        <div class="list-col">Name</div>
+                        <div class="list-col">Type</div>
+                        <div class="list-col">Location</div>
+                        <div class="list-col">Samples</div>
+                        <div class="list-col">Created</div>
+                        <div class="list-col">Actions</div>
+                    </div>
+                    <div class="list-body" id="locations-list-body">
+                        <!-- List items will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Map View -->
+                <div class="locations-map-container" id="locations-map-container" style="display: none;">
+                    <div class="map-sidebar">
+                        <h4>Locations</h4>
+                        <div class="map-locations-list" id="map-locations-list">
+                            <!-- Map location list will be populated here -->
+                        </div>
+                    </div>
+                    <div class="map-content">
+                        <div id="locations-map" class="locations-map"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pagination -->
+            <div class="pagination-container" id="pagination-container" style="display: none;">
+                <div class="pagination-info">
+                    Showing <span id="pagination-start">1</span> to <span id="pagination-end">10</span> of <span id="pagination-total">0</span> locations
+                </div>
+                <div class="pagination-controls">
+                    <button class="pagination-btn" id="prev-page" disabled>
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>
+                    <div class="pagination-numbers" id="pagination-numbers">
+                        <!-- Page numbers will be populated here -->
+                    </div>
+                    <button class="pagination-btn" id="next-page" disabled>
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Session timeout modal -->
+<%- include('partials/timeout_modal') %>
+
+<!-- Add jQuery first -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- Add Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- Add session timeout script -->
+<script src="/js/session-timeout.js"></script>
+
+<script>
+console.log('=== MY LOCATIONS SCRIPT STARTING ===');
+
+class SimpleLocationsManager {
+    constructor() {
+        this.locations = [];
+        this.currentView = 'grid';
+        this.filteredLocations = [];
+        this.searchTerm = '';
+        this.init();
+    }
+
+    init() {
+        console.log('Initializing Simple Locations Manager');
+        this.setupEventListeners();
+        this.loadLocations();
+    }
+
+    setupEventListeners() {
+        // Search functionality
+        const searchInput = document.getElementById('location-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.searchTerm = e.target.value;
+                this.filterAndDisplay();
+            });
+        }
+
+        // View controls
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const view = e.target.closest('.view-btn').dataset.view;
+                this.switchView(view);
+            });
+        });
+
+        // Add location button (placeholder)
+        const addBtn = document.getElementById('add-location-btn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                alert('Add location functionality will be implemented soon!');
+            });
+        }
+    }
+
+    async loadLocations() {
+        try {
+            console.log('Loading locations...');
+            document.getElementById('loading-state').style.display = 'block';
+            
+            const response = await fetch('/api/my-locations');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            console.log('API Data received:', data);
+            
+            if (data.success && data.locations) {
+                this.locations = data.locations;
+                this.updateStatistics();
+                this.filterAndDisplay();
+            } else {
+                this.showEmptyState();
+            }
+        } catch (error) {
+            console.error('Error loading locations:', error);
+            this.showEmptyState();
+        } finally {
+            document.getElementById('loading-state').style.display = 'none';
+        }
+    }
+
+    updateStatistics() {
+        document.getElementById('total-locations').textContent = this.locations.length;
+        document.getElementById('total-samples').textContent = 
+            this.locations.reduce((sum, loc) => sum + (loc.sample_count || 0), 0);
+        document.getElementById('recent-activity').textContent = 
+            this.locations.filter(loc => {
+                const created = new Date(loc.userCreated || new Date());
+                const thisMonth = new Date();
+                return created.getMonth() === thisMonth.getMonth() && 
+                       created.getFullYear() === thisMonth.getFullYear();
+            }).length;
+    }
+
+    filterAndDisplay() {
+        if (!this.searchTerm) {
+            this.filteredLocations = this.locations;
+        } else {
+            this.filteredLocations = this.locations.filter(location => {
+                const name = (location.name || '').toLowerCase();
+                const desc = (location.description || '').toLowerCase();
+                const city = (location.city || '').toLowerCase();
+                const search = this.searchTerm.toLowerCase();
+                return name.includes(search) || desc.includes(search) || city.includes(search);
+            });
+        }
+
+        if (this.filteredLocations.length === 0) {
+            this.showEmptyState();
+        } else {
+            this.hideEmptyState();
+            this.displayLocations();
+        }
+    }
+
+    displayLocations() {
+        if (this.currentView === 'grid') {
+            this.displayGridView();
+        } else if (this.currentView === 'list') {
+            this.displayListView();
+        } else if (this.currentView === 'map') {
+            this.displayMapView();
+        }
+    }
+
+    displayGridView() {
+        document.getElementById('locations-grid').style.display = 'grid';
+        document.getElementById('locations-list').style.display = 'none';
+        document.getElementById('locations-map-container').style.display = 'none';
+
+        const grid = document.getElementById('locations-grid');
+        grid.innerHTML = '';
+
+        this.filteredLocations.forEach(location => {
+            const card = this.createLocationCard(location);
+            grid.appendChild(card);
+        });
+    }
+
+    displayListView() {
+        document.getElementById('locations-grid').style.display = 'none';
+        document.getElementById('locations-list').style.display = 'block';
+        document.getElementById('locations-map-container').style.display = 'none';
+
+        const listBody = document.getElementById('locations-list-body');
+        listBody.innerHTML = '';
+
+        this.filteredLocations.forEach(location => {
+            const row = this.createLocationListRow(location);
+            listBody.appendChild(row);
+        });
+    }
+
+    displayMapView() {
+        document.getElementById('locations-grid').style.display = 'none';
+        document.getElementById('locations-list').style.display = 'none';
+        document.getElementById('locations-map-container').style.display = 'flex';
+        
+        // Initialize map if not already done
+        if (!this.map) {
+            this.initMap();
+        }
+        this.updateMapMarkers();
+    }
+
+    createLocationCard(location) {
+        const card = document.createElement('div');
+        card.className = 'location-card';
+        
+        const name = location.name || 'Unknown Location';
+        const desc = location.description || '';
+        const lat = parseFloat(location.latitude) || 0;
+        const lng = parseFloat(location.longitude) || 0;
+        const samples = location.sample_count || 0;
+        const city = location.city || '';
+        const country = location.country || '';
+        
+        card.innerHTML = `
+            <div class="location-card-header">
+                <div class="location-card-title">${this.escapeHtml(name)}</div>
+                <div class="location-coordinates">${lat.toFixed(6)}, ${lng.toFixed(6)}</div>
+            </div>
+            <div class="location-card-body">
+                <div class="location-info">
+                    ${city ? `<div class="location-info-item"><i class="fas fa-city"></i> ${this.escapeHtml(city)}</div>` : ''}
+                    ${country ? `<div class="location-info-item"><i class="fas fa-globe"></i> ${this.escapeHtml(country)}</div>` : ''}
+                    ${desc ? `<div class="location-info-item"><i class="fas fa-info-circle"></i> ${this.escapeHtml(desc)}</div>` : ''}
+                </div>
+            </div>
+            <div class="location-card-footer">
+                <div class="sample-count">${samples} samples</div>
+                <div class="location-actions">
+                    <button class="action-btn edit" title="Edit Location">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="action-btn delete" title="Delete Location">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        return card;
+    }
+
+    createLocationListRow(location) {
+        const row = document.createElement('div');
+        row.className = 'list-row';
+        
+        const name = location.name || 'Unknown Location';
+        const desc = location.description || '';
+        const lat = parseFloat(location.latitude) || 0;
+        const lng = parseFloat(location.longitude) || 0;
+        const samples = location.sample_count || 0;
+        
+        row.innerHTML = `
+            <div>
+                <strong>${this.escapeHtml(name)}</strong>
+                ${desc ? `<br><small class="text-muted">${this.escapeHtml(desc)}</small>` : ''}
+            </div>
+            <div>Sampling Location</div>
+            <div>${lat.toFixed(6)}, ${lng.toFixed(6)}</div>
+            <div><strong>${samples}</strong></div>
+            <div>${new Date().toLocaleDateString()}</div>
+            <div class="location-actions">
+                <button class="action-btn edit" title="Edit Location">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="action-btn delete" title="Delete Location">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `;
+        return row;
+    }
+
+    switchView(view) {
+        this.currentView = view;
+        
+        // Update active button
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-view="${view}"]`).classList.add('active');
+        
+        this.displayLocations();
+    }
+
+    initMap() {
+        const mapContainer = document.getElementById('locations-map');
+        if (mapContainer) {
+            this.map = L.map('locations-map').setView([42.3601, -71.0589], 10);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(this.map);
+            this.markers = [];
+        }
+    }
+
+    updateMapMarkers() {
+        if (!this.map) return;
+        
+        // Clear existing markers
+        this.markers.forEach(marker => this.map.removeLayer(marker));
+        this.markers = [];
+        
+        // Add new markers
+        this.filteredLocations.forEach(location => {
+            const lat = parseFloat(location.latitude) || 0;
+            const lng = parseFloat(location.longitude) || 0;
+            const name = location.name || 'Unknown Location';
+            const samples = location.sample_count || 0;
+            
+            if (lat !== 0 && lng !== 0) {
+                const marker = L.marker([lat, lng])
+                    .bindPopup(`
+                        <div>
+                            <h4>${this.escapeHtml(name)}</h4>
+                            <p><strong>Samples:</strong> ${samples}</p>
+                        </div>
+                    `)
+                    .addTo(this.map);
+                this.markers.push(marker);
+            }
+        });
+        
+        // Fit map to markers if any exist
+        if (this.markers.length > 0) {
+            const group = new L.featureGroup(this.markers);
+            this.map.fitBounds(group.getBounds().pad(0.1));
+        }
+    }
+
+    showEmptyState() {
+        document.getElementById('empty-state').style.display = 'block';
+        document.getElementById('locations-grid').style.display = 'none';
+        document.getElementById('locations-list').style.display = 'none';
+        document.getElementById('locations-map-container').style.display = 'none';
+    }
+
+    hideEmptyState() {
+        document.getElementById('empty-state').style.display = 'none';
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+}
+
+// Global functions
+window.addFirstLocation = function() {
+    alert('Add location functionality will be implemented soon!');
+};
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing...');
+    window.myLocations = new SimpleLocationsManager();
+});
+</script>
+
+<style>
+/* My Locations Specific Styles */
+.page-header {
+    margin-bottom: 2rem;
+}
+
+.page-header h1 {
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.page-description {
+    color: #7f8c8d;
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+.action-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.search-container {
+    position: relative;
+    flex: 1;
+    max-width: 400px;
+}
+
+.search-input {
+    width: 100%;
+    padding: 0.75rem 1rem 0.75rem 2.5rem;
+    border: 1px solid #e1e8ed;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    transition: border-color 0.3s ease;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #7f8c8d;
+    pointer-events: none;
+}
+
+.view-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.view-btn {
+    padding: 0.5rem;
+    background: white;
+    border: 1px solid #e1e8ed;
+    border-radius: 6px;
+    color: #7f8c8d;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.view-btn:hover {
+    background: #f8f9fa;
+    border-color: #3498db;
+    color: #3498db;
+}
+
+.view-btn.active {
+    background: #3498db;
+    border-color: #3498db;
+    color: white;
+}
+
+.stats-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+.stat-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: white;
+}
+
+.stat-card:nth-child(1) .stat-icon {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+}
+
+.stat-card:nth-child(2) .stat-icon {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+}
+
+.stat-card:nth-child(3) .stat-icon {
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+}
+
+.stat-content h3 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #2c3e50;
+    margin: 0;
+}
+
+.stat-content p {
+    color: #7f8c8d;
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.loading-state {
+    text-align: center;
+    padding: 4rem 2rem;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+}
+
+.empty-icon {
+    font-size: 4rem;
+    color: #bdc3c7;
+    margin-bottom: 1rem;
+}
+
+.empty-state h3 {
+    color: #2c3e50;
+    margin-bottom: 1rem;
+}
+
+.empty-state p {
+    color: #7f8c8d;
+    margin-bottom: 2rem;
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.locations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
+}
+
+.location-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.location-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.location-card-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.location-card-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+}
+
+.location-coordinates {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
+.location-card-body {
+    padding: 1.5rem;
+}
+
+.location-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.location-info-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: #7f8c8d;
+}
+
+.location-info-item i {
+    width: 16px;
+    text-align: center;
+}
+
+.location-card-footer {
+    padding: 1rem 1.5rem;
+    background: #f8f9fa;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sample-count {
+    font-size: 0.9rem;
+    color: #7f8c8d;
+}
+
+.location-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.action-btn {
+    padding: 0.4rem;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-btn:hover {
+    background: rgba(0,0,0,0.1);
+}
+
+.action-btn.edit {
+    color: #3498db;
+}
+
+.action-btn.delete {
+    color: #e74c3c;
+}
+
+/* List View Styles */
+.locations-list {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.list-header {
+    display: grid;
+    grid-template-columns: 2fr 1fr 2fr 1fr 1.5fr 1fr;
+    background: #f8f9fa;
+    padding: 1rem;
+    font-weight: 600;
+    color: #2c3e50;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.list-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 2fr 1fr 1.5fr 1fr;
+    padding: 1rem;
+    border-bottom: 1px solid #ecf0f1;
+    align-items: center;
+    transition: background-color 0.3s ease;
+}
+
+.list-row:hover {
+    background: #f8f9fa;
+}
+
+.list-row:last-child {
+    border-bottom: none;
+}
+
+.text-muted {
+    color: #7f8c8d !important;
+}
+
+/* Map View Styles */
+.locations-map-container {
+    display: flex;
+    height: 600px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.map-sidebar {
+    width: 300px;
+    background: white;
+    border-right: 1px solid #ecf0f1;
+    overflow-y: auto;
+}
+
+.map-sidebar h4 {
+    padding: 1rem;
+    margin: 0;
+    background: #f8f9fa;
+    border-bottom: 1px solid #ecf0f1;
+    color: #2c3e50;
+}
+
+.map-content {
+    flex: 1;
+}
+
+.locations-map {
+    width: 100%;
+    height: 100%;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .action-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .search-container {
+        max-width: none;
+    }
+    
+    .view-controls {
+        justify-content: center;
+    }
+    
+    .stats-section {
+        grid-template-columns: 1fr;
+    }
+    
+    .locations-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .list-header,
+    .list-row {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+    
+    .locations-map-container {
+        flex-direction: column;
+        height: auto;
+    }
+    
+    .map-sidebar {
+        width: 100%;
+        max-height: 200px;
+    }
+    
+    .map-content {
+        height: 400px;
+    }
+}
+</style>
+</body>
+</html>

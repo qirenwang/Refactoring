@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Management of Microplastics Pollution</title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
+    <!-- Add Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">    <!-- Add Custom JS -->
+    <script src="/js/common.js"></script>
+    
+    <!-- Stagewise Toolbar for Development -->
+    <% if (process.env.NODE_ENV !== 'production') { %>
+        <script src="/js/stagewise-toolbar.js"></script>
+    <% } %>
+</head>
+<body>
+<div class="container">
+    <%- include('partials/header') %>
+    
+    <div class="content">
+        <%- include('partials/sidebar') %>
+        
+        <div class="main-content">
+            <div class="doc-header">
+                <h1>Documentation</h1>
+                <p class="doc-subtitle">Learn how to use the GLPF Microplastic Data Collection System</p>
+            </div>
+            
+            <div class="doc-section">
+                <div class="doc-section-header">
+                    <div class="doc-icon">📚</div>
+                    <h2>Platform Overview</h2>
+                </div>
+                <div class="doc-content">
+                    <p>This platform allows researchers and citizens to contribute microplastic data to a unified database. Here's how the system works:</p>
+                    <ul class="doc-list">
+                        <li>
+                            <span class="doc-list-title">Data Entry</span>
+                            <p>Use our guided forms or upload spreadsheets to contribute microplastic observation data</p>
+                        </li>
+                        <li>
+                            <span class="doc-list-title">Data Review</span>
+                            <p>Explore collected data through our interactive maps and filtering tools</p>
+                        </li>
+                        <li>
+                            <span class="doc-list-title">Account Management</span>
+                            <p>Create an account to track your contributions and receive updates</p>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="doc-section">
+                <div class="doc-section-header">
+                    <div class="doc-icon">📝</div>
+                    <h2>Data Upload Guidelines</h2>
+                </div>
+                <div class="doc-content">
+                    <p>When uploading data to our system, please follow these guidelines to ensure accuracy and consistency:</p>
+                    <ul class="doc-list">
+                        <li>
+                            <span class="doc-list-title">Location Information</span>
+                            <p>Provide precise location data (coordinates preferred) or at minimum a ZIP code</p>
+                        </li>
+                        <li>
+                            <span class="doc-list-title">Sample Classification</span>
+                            <p>Correctly categorize your samples based on our classification system</p>
+                        </li>
+                        <li>
+                            <span class="doc-list-title">File Formats</span>
+                            <p>Upload data in CSV, Excel (.xlsx), or use our web forms for direct entry</p>
+                        </li>
+                        <li>
+                            <span class="doc-list-title">Required Fields</span>
+                            <p>Ensure all required fields are completed for successful submission</p>
+                        </li>
+                    </ul>
+                    <div class="doc-callout">
+                        <div class="callout-icon">💡</div>
+                        <div class="callout-content">
+                            <strong>Pro Tip:</strong> Download our template files to ensure your data is properly formatted.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="doc-section">
+                <div class="doc-section-header">
+                    <div class="doc-icon">🔍</div>
+                    <h2>Using the Review Features</h2>
+                </div>
+                <div class="doc-content">
+                    <p>Our data review tools allow you to explore and analyze microplastic data across different regions:</p>
+                    <ul class="doc-list">
+                        <li>
+                            <span class="doc-list-title">Map Visualization</span>
+                            <p>View data points on an interactive map with custom filters</p>
+                        </li>
+                        <li>
+                            <span class="doc-list-title">Data Export</span>
+                            <p>Download filtered datasets for further analysis in your preferred tools</p>
+                        </li>
+                        <li>
+                            <span class="doc-list-title">Trend Analysis</span>
+                            <p>Observe patterns and changes in microplastic concentration over time</p>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add jQuery for any interactive features -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<!-- Add any custom JavaScript -->
+<script src="/js/common.js"></script>
+
+</body>
+</html>

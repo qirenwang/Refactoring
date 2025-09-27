@@ -1,0 +1,369 @@
+<%- include('partials/header', { 
+    title: 'CAPTCHA Test - Microplastics Data Entry',
+    additionalStyles: `
+        <link rel="stylesheet" href="/css/auth.css">
+    `
+}) %>
+
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <img src="/images/logo.png" alt="Microplastics Data Entry" class="auth-logo">
+            <h2>CAPTCHA Verification</h2>
+            <p class="text-muted">Please complete the verification below</p>
+        </div>
+
+        <div class="auth-body">
+            <form id="captcha-form" class="needs-validation" novalidate>
+                <!-- CAPTCHA Image -->
+                <div class="form-group text-center">
+                    <label for="captcha-input">Enter the characters shown in the image:</label>
+                    <div class="captcha-container">
+                        <img id="captcha-image" src="/auth/captcha" alt="CAPTCHA Image" class="captcha-image">
+                        <button type="button" class="btn btn-link captcha-refresh" onclick="refreshCaptcha()" title="Refresh CAPTCHA">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- CAPTCHA Input -->
+                <div class="form-group">
+                    <div class="input-group">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text">
+                                <i class="fas fa-shield-alt"></i>
+                            </span>
+                        </div>
+                        <input type="text" class="form-control captcha-input" id="captcha-input" name="captcha" 
+                               placeholder="Enter CAPTCHA" required autocomplete="off">
+                        <div class="invalid-feedback">
+                            Please enter the CAPTCHA code.
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">
+                        Not case sensitive. If you can't read the image, click the refresh button.
+                    </small>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary btn-block">
+                        <i class="fas fa-check"></i> Verify CAPTCHA
+                    </button>
+                </div>
+
+                <!-- Refresh Button -->
+                <div class="form-group text-center">
+                    <button type="button" class="btn btn-outline-secondary" onclick="refreshCaptcha()">
+                        <i class="fas fa-sync-alt"></i> Get New CAPTCHA
+                    </button>
+                </div>
+            </form>
+
+            <!-- Test Results -->
+            <div id="test-results" style="display: none;">
+                <div class="alert" id="result-alert">
+                    <div id="result-content"></div>
+                </div>
+                
+                <div class="text-center mt-3">
+                    <button type="button" class="btn btn-primary" onclick="resetTest()">
+                        <i class="fas fa-redo"></i> Test Again
+                    </button>
+                    <a href="/pages/login" class="btn btn-secondary ml-2">
+                        <i class="fas fa-arrow-left"></i> Back to Login
+                    </a>
+                </div>
+            </div>
+
+            <!-- Instructions -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-info-circle"></i> CAPTCHA Instructions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        <li><i class="fas fa-check text-success"></i> Enter the characters shown in the image</li>
+                        <li><i class="fas fa-check text-success"></i> Letters and numbers are not case sensitive</li>
+                        <li><i class="fas fa-check text-success"></i> Click refresh if the image is unclear</li>
+                        <li><i class="fas fa-check text-success"></i> Use only letters and numbers (no special characters)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Accessibility Options -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-universal-access"></i> Accessibility
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-2">Having trouble with the visual CAPTCHA?</p>
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="requestAudioCaptcha()">
+                        <i class="fas fa-volume-up"></i> Audio CAPTCHA
+                    </button>
+                    <button type="button" class="btn btn-outline-info btn-sm ml-2" onclick="increaseCaptchaSize()">
+                        <i class="fas fa-search-plus"></i> Larger Image
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="auth-footer">
+            <div class="text-center">
+                <small class="text-muted">
+                    This CAPTCHA helps protect our system from automated access.
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.captcha-container {
+    position: relative;
+    display: inline-block;
+    margin: 15px 0;
+}
+
+.captcha-image {
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+    max-width: 100%;
+    height: auto;
+    transition: transform 0.2s ease;
+}
+
+.captcha-image:hover {
+    transform: scale(1.05);
+}
+
+.captcha-refresh {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    padding: 5px;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.captcha-input {
+    font-family: 'Courier New', monospace;
+    font-size: 18px;
+    letter-spacing: 2px;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.captcha-large .captcha-image {
+    transform: scale(1.5);
+    margin: 30px;
+}
+
+#audio-player {
+    width: 100%;
+    margin: 10px 0;
+}
+</style>
+
+<script src="/js/auth.js"></script>
+<script>
+let captchaAttempts = 0;
+let maxAttempts = 5;
+
+$(document).ready(function() {
+    setupFormSubmission();
+    
+    // Auto-focus on CAPTCHA input
+    $('#captcha-input').focus();
+    
+    // Convert input to uppercase as user types
+    $('#captcha-input').on('input', function() {
+        $(this).val($(this).val().toUpperCase());
+    });
+});
+
+function setupFormSubmission() {
+    $('#captcha-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        if (this.checkValidity() === false) {
+            e.stopPropagation();
+            $(this).addClass('was-validated');
+            return;
+        }
+        
+        const captchaValue = $('#captcha-input').val().trim();
+        
+        if (!captchaValue) {
+            showAlert('warning', 'Please enter the CAPTCHA code.');
+            return;
+        }
+        
+        const submitBtn = $(this).find('button[type="submit"]');
+        const originalText = submitBtn.html();
+        
+        submitBtn.html('<i class="fas fa-spinner fa-spin"></i> Verifying...').prop('disabled', true);
+        
+        $.ajax({
+            url: '/auth/verify-captcha',
+            method: 'POST',
+            data: { captcha: captchaValue },
+            success: function(response) {
+                captchaAttempts++;
+                
+                if (response.success) {
+                    showTestResults(true, 'CAPTCHA verified successfully!');
+                } else {
+                    showTestResults(false, response.message || 'CAPTCHA verification failed');
+                    
+                    // Auto-refresh CAPTCHA after failed attempt
+                    setTimeout(refreshCaptcha, 1000);
+                }
+            },
+            error: function(xhr) {
+                captchaAttempts++;
+                let message = 'Error verifying CAPTCHA';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    message = xhr.responseJSON.message;
+                }
+                showTestResults(false, message);
+                setTimeout(refreshCaptcha, 1000);
+            },
+            complete: function() {
+                submitBtn.html(originalText).prop('disabled', false);
+                
+                // Check if max attempts reached
+                if (captchaAttempts >= maxAttempts) {
+                    showAlert('danger', `Maximum attempts (${maxAttempts}) reached. Please try again later.`);
+                    $('#captcha-form').find('button').prop('disabled', true);
+                }
+            }
+        });
+    });
+}
+
+function refreshCaptcha() {
+    const img = $('#captcha-image');
+    const timestamp = new Date().getTime();
+    
+    // Add loading state
+    img.addClass('opacity-50');
+    
+    // Update image source with timestamp to prevent caching
+    img.attr('src', '/auth/captcha?' + timestamp);
+    
+    // Clear input
+    $('#captcha-input').val('').focus();
+    
+    // Remove loading state when image loads
+    img.on('load', function() {
+        $(this).removeClass('opacity-50');
+    });
+    
+    // Handle image load error
+    img.on('error', function() {
+        $(this).removeClass('opacity-50');
+        showAlert('warning', 'Error loading CAPTCHA image. Please try again.');
+    });
+}
+
+function showTestResults(success, message) {
+    const alertClass = success ? 'alert-success' : 'alert-danger';
+    const icon = success ? 'fas fa-check-circle' : 'fas fa-times-circle';
+    
+    $('#result-alert').removeClass('alert-success alert-danger').addClass(alertClass);
+    $('#result-content').html(`
+        <div class="text-center">
+            <i class="${icon} fa-2x mb-3"></i>
+            <h5>${success ? 'Success!' : 'Failed'}</h5>
+            <p>${message}</p>
+            <small class="text-muted">Attempt ${captchaAttempts} of ${maxAttempts}</small>
+        </div>
+    `);
+    
+    $('#captcha-form').hide();
+    $('#test-results').show();
+}
+
+function resetTest() {
+    $('#test-results').hide();
+    $('#captcha-form').show().removeClass('was-validated');
+    $('#captcha-input').val('').focus();
+    refreshCaptcha();
+}
+
+function requestAudioCaptcha() {
+    $.ajax({
+        url: '/auth/audio-captcha',
+        method: 'GET',
+        success: function(response) {
+            if (response.success && response.audioUrl) {
+                // Create audio player
+                const audioHtml = `
+                    <div id="audio-captcha" class="mt-3">
+                        <label>Listen to the audio and enter the characters:</label>
+                        <audio id="audio-player" controls>
+                            <source src="${response.audioUrl}" type="audio/wav">
+                            Your browser does not support the audio element.
+                        </audio>
+                    </div>
+                `;
+                
+                // Insert audio player after CAPTCHA image
+                $('.captcha-container').after(audioHtml);
+                
+                // Hide visual CAPTCHA
+                $('.captcha-container').hide();
+            } else {
+                showAlert('warning', 'Audio CAPTCHA is not available at this time.');
+            }
+        },
+        error: function() {
+            showAlert('warning', 'Error loading audio CAPTCHA.');
+        }
+    });
+}
+
+function increaseCaptchaSize() {
+    $('.captcha-container').toggleClass('captcha-large');
+}
+
+function showAlert(type, message) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+    `;
+    
+    $('.auth-body').prepend(alertHtml);
+    
+    setTimeout(function() {
+        $('.alert').alert('close');
+    }, 5000);
+}
+
+// Keyboard shortcuts
+$(document).keydown(function(e) {
+    if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
+        e.preventDefault();
+        refreshCaptcha();
+    }
+});
+</script>
+
+<!-- Stagewise Toolbar for Development -->
+<% if (process.env.NODE_ENV !== 'production') { %>
+    <script src="/js/stagewise-toolbar.js"></script>
+<% } %>
+
+<%- include('partials/footer') %>

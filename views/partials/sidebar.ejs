@@ -1,0 +1,32 @@
+<div class="sidebar">
+    <a href="/review" class="sidebar-link">
+        <div class="sidebar-item <%= (locals.currentPage === 'review') ? 'active' : '' %>">
+            <span class="sidebar-icon">📊</span>
+            <span>Review Data</span>
+        </div>
+    </a>
+    <a href="/enter_and_edit_data" class="sidebar-link">
+        <div class="sidebar-item <%= (locals.currentPage === 'enter_and_edit_data') ? 'active' : '' %>">
+            <span class="sidebar-icon">📝</span>
+            <span>Enter and Edit Data</span>
+        </div>
+    </a>
+    <a href="/documentation" class="sidebar-link">
+        <div class="sidebar-item <%= (locals.currentPage === 'documentation') ? 'active' : '' %>">
+            <span class="sidebar-icon">📄</span>
+            <span>Documentation</span>
+        </div>
+    </a>
+    <a href="/about" class="sidebar-link">
+        <div class="sidebar-item <%= (locals.currentPage === 'about') ? 'active' : '' %>">
+            <span class="sidebar-icon">ℹ️</span>
+            <span>About</span>
+        </div>
+    </a>
+    <!-- <a href="/contact" class="sidebar-link">
+        <div class="sidebar-item <%= (locals.currentPage === 'contact') ? 'active' : '' %>">
+            <span class="sidebar-icon">📧</span>
+            <span>Contact Us</span>
+        </div>
+    </a> -->
+</div>

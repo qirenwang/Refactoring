@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Data Entry System</title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
+    <!-- Add Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Add Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">
+    <!-- Add Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>    <!-- Add Custom JS -->
+    <script src="/js/common.js"></script>
+    <script src="/js/session-timeout.js"></script>
+    <script src="/js/map-review.js"></script>
+    
+    <!-- Stagewise Toolbar for Development -->
+    <% if (process.env.NODE_ENV !== 'production') { %>
+        <script src="/js/stagewise-toolbar.js"></script>
+    <% } %>
+</head>
+<body>
+<div class="container">
+    <%- include('partials/header') %>
+    
+    <div class="content">
+        <%- include('partials/sidebar') %>
+          <div class="main-content">
+            <div class="instruction">
+                <span class="bold">Review Data:</span> Explore collected data points using the interactive map and filters below. Click on any marker to view detailed information about the samples collected at that location.
+                
+                <!-- Test buttons for development -->
+                <!-- <% if (process.env.NODE_ENV !== 'production') { %>
+                <div style="margin-top: 15px; padding: 10px; background-color: #ffffcc; border: 1px solid #ffcc00; border-radius: 4px;">
+                    <strong>Development Test:</strong>
+                    <button id="add-test-data" style="margin-left: 10px; padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">Add Test Location Data</button>
+                    <span id="test-data-status" style="margin-left: 10px; font-style: italic;"></span>
+                </div>
+                <% } %> -->
+            </div>
+            
+            <!-- Filter section -->
+            <div class="option">
+                <span class="option-number">1</span>
+                <span class="option-title">Filter Data</span>
+                <div class="option-details">
+                    Select filters to narrow down the data displayed on the map. All filters are optional.
+                </div>
+                
+                
+                <div class="filter-container">
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label for="zipcode-filter">Location (ZIP Code):</label>
+                                <input type="text" id="zipcode-filter" class="filter-input" 
+                                       placeholder="Enter 5-digit ZIP code" 
+                                       pattern="[0-9]{5}" 
+                                       maxlength="5"
+                                       title="Please enter a valid 5-digit ZIP code">
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label for="plastic-type-filter">Plastic Type:</label>
+                                <select id="plastic-type-filter" class="filter-select">
+                                    <option value="">All Plastic Types</option>
+                                    <option value="In Water">In Water</option>
+                                    <option value="In Soil/Sediment">In Soil/Sediment</option>
+                                    <option value="On Soil">On Soil</option>
+                                    <option value="Mixed Media">Mixed Media</option>
+                                </select>
+                            </div>
+                            
+                            <button id="apply-filters" class="filter-button">Apply Filters</button>
+                            <button id="reset-filters" class="reset-button">Reset</button>
+                        </div>
+                    </div>
+            </div>
+            
+            <!-- Map section -->
+            <div class="option">
+                <span class="option-number">2</span>
+                <span class="option-title">Interactive Map</span>
+                <div class="option-details">
+                    The map shows all data points based on your filter selections. Click on any marker to see more details.
+                </div>
+                
+                <div id="map-container">
+                    <div id="map" class="leaflet-container leaflet-touch leaflet-fade-anim leaflet-grab leaflet-touch-drag leaflet-touch-zoom" tabindex="0" style="position: relative;">
+                        <!-- Map will be initialized here -->
+                    </div>
+                    <div id="map-loading" class="loading-indicator hidden">Loading map data...</div>
+                </div>
+            </div>
+            
+            <!-- Results section -->
+            <div class="option">
+                <span class="option-number">3</span>
+                <span class="option-title">Results</span>
+                <div class="option-details">
+                    Select a point on the map to view detailed information here.
+                </div>
+                
+                <div id="results-container">
+                    <div id="no-selection" class="info-message">
+                        <div class="error-message">Select a marker on the map to view sample details</div>
+                    </div>
+                    
+                    <div id="point-details" class="hidden">
+                        <div class="details-header">
+                            <h3 id="location-name">Location Name</h3>
+                            <span id="sample-date" class="date-label">Sample Date</span>
+                        </div>
+                        
+                        <div class="details-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">ZIP Code</div>
+                                <div id="detail-zipcode" class="detail-value">-</div>
+                            </div>
+                            
+                            <div class="detail-item">
+                                <div class="detail-label">Sample Type</div>
+                                <div id="detail-sample-type" class="detail-value">-</div>
+                            </div>
+                            
+                            <div class="detail-item">
+                                <div class="detail-label">Plastic Types</div>
+                                <div id="detail-plastic-types" class="detail-value">-</div>
+                            </div>
+                            
+                            <div class="detail-item">
+                                <div class="detail-label">Particle Count</div>
+                                <div id="detail-particle-count" class="detail-value">-</div>
+                            </div>
+                            
+                            <div class="detail-item">
+                                <div class="detail-label">Coordinates</div>
+                                <div id="detail-coordinates" class="detail-value">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>        </div>
+    </div>
+</div>
+
+<!-- Session timeout modal -->
+<div class="modal-overlay" id="timeout-modal" data-timeout="1800">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Session Timeout</h3>
+        </div>
+        <div class="modal-body">
+            <p>Logging out after a long time of inactivity.</p>
+            <p>Please login again to continue your work.</p>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="modal-btn modal-btn-primary" onclick="logout()">Login Again</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

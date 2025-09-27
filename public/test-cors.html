@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORS Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CORS and API Test</h1>
+        
+        <div class="test-section">
+            <h3>Environment Info</h3>
+            <p><strong>Current URL:</strong> <span id="currentUrl"></span></p>
+            <p><strong>Host:</strong> <span id="currentHost"></span></p>
+            <p><strong>Protocol:</strong> <span id="currentProtocol"></span></p>
+        </div>
+
+        <div class="test-section">
+            <h3>API Tests</h3>
+            <button onclick="testCheckSession()">Test Session Check</button>
+            <button onclick="testGetLocations()">Test Get Locations</button>
+            <button onclick="testGetMapData()">Test Get Map Data</button>
+            <div id="apiResults" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Static Resource Tests</h3>
+            <button onclick="testStaticResources()">Test Static Resources</button>
+            <div id="staticResults" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Console Errors</h3>
+            <button onclick="showConsoleErrors()">Show Console Errors</button>
+            <div id="consoleErrors" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        // Display environment info
+        document.getElementById('currentUrl').textContent = window.location.href;
+        document.getElementById('currentHost').textContent = window.location.host;
+        document.getElementById('currentProtocol').textContent = window.location.protocol;
+
+        // Capture console errors
+        let consoleErrors = [];
+        const originalError = console.error;
+        console.error = function(...args) {
+            consoleErrors.push(new Date().toISOString() + ': ' + args.join(' '));
+            originalError.apply(console, args);
+        };
+
+        // Capture network errors
+        window.addEventListener('error', function(e) {
+            if (e.target && e.target.src) {
+                consoleErrors.push(new Date().toISOString() + ': Failed to load resource: ' + e.target.src);
+            }
+        });
+
+        async function testCheckSession() {
+            const resultsDiv = document.getElementById('apiResults');
+            resultsDiv.textContent = 'Testing session check...\n';
+            
+            try {
+                const response = await fetch('/api/check-session', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                resultsDiv.textContent += `Status: ${response.status}\n`;
+                resultsDiv.textContent += `Headers: ${JSON.stringify(Object.fromEntries(response.headers), null, 2)}\n`;
+                
+                const data = await response.json();
+                resultsDiv.textContent += `Response: ${JSON.stringify(data, null, 2)}\n`;
+                
+            } catch (error) {
+                resultsDiv.textContent += `Error: ${error.message}\n`;
+            }
+        }
+
+        async function testGetLocations() {
+            const resultsDiv = document.getElementById('apiResults');
+            resultsDiv.textContent += '\nTesting get locations...\n';
+            
+            try {
+                const response = await fetch('/api/locations', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                resultsDiv.textContent += `Status: ${response.status}\n`;
+                const data = await response.json();
+                resultsDiv.textContent += `Response: ${JSON.stringify(data, null, 2)}\n`;
+                
+            } catch (error) {
+                resultsDiv.textContent += `Error: ${error.message}\n`;
+            }
+        }
+
+        async function testGetMapData() {
+            const resultsDiv = document.getElementById('apiResults');
+            resultsDiv.textContent += '\nTesting get map data...\n';
+            
+            try {
+                const response = await fetch('/php/get_map_data.php', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                resultsDiv.textContent += `Status: ${response.status}\n`;
+                const data = await response.json();
+                resultsDiv.textContent += `Response: ${JSON.stringify(data, null, 2)}\n`;
+                
+            } catch (error) {
+                resultsDiv.textContent += `Error: ${error.message}\n`;
+            }
+        }
+
+        async function testStaticResources() {
+            const resultsDiv = document.getElementById('staticResults');
+            resultsDiv.textContent = 'Testing static resources...\n';
+            
+            const resources = [
+                '/css/mp_style.css',
+                '/js/common.js',
+                '/assets/Logo-MicroPlastics_09.png',
+                '/assets/mpicon.ico'
+            ];
+            
+            for (const resource of resources) {
+                try {
+                    const response = await fetch(resource);
+                    resultsDiv.textContent += `${resource}: ${response.status} ${response.statusText}\n`;
+                } catch (error) {
+                    resultsDiv.textContent += `${resource}: Error - ${error.message}\n`;
+                }
+            }
+        }
+
+        function showConsoleErrors() {
+            const resultsDiv = document.getElementById('consoleErrors');
+            if (consoleErrors.length === 0) {
+                resultsDiv.textContent = 'No console errors captured.';
+            } else {
+                resultsDiv.textContent = consoleErrors.join('\n');
+            }
+        }
+    </script>
+</body>
+</html>

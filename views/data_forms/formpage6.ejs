@@ -1,0 +1,48 @@
+<!-- Page 6: Review and Submit -->
+<template id="template-form-page6">
+    <div class="form-page" id="form-page6" data-page="6">
+        <h2 class="form-section-title">Review and Submit</h2>
+        <div class="form-section">
+            <div class="confirmation-message">
+                <p>Please review your data before final submission. You can go back to previous pages to make changes if needed.</p>
+            </div>                        <div class="data-summary">
+                <h3>Data Summary 
+                    <button type="button" onclick="if(window.generateSummary) window.generateSummary(); else console.log('generateSummary not available');" style="margin-left: 10px; padding: 5px 10px; font-size: 12px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh Summary</button>
+                    <!-- <button type="button" onclick="if(window.addTestData) window.addTestData(); else console.log('addTestData not available');" style="margin-left: 5px; padding: 5px 10px; font-size: 12px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">Add Test Data</button> -->
+                </h3>
+                <div id="summary-container">
+                    <!-- Summary will be populated by JavaScript -->
+                </div>
+            </div>
+            <div class="form-row">
+                <label class="form-label">Additional Notes:</label>
+                <textarea name="additional_notes" class="form-textarea" placeholder="Any additional information you'd like to provide..."></textarea>
+            </div>
+        </div>
+        <div class="form-navigation">
+            <button type="button" id="save-button" class="btn-save">Save and Continue</button>
+            
+            <!-- Next Steps Options (shown after successful save) -->
+            <div id="next-steps-options" class="next-steps-container" style="display: none;">
+                <h3>Data Saved Successfully! What would you like to do next?</h3>
+                <div class="next-steps-buttons">
+                    <button type="button" id="new-location-date" class="btn-option">
+                        <strong>A) Start New Location/Date</strong>
+                        <br><small>Begin fresh data entry for a different location and date</small>
+                    </button>
+                    <button type="button" id="different-media" class="btn-option">
+                        <strong>B) Different Media Type</strong>
+                        <br><small>Change media type for same location and date</small>
+                    </button>
+                    <button type="button" id="same-media-sample" class="btn-option">
+                        <strong>C) Additional Sample</strong>
+                        <br><small>Add another sample for same media, location, and date</small>
+                    </button>
+                </div>
+                <div class="next-steps-note">
+                    <p><em>Choose your next action to continue data entry efficiently.</em></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>

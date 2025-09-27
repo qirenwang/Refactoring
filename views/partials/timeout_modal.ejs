@@ -1,0 +1,16 @@
+<!-- Session Timeout Modal -->
+<div id="timeout-modal" class="modal" style="display: none;" data-timeout="<%= process.env.SESSION_TIMEOUT || 1800 %>">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Session Timeout</h3>
+            <span class="close" onclick="closeModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <p>Your session has expired due to inactivity. Please log in again.</p>
+        </div>
+        <div class="modal-footer">
+            <button onclick="logout()" class="btn btn-primary">Log in again</button>
+            <button onclick="closeModal()" class="btn btn-secondary">Continue browsing</button>
+        </div>
+    </div>
+</div>

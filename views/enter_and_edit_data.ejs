@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Management of Microplastics Pollution</title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
+    <!-- Add Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <!-- Add Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">
+    <!-- Add Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>    <!-- Add Custom JS -->
+    <script src="/js/common.js"></script>
+    <script src="/js/session-timeout.js"></script>
+    <script src="/js/enter-and-edit-map.js"></script>
+    
+    <!-- Stagewise Toolbar for Development -->
+    <% if (process.env.NODE_ENV !== 'production') { %>
+        <script src="/js/stagewise-toolbar.js"></script>
+    <% } %>
+</head>
+<body>
+<div class="container">
+    <%- include('partials/header') %>
+    
+    <div class="content">
+        <%- include('partials/sidebar') %>
+        
+        <div class="main-content">
+            <div class="intro-container">
+                <h2>Choose Your Data Entry Method</h2>
+                <p class="intro-text">Our platform offers two convenient ways to contribute your microplastic data. Select the method that works best for you.</p>
+            </div>
+            
+            <div class="options-container">
+                <a href="/enter_data_by_form" class="option-card">
+                    <div class="option-icon">
+                        <i class="form-icon">📝</i>
+                    </div>
+                    <div class="option-content">
+                        <h3>Interactive Form Entry</h3>
+                        <p>Enter your data step-by-step through our guided online forms</p>
+                    </div>
+                </a>
+                
+                <a href="/enter_data_by_file" class="option-card">
+                    <div class="option-icon">
+                        <i class="file-icon">📄</i>
+                    </div>
+                    <div class="option-content">
+                        <h3>File Upload</h3>
+                        <p>Upload a spreadsheet or CSV file containing your complete dataset</p>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Session timeout modal -->
+<div class="modal-overlay" id="timeout-modal" data-timeout="1800">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Session Timeout</h3>
+        </div>
+        <div class="modal-body">
+            <p>Logging out after a long time of inactivity.</p>
+            <p>Please login again to continue your work.</p>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="modal-btn modal-btn-primary" onclick="logout()">Login Again</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

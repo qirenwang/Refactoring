@@ -1,0 +1,112 @@
+<%- include('partials/header', { 
+    title: 'Error - Microplastics Data Entry',
+    additionalStyles: `
+        <link rel="stylesheet" href="/css/mp_style.css">
+    `
+}) %>
+
+<div class="container">
+    <%- include('partials/sidebar') %>
+    
+    <div class="main-content">
+        <div class="error-container">
+            <div class="error-content">
+                <h1 class="error-title">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <%= error || 'Error' %>
+                </h1>
+                <div class="error-message">
+                    <p><%= message || 'An unexpected error occurred.' %></p>
+                </div>
+                <div class="error-actions">
+                    <a href="/home" class="btn btn-primary">
+                        <i class="fas fa-home"></i> Go Home
+                    </a>
+                    <button onclick="history.back()" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left"></i> Go Back
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<%- include('partials/timeout_modal') %>
+<%- include('partials/footer') %>
+
+<style>
+.error-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 60vh;
+    padding: 2rem;
+}
+
+.error-content {
+    text-align: center;
+    max-width: 500px;
+    padding: 2rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.error-title {
+    color: #dc3545;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+}
+
+.error-title i {
+    margin-right: 0.5rem;
+}
+
+.error-message {
+    margin-bottom: 2rem;
+    color: #6c757d;
+}
+
+.error-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.btn i {
+    margin-right: 0.5rem;
+}
+
+.btn-primary {
+    background-color: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #0056b3;
+    color: white;
+    text-decoration: none;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #545b62;
+}
+</style>

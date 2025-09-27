@@ -1,0 +1,561 @@
+<!-- Page 5: Particle Details -->
+<template id="template-form-page5">
+    <div class="form-page" id="form-page5" data-page="5">
+        <h2 class="form-section-title">Sample Details</h2>
+        <div class="form-section">
+            <p>Please provide the following QUANTITATIVE INFORMATION about your first sample at this location and date. Enter the count of the number of items you collected OF EACH TYPE, IN THIS SAMPLE:</p>
+            <div class="radio-options">
+                <label class="radio-option" style="display: none;">
+                    <input type="radio" name="has_quantitative_data" value="null" checked>
+                    <span class="radio-label">Null</span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="has_quantitative_data" value="yes">
+                    <span class="radio-label">Yes, I have quantitative information to provide</span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="has_quantitative_data" value="no">
+                    <span class="radio-label">No</span>
+                </label>
+            </div>
+            
+            <div id="quantitative-counts-container" class="form-section" style="display:none;">
+                <div class="form-row">
+                    <label class="form-label">Replicates of the sample:</label>
+                    <input type="number" id="replicates-count" name="replicates_count" class="form-input" placeholder="count" min="0">
+                </div>
+                
+                <!-- Microplastics Count and Sample Amount -->
+                <div class="count-section">
+                    <div class="form-row">
+                        <label class="form-label">Microplastics Count (less than 5mm):</label>
+                        <input type="number" id="microplastics-count" name="microplastics_count" class="form-input" placeholder="count" min="0">
+                    </div>
+                    <div class="sample-amount-container" id="microplastics-amount-container" style="display:none;">
+                        <div class="form-row">
+                            <label class="form-label">Amount of sample that has this microplastics count:</label>
+                            <div class="amount-input-group">
+                                <input type="number" step="0.001" name="microplastics_sample_amount" class="form-input amount-input" placeholder="Enter amount" min="0">
+                                <select name="microplastics_sample_unit" class="form-select unit-select">
+                                    <option value="">-- Select Unit --</option>
+                                    <!-- Water sample units -->
+                                    <option value="L" class="water-unit">Liters (L)</option>
+                                    <!-- Sediment/Soil sample units -->
+                                    <option value="g" class="soil-unit">Mass - dry weight (g)</option>
+                                    <option value="km2" class="soil-unit area-unit">Area (km²)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fragments Count and Sample Amount -->
+                <div class="count-section">
+                    <div class="form-row">
+                        <label class="form-label">Fragments Count (greater than 5mm):</label>
+                        <input type="number" id="fragments-count" name="fragments_count" class="form-input" placeholder="count" min="0">
+                    </div>
+                    <div class="sample-amount-container" id="fragments-amount-container" style="display:none;">
+                        <div class="form-row">
+                            <label class="form-label">Amount of sample that has this fragments count:</label>
+                            <div class="amount-input-group">
+                                <input type="number" step="0.001" name="fragments_sample_amount" class="form-input amount-input" placeholder="Enter amount" min="0">
+                                <select name="fragments_sample_unit" class="form-select unit-select">
+                                    <option value="">-- Select Unit --</option>
+                                    <!-- Water sample units -->
+                                    <option value="L" class="water-unit">Liters (L)</option>
+                                    <!-- Sediment/Soil sample units -->
+                                    <option value="g" class="soil-unit">Mass - dry weight (g)</option>
+                                    <option value="km2" class="soil-unit area-unit">Area (km²)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Whole Packaging Count and Sample Amount -->
+                <div class="count-section">
+                    <div class="form-row">
+                        <label class="form-label">Whole packaging Count:</label>
+                        <input type="number" id="packaging-count" name="packaging_count" class="form-input" placeholder="count" min="0">
+                    </div>
+                    <div class="sample-amount-container" id="packaging-amount-container" style="display:none;">
+                        <div class="form-row">
+                            <label class="form-label">Amount of sample that has this whole packaging count:</label>
+                            <div class="amount-input-group">
+                                <input type="number" step="0.001" name="packaging_sample_amount" class="form-input amount-input" placeholder="Enter amount" min="0">
+                                <select name="packaging_sample_unit" class="form-select unit-select">
+                                    <option value="">-- Select Unit --</option>
+                                    <!-- Water sample units -->
+                                    <option value="L" class="water-unit">Liters (L)</option>
+                                    <!-- Sediment/Soil sample units -->
+                                    <option value="g" class="soil-unit">Mass - dry weight (g)</option>
+                                    <option value="km2" class="soil-unit area-unit">Area (km²)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Microplastics Details Section -->
+            <div id="microplastics-details" class="form-section details-section" style="display:none;">
+                <h3>Microplastics Details</h3>
+                <p>Please enter this information about your microplastics sample:</p>
+                <div class="details-form">
+                    <div class="form-section-title">1. Size: Percentage of particles estimated to be in each size</div>
+                    <div class="form-row">
+                        <label class="form-label">&lt; 1 μm:</label>
+                        <input type="number" name="mp_size_lt_1um" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">1 - 20 μm:</label>
+                        <input type="number" name="mp_size_1_20um" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">20 - 100 μm:</label>
+                        <input type="number" name="mp_size_20_100um" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">100 μm - 1 mm:</label>
+                        <input type="number" name="mp_size_100um_1mm" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">1 - 5 mm:</label>
+                        <input type="number" name="mp_size_1_5mm" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+
+                    <div class="form-section-title">2. Color type: Percentage of particles estimated to be in each color type</div>
+                    <div class="form-row">
+                        <label class="form-label">Clear:</label>
+                        <input type="number" name="fragment_color_clear" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Opaque - Light:</label>
+                        <input type="number" name="fragment_color_opaque_light" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Opaque - Dark:</label>
+                        <input type="number" name="fragment_color_opaque_dark" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Mixed:</label>
+                        <input type="number" name="fragment_color_mixed" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+
+                    <div class="form-section-title">3. Form: Percentage of particles estimated to be each form</div>
+                    <div class="form-row">
+                        <label class="form-label">Fiber:</label>
+                        <input type="number" name="mp_form_fiber" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Pellet:</label>
+                        <input type="number" name="mp_form_pellet" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Fragment:</label>
+                        <input type="number" name="mp_form_fragment" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+
+                    <div class="form-section-title">4. Polymer type: Percentage of particles estimated to be each polymer type</div>
+                    
+                        <div class="polymer-category">
+                        <h4 class="polymer-category-title">Synthetic Plastics</h4>
+                        <div class="form-row">
+                            <label class="form-label">PETE (Polyethylene Terephthalate) - #1:</label>
+                            <input type="number" name="mp_polymer_pete" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">HDPE (High-Density Polyethylene) - #2:</label>
+                            <input type="number" name="mp_polymer_hdpe" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PVC (Polyvinyl Chloride) - #3:</label>
+                            <input type="number" name="mp_polymer_pvc" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">LDPE (Low-Density Polyethylene) - #4:</label>
+                            <input type="number" name="mp_polymer_ldpe" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PP (Polypropylene) - #5:</label>
+                            <input type="number" name="mp_polymer_pp" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PS (Polystyrene) - #6:</label>
+                            <input type="number" name="mp_polymer_ps" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PA (Polyamide) / Nylon:</label>
+                            <input type="number" name="mp_polymer_pa" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PC (Polycarbonate):</label>
+                            <input type="number" name="mp_polymer_pc" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PLA (Polylactic Acid):</label>
+                            <input type="number" name="mp_polymer_pla" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">ABS (Acrylonitrile Butadiene Styrene):</label>
+                            <input type="number" name="mp_polymer_abs" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">EVA (Ethylene-vinyl Acetate):</label>
+                            <input type="number" name="mp_polymer_eva" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PB (Polybutylene):</label>
+                            <input type="number" name="mp_polymer_pb" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PE UHMW (Ultra-high-molecular-weight Polyethylene):</label>
+                            <input type="number" name="mp_polymer_pe_uhmw" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PMMA (Polymethyl Methacrylate/Acrylic/Plexiglass):</label>
+                            <input type="number" name="mp_polymer_pmma" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">HIPS (High Impact Polystyrene):</label>
+                            <input type="number" name="mp_polymer_hips" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">EPS (Expanded Polystyrene):</label>
+                            <input type="number" name="mp_polymer_eps" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PAN (Polyacrylonitrile):</label>
+                            <input type="number" name="mp_polymer_pan" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                    </div>
+
+                    <div class="polymer-category">
+                        <h4 class="polymer-category-title">Rubber/Bituminous</h4>
+                        <div class="form-row">
+                            <label class="form-label">Synthetic Rubber:</label>
+                            <input type="number" name="mp_polymer_rubber" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">Bitumen/Asphalt:</label>
+                            <input type="number" name="mp_polymer_bitumen" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                    </div>
+
+                    <div class="polymer-category">
+                        <h4 class="polymer-category-title">Other</h4>
+                        <div class="form-row">
+                            <label class="form-label">Other (specify in method description):</label>
+                            <input type="number" name="mp_polymer_other" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">5. Describe Method you used to estimate percentage:</label>
+                        <textarea name="mp_estimate_method" class="form-textarea" rows="3"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fragments Details Section -->
+            <div id="fragments-details" class="form-section details-section" style="display:none;">
+                <h3>Fragments Details</h3>
+                <p>Please enter this information about your fragments &gt;5mm:</p>
+                <div class="details-form">
+                    <div class="form-section-title">1. Color type: Percentage of particles estimated to be in each color type</div>
+                    <div class="form-row">
+                        <label class="form-label">Clear:</label>
+                        <input type="number" name="fragment_color_clear" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Opaque - Light:</label>
+                        <input type="number" name="fragment_color_opaque_light" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Opaque - Dark:</label>
+                        <input type="number" name="fragment_color_opaque_dark" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Mixed:</label>
+                        <input type="number" name="fragment_color_mixed" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+
+                    <div class="form-section-title">2. Form: Percentage of particles estimated to be each form</div>
+
+                    <div class="form-row">
+                        <label class="form-label">Fiber:</label>
+                        <input type="number" name="fragment_form_fiber" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Pellet:</label>
+                        <input type="number" name="fragment_form_pellet" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Film/Bag/Wrap:</label>
+                        <input type="number" name="fragment_form_film" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Foam:</label>
+                        <input type="number" name="fragment_form_foam" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">HardPlastic:</label>
+                        <input type="number" name="fragment_form_hardplastic" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Other:</label>
+                        <input type="number" name="fragment_form_other" class="form-input" placeholder="percentage" min="0" max="100">
+                    </div>
+
+                    <div class="form-section-title">3. Polymer type: Percentage of particles estimated to be each polymer type</div>
+                    
+                        <div class="polymer-category">
+                        <h4 class="polymer-category-title">Synthetic Plastics</h4>
+                        <div class="form-row">
+                            <label class="form-label">PETE (Polyethylene Terephthalate) - #1:</label>
+                            <input type="number" name="fragment_polymer_pete" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">HDPE (High-Density Polyethylene) - #2:</label>
+                            <input type="number" name="fragment_polymer_hdpe" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PVC (Polyvinyl Chloride) - #3:</label>
+                            <input type="number" name="fragment_polymer_pvc" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">LDPE (Low-Density Polyethylene) - #4:</label>
+                            <input type="number" name="fragment_polymer_ldpe" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PP (Polypropylene) - #5:</label>
+                            <input type="number" name="fragment_polymer_pp" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PS (Polystyrene) - #6:</label>
+                            <input type="number" name="fragment_polymer_ps" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PA (Polyamide) / Nylon:</label>
+                            <input type="number" name="fragment_polymer_pa" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PC (Polycarbonate):</label>
+                            <input type="number" name="fragment_polymer_pc" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PLA (Polylactic Acid):</label>
+                            <input type="number" name="fragment_polymer_pla" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">ABS (Acrylonitrile Butadiene Styrene):</label>
+                            <input type="number" name="fragment_polymer_abs" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">EVA (Ethylene-vinyl Acetate):</label>
+                            <input type="number" name="fragment_polymer_eva" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PB (Polybutylene):</label>
+                            <input type="number" name="fragment_polymer_pb" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PE UHMW (Ultra-high-molecular-weight Polyethylene):</label>
+                            <input type="number" name="fragment_polymer_pe_uhmw" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PMMA (Polymethyl Methacrylate/Acrylic/Plexiglass):</label>
+                            <input type="number" name="fragment_polymer_pmma" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">HIPS (High Impact Polystyrene):</label>
+                            <input type="number" name="fragment_polymer_hips" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">EPS (Expanded Polystyrene):</label>
+                            <input type="number" name="fragment_polymer_eps" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">PAN (Polyacrylonitrile):</label>
+                            <input type="number" name="fragment_polymer_pan" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                    </div>
+
+                    <div class="polymer-category">
+                        <h4 class="polymer-category-title">Rubber/Bituminous</h4>
+                        <div class="form-row">
+                            <label class="form-label">Synthetic Rubber:</label>
+                            <input type="number" name="fragment_polymer_rubber" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">Bitumen/Asphalt:</label>
+                            <input type="number" name="fragment_polymer_bitumen" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                    </div>
+
+                    <div class="polymer-category">
+                        <h4 class="polymer-category-title">Other</h4>
+                        <div class="form-row">
+                            <label class="form-label">Other (specify in method description):</label>
+                            <input type="number" name="fragment_polymer_other" class="form-input" placeholder="percentage" min="0" max="100">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">4. Describe Method you used to estimate percentage:</label>
+                        <textarea name="fragment_estimate_method" class="form-textarea" rows="3"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Whole Packaging Details Section -->
+            <div id="packaging-details" class="form-section details-section" style="display:none;">
+                <h3>Whole Packaging Details</h3>
+                <p>Please enter this information about each whole packaging item:</p>
+                <div id="packaging-items-container">
+                    <!-- Items will be dynamically added here -->
+                </div>
+                <template id="packaging-item-template">
+                    <div class="packaging-item">
+                        <h4>Item <span class="item-number"></span></h4>
+                        <div class="form-row">
+                            <label class="form-label">UserPieceID Label:</label>
+                            <input type="text" name="packaging_id[]" class="form-input" placeholder="User defined">
+                        </div>                                    
+                        <!-- New Four-Column Selection Interface -->
+                        <div class="selection-grid-title">Package Details Selection</div>
+                        <div class="selection-grid-subtitle">Click one option from each column to classify your package</div>
+                        
+                        <div class="packaging-selection-grid">
+                            <!-- Purpose Column -->
+                            <div class="selection-column">
+                                <div class="column-header">Purpose</div>
+                                <div class="column-options">
+                                    <button type="button" class="option-item" data-field="packaging_purpose" data-value="container-single-use food-beverage">
+                                        Container - Single-use food/beverage
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_purpose" data-value="container-multi-use food-beverage">
+                                        Container - Multi-use food/beverage
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_purpose" data-value="container-other">
+                                        Container - Other
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_purpose" data-value="bag or packing material">
+                                        Bag or packing material
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_purpose" data-value="personal item">
+                                        Personal item
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_purpose" data-value="household item">
+                                        Household item
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Recycle Code Column -->
+                            <div class="selection-column">
+                                <div class="column-header">Recycle Code</div>
+                                <div class="column-options">
+                                    <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="1">
+                                        1
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="2">
+                                        2
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="3">
+                                        3
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="4">
+                                        4
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="5">
+                                        5
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="6">
+                                        6
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="7">
+                                        7
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="Unknown">
+                                        Unknown
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Opacity Type Column -->
+                            <div class="selection-column">
+                                <div class="column-header">Opacity Type</div>
+                                <div class="column-options">
+                                    <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Clear">
+                                        Clear
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Opaque-Light">
+                                        Opaque-Light
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Opaque-Dark">
+                                        Opaque-Dark
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Mixed">
+                                        Mixed
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Color Column -->
+                            <div class="selection-column">
+                                <div class="column-header">Color</div>
+                                <div class="column-options">
+                                    <button type="button" class="option-item" data-field="packaging_color" data-value="Clear">
+                                        Clear
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color" data-value="Black">
+                                        Black
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color" data-value="Blue">
+                                        Blue
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color" data-value="Brown">
+                                        Brown
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color" data-value="Dark Blue">
+                                        Dark Blue
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color" data-value="Light Blue">
+                                        Light Blue
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color" data-value="Pink">
+                                        Pink
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color" data-value="Purple">
+                                        Purple
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color" data-value="Red">
+                                        Red
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color" data-value="White">
+                                        White
+                                    </button>
+                                    <button type="button" class="option-item" data-field="packaging_color" data-value="Yellow">
+                                        Yellow
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Hidden inputs to store selected values -->
+                        <input type="hidden" name="packaging_purpose[]" class="packaging-purpose-value">
+                        <input type="hidden" name="packaging_recycle_code[]" class="packaging-recycle-code-value">
+                        <input type="hidden" name="packaging_color_opacity[]" class="packaging-color-opacity-value">
+                        <input type="hidden" name="packaging_color[]" class="packaging-color-value">
+                    </div>
+                </template>
+            </div>
+
+            <div class="form-navigation">
+                <button type="button" class="btn-continue" data-next="6">Continue</button>
+            </div>
+        </div>
+    </div>
+</template>

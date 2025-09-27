@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enter Data by Form - Microplastics Data Entry</title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
+    <!-- Add Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />    <!-- Add Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">
+    <!-- Add Fancy Modal CSS -->
+    <link rel="stylesheet" href="/css/fancy-modal.css">
+    <!-- Add Custom JS -->
+    <script src="/js/common.js"></script>
+    
+    <!-- Stagewise Toolbar for Development -->
+    <% if (process.env.NODE_ENV !== 'production') { %>
+        <script src="/js/stagewise-toolbar.js"></script>
+    <% } %>
+</head>
+<body>
+<div class="container">
+    <%- include('partials/header') %>
+    
+    <div class="content">
+        <%- include('partials/sidebar') %>
+      <div class="main-content">
+        <div class="form-progress-container">
+            <div class="form-progress">
+                <div class="progress-step active" data-step="1">
+                    <span class="step-number">1</span>
+                    <span class="step-label">Location</span>
+                </div>
+                <div class="progress-step" data-step="2">
+                    <span class="step-number">2</span>
+                    <span class="step-label">Media Information</span>
+                </div>
+                <div class="progress-step" data-step="3">
+                    <span class="step-number">3</span>
+                    <span class="step-label">Additional Information</span>
+                </div>
+                <div class="progress-step" data-step="4">
+                    <span class="step-number">4</span>
+                    <span class="step-label">Particle Details</span>
+                </div>
+                <div class="progress-step" data-step="5">
+                    <span class="step-number">5</span>
+                    <span class="step-label">Confirmation</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Form Pages Container -->
+        <div class="form-pages-container">
+            <!-- Page 1: Location Information - Initially visible -->
+            <div class="form-page" id="form-page1" data-page="1">
+                <h2 class="form-section-title">Location Information</h2>
+                <div class="instruction">
+                    <span class="bold">Choose ONE</span> of the 4 following ways to enter the location where you collected plastics or microplastics:
+                </div>
+                <div class="location-options">
+                    <div class="option">
+                        <span class="option-number">1</span>
+                        <span class="option-title">Select previously sampled location</span> (repeat sampling)
+                        <div class="select-container">
+                            <select id="location-select" class="location-select" name="location_id">
+                                <option value="">-- Select a location --</option>
+                            </select>
+                            <div id="location-loading" class="location-loading">Loading locations...</div>
+                        </div>
+                    </div>                    <div class="option">
+                        <span class="option-number">2</span>
+                        <!-- # add a note here -->
+                        <span class="option-title">Enter new location</span>
+                        <div class="instruction-note" style="color: #e74c3c; background-color: #fdf2f2; padding: 8px; margin: 8px 0; border-left: 4px solid #e74c3c; font-size: 14px;">
+                            <strong>Important:</strong> If you want to enter a new location, please make sure no location is selected in "Select previously sampled location" above. Otherwise, all data entered in this new location form will be ignored.
+                        </div>
+                        <div class="location-form">                            <div class="form-row">
+                                <label class="form-label">Location Name (<span style="color: red;">*</span>, for pull-down menu):</label>
+                            </div>
+                            <div class="form-row">
+                                <input type="text" id="location-name" name="location_name" class="form-input" placeholder="Enter location name">
+                            </div>
+                            <div class="form-row">
+                                <label class="form-label">Location Description (<span style="color: red;">*</span>):</label>
+                            </div>
+                            <div class="form-row">
+                                <input type="text" id="location-description" name="location_description" class="form-input" placeholder="Enter location description">
+                            </div>
+                            
+
+                            <div class="coordinates-container">
+                                <div class="coordinate-field">
+                                    <div class="coordinate-label">Latitude (click map)</div>
+                                    <input type="text" id="latitude" name="latitude" class="coordinate-input" placeholder="Enter latitude">
+                                </div>
+                                <div class="coordinate-field">
+                                    <div class="coordinate-label">Longitude</div>
+                                    <input type="text" id="longitude" name="longitude" class="coordinate-input" placeholder="Enter longitude">
+                                </div>
+                            </div>
+                            
+                            <div class="coordinate-hint">Click on the map to select coordinates or click on an existing location marker</div>
+                            
+                            <!-- Map container -->
+                            <div id="map"></div>
+                            
+                            <div class="form-row">
+                                <label class="form-label">Acres (if sampling a broad area):</label>
+                                <input type="text" id="acres" name="acres" class="form-input" placeholder="Enter area in acres">
+                            </div>
+
+
+                            <span class="form-label">Or Address if Indoors:</span>
+                            <input type="text" name="streetaddress" class="input-field" placeholder="StreetAddress">
+                            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                <input type="text" name="city" class="input-field" placeholder="City" style="flex:1;">
+                                <input type="text" name="state" class="input-field" placeholder="State" style="flex:1;">
+                                <input type="text" name="country" class="input-field" placeholder="Country" style="flex:1;">
+                            </div>
+                            
+
+                            <span class="form-label">Or Zip code only</span> (for confidential data, or samples collected over a wide area):
+                            <input type="text" name="zip_code" class="input-field" placeholder="zip code">
+                        </div>
+
+                        
+                    </div>
+
+                    <div class="form-field">
+                        <div class="form-label">Plastic Collection Date:</div>
+                        <div>
+                            <input type="date" name="sample_date" class="date-input" id="sample-date" placeholder="mm/dd/yyyy">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-navigation">
+                    <button type="button" id="page1-continue" class="btn-continue" data-next="2">Continue</button>
+                </div>
+            </div>
+        </div>
+          <!-- Templates for form pages that will be loaded progressively -->
+        <div style="display: none;" id="form-templates">
+            <!-- Page 2: Sample Details -->
+            <template id="template-form-page2">
+                <div class="form-page" id="form-page2" data-page="2">
+                    <h2 class="form-section-title">From what media did you collect plastic?</h2>
+                    <div class="form-section">
+                        <div class="media-selection-container">
+                            <p class="selection-instruction">Choose between these 4:</p>
+                            
+                            <div class="media-options">
+                                <div class="media-option" onclick="document.getElementById('water').click();">
+                                    <input type="radio" id="water" name="media_type" value="water" class="media-radio">
+                                    <div class="media-icon">
+                                        <i class="fas fa-water"></i>
+                                    </div>
+                                    <label for="water" class="media-label">In Water</label>
+                                    <span class="selection-indicator">✓</span>
+                                </div>
+                                
+                                <div class="media-option" onclick="document.getElementById('soil_sediment').click();">
+                                    <input type="radio" id="soil_sediment" name="media_type" value="soil_sediment" class="media-radio">
+                                    <div class="media-icon">
+                                        <i class="fas fa-mountain"></i>
+                                    </div>
+                                    <label for="soil_sediment" class="media-label">In Soil/Sediment</label>
+                                    <span class="selection-indicator">✓</span>
+                                </div>
+                                
+                                <div class="media-option" onclick="document.getElementById('soil_litter').click();">
+                                    <input type="radio" id="soil_litter" name="media_type" value="soil_litter" class="media-radio">
+                                    <div class="media-icon">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </div>
+                                    <label for="soil_litter" class="media-label">On Soil (Litter clean-up)</label>
+                                    <span class="selection-indicator">✓</span>
+                                </div>
+                                
+                                <div class="media-option" onclick="document.getElementById('mixed_composite').click();">
+                                    <input type="radio" id="mixed_composite" name="media_type" value="mixed_composite" class="media-radio">
+                                    <div class="media-icon">
+                                        <i class="fas fa-layer-group"></i>
+                                    </div>
+                                    <label for="mixed_composite" class="media-label">This is a mixed media composite sample</label>
+                                    <span class="selection-indicator">✓</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="instruction">Note: consider keeping samples from different media types separate, for easier interpretation of results later.</p>
+                    <div class="form-navigation">
+                        <button type="button" class="btn-continue" data-next="3">Continue</button>
+                    </div>
+                </div>
+            </template>
+            
+            <!-- Page 3: Optional Information -->
+            <template id="template-form-page3">
+                <div class="form-page" id="form-page3" data-page="3">
+                    <h2 class="form-section-title">Additional Sampling Information</h2>
+                    <div class="form-section">
+                        <div class="option-question">
+                            <p>Do you want to enter more information about your sampling method, weather or environmental chemistry?</p>
+                            <div class="radio-options">
+                                <label class="radio-option" style="display: none;">
+                                    <input type="radio" name="has_quantitative_data" value="null" checked>
+                                    <span class="radio-label">Null</span>
+                                </label>
+                                <label class="radio-option">
+                                    <input type="radio" name="additional_info" value="yes" class="toggle-additional-info">
+                                    <span class="radio-label">Yes</span>
+                                </label>
+                                <label class="radio-option">
+                                    <input type="radio" name="additional_info" value="no" class="toggle-additional-info">
+                                    <span class="radio-label">No</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Additional information sections - initially hidden -->
+                        <div id="additional-info-sections" style="display: none;">
+                            <!-- Weather section - Always shown when additional info is yes -->
+                            <div class="info-section" id="weather-section">
+                                <h3 class="section-subtitle">Weather</h3>
+                                <div class="form-row">
+                                    <label class="form-label">Air Temp (C):</label>
+                                    <input type="number" step="0.1" name="air_temp" class="form-input" placeholder="Enter temperature">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Current conditions:</label>
+                                    <select name="current_conditions" class="form-select">
+                                        <option value="">-- Select --</option>
+                                        <option value="Raining">Raining</option>
+                                        <option value="Cloudy">Cloudy</option>
+                                        <option value="Sunny">Sunny</option>
+                                    </select>
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Precedent 24-hour inches of rainfall:</label>
+                                    <input type="number" step="0.01" name="rainfall" class="form-input" placeholder="Enter rainfall">
+                                </div>
+                            </div>
+                            
+                            <!-- In Water section - Only shown when media type is water -->
+                            <div class="info-section media-specific-section" id="water-section" data-media-type="water" style="display: none;">
+                                <h3 class="section-subtitle">In Water</h3>
+                                <div class="form-row">
+                                    <label class="form-label">Environment Type:</label>
+                                    <select name="environment_type" class="form-select">
+                                        <option value="">-- Select --</option>
+                                        <option value="Ocean">Ocean</option>
+                                        <option value="Great Lake">Great Lake</option>
+                                        <option value="Inland Lake">Inland Lake (at least 5 acres but not one of the named Great Lakes)</option>
+                                        <option value="Pond">Pond (less than 5 acres)</option>
+                                        <option value="River">River</option>
+                                        <option value="Stream">Stream</option>
+                                        <option value="Wetland">Wetland</option>
+                                    </select>
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Volume sampled (liters):</label>
+                                    <input type="number" step="0.01" name="volume_sampled" class="form-input" placeholder="Enter volume">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Water depth (meters):</label>
+                                    <input type="number" step="0.01" name="water_depth" class="form-input" placeholder="Enter depth">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Water flow velocity (cubic meters/second):</label>
+                                    <input type="number" step="0.01" name="flow_velocity" class="form-input" placeholder="Enter velocity">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Total Suspended Solids (mg/liter):</label>
+                                    <input type="number" step="0.01" name="suspended_solids" class="form-input" placeholder="Enter TSS">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Conductivity (uS/cm):</label>
+                                    <input type="number" step="0.01" name="conductivity" class="form-input" placeholder="Enter conductivity">
+                                </div>
+                            </div>
+                            
+                            <!-- In Soil section - Only shown when media type is soil_sediment -->
+                            <div class="info-section media-specific-section" id="soil-section" data-media-type="soil_sediment" style="display: none;">
+                                <h3 class="section-subtitle">In Soil/Sediment</h3>
+                                <div class="form-row">
+                                    <label class="form-label">Soil sample dry weight (g):</label>
+                                    <input type="number" step="0.01" name="soil_dry_weight" class="form-input" placeholder="Enter dry weight">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Soil sample organic matter (%):</label>
+                                    <input type="number" step="0.01" name="soil_organic_matter" class="form-input" placeholder="Enter organic matter">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Soil sample moisture content (%):</label>
+                                    <input type="number" step="0.01" name="soil_moisture" class="form-input" placeholder="Enter moisture content">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Soil texture % sand:</label>
+                                    <input type="number" step="0.01" name="soil_sand" class="form-input" placeholder="Enter % sand">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Soil texture % silt:</label>
+                                    <input type="number" step="0.01" name="soil_silt" class="form-input" placeholder="Enter % silt">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Soil texture % clay:</label>
+                                    <input type="number" step="0.01" name="soil_clay" class="form-input" placeholder="Enter % clay">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-navigation">
+                            <button type="button" id="page3-continue" class="btn-continue" data-next="4">Continue</button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+            
+            <!-- Page 4: Particle Details -->
+            <template id="template-form-page4">
+                <div class="form-page" id="form-page4" data-page="4">
+                    <h2 class="form-section-title">Particle Details</h2>
+                    <div class="form-section">
+                        <p>Please provide the following QUANTITATIVE INFORMATION about your first sample at this location and date. Enter the count of the number of items you collected OF EACH TYPE, IN THIS SAMPLE:</p>
+                        <div class="radio-options">
+                            <label class="radio-option" style="display: none;">
+                                <input type="radio" name="has_quantitative_data" value="null" checked>
+                                <span class="radio-label">Null</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="has_quantitative_data" value="yes">
+                                <span class="radio-label">Yes</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="has_quantitative_data" value="no">
+                                <span class="radio-label">No</span>
+                            </label>
+                        </div>
+                        
+                        <div id="quantitative-counts-container" class="form-section" style="display:none;">
+                            <div class="form-row">
+                                <label class="form-label">Microplastics (less than 5mm):</label>
+                                <input type="number" id="microplastics-count" name="microplastics_count" class="form-input" placeholder="count" min="0">
+                            </div>
+                            <div class="form-row">
+                                <label class="form-label">Fragments (greater than 5mm):</label>
+                                <input type="number" id="fragments-count" name="fragments_count" class="form-input" placeholder="count" min="0">
+                            </div>
+                            <div class="form-row">
+                                <label class="form-label">Whole packaging:</label>
+                                <input type="number" id="packaging-count" name="packaging_count" class="form-input" placeholder="count" min="0">
+                            </div>
+                        </div>
+
+                        <!-- Microplastics Details Section -->
+                        <div id="microplastics-details" class="form-section details-section" style="display:none;">
+                            <h3>Microplastics Details</h3>
+                            <p>Please enter this information about your microplastics sample:</p>
+                            <div class="details-form">
+                                <div class="form-section-title">1. Size: Percentage of particles estimated to be in each size</div>
+                                <div class="form-row">
+                                    <label class="form-label">&lt; 1 μm:</label>
+                                    <input type="number" name="mp_size_lt_1um" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">1 - 20 μm:</label>
+                                    <input type="number" name="mp_size_1_20um" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">20 - 100 μm:</label>
+                                    <input type="number" name="mp_size_20_100um" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">100 μm - 1 mm:</label>
+                                    <input type="number" name="mp_size_100um_1mm" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">1 - 5 mm:</label>
+                                    <input type="number" name="mp_size_1_5mm" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+
+                                <div class="form-section-title">2. Form: Percentage of particles estimated to be each form</div>
+                                <div class="form-row">
+                                    <label class="form-label">Fiber:</label>
+                                    <input type="number" name="mp_form_fiber" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Pellet:</label>
+                                    <input type="number" name="mp_form_pellet" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Fragment:</label>
+                                    <input type="number" name="mp_form_fragment" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+
+                                <div class="form-row">
+                                    <label class="form-label">3. Describe Method you used to estimate percentage:</label>
+                                    <textarea name="mp_estimate_method" class="form-textarea" rows="3"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fragments Details Section -->
+                        <div id="fragments-details" class="form-section details-section" style="display:none;">
+                            <h3>Fragments Details</h3>
+                            <p>Please enter this information about your fragments &gt;5mm:</p>
+                            <div class="details-form">
+                                <div class="form-section-title">1. Color type: Percentage of particles estimated to be in each color type</div>
+                                <div class="form-row">
+                                    <label class="form-label">Clear:</label>
+                                    <input type="number" name="fragment_color_clear" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Opaque - Light:</label>
+                                    <input type="number" name="fragment_color_opaque_light" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Opaque - Dark:</label>
+                                    <input type="number" name="fragment_color_opaque_dark" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Mixed:</label>
+                                    <input type="number" name="fragment_color_mixed" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+
+                                <div class="form-section-title">2. Form: Percentage of particles estimated to be each form</div>
+                                <div class="form-row">
+                                    <label class="form-label">Fiber:</label>
+                                    <input type="number" name="fragment_form_fiber" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Pellet:</label>
+                                    <input type="number" name="fragment_form_pellet" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Film:</label>
+                                    <input type="number" name="fragment_form_film" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">Foam:</label>
+                                    <input type="number" name="fragment_form_foam" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">HardPlastic:</label>
+                                    <input type="number" name="fragment_form_hardplastic" class="form-input" placeholder="percentage" min="0" max="100">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Whole Packaging Details Section -->
+                        <div id="packaging-details" class="form-section details-section" style="display:none;">
+                            <h3>Whole Packaging Details</h3>
+                            <p>Please enter this information about each whole packaging item:</p>
+                            <div id="packaging-items-container">
+                                <!-- Items will be dynamically added here -->
+                            </div>
+                            <template id="packaging-item-template">
+                                <div class="packaging-item">
+                                    <h4>Item <span class="item-number"></span></h4>
+                                    <div class="form-row">
+                                        <label class="form-label">UserPieceID Label:</label>
+                                        <input type="text" name="packaging_id[]" class="form-input" placeholder="User defined">
+                                    </div>                                    
+                                    <!-- New Four-Column Selection Interface -->
+                                    <div class="selection-grid-title">Package Details Selection</div>
+                                    <div class="selection-grid-subtitle">Click one option from each column to classify your package</div>
+                                    
+                                    <div class="packaging-selection-grid">
+                                        <!-- Purpose Column -->
+                                        <div class="selection-column">
+                                            <div class="column-header">Purpose</div>
+                                            <div class="column-options">
+                                                <button type="button" class="column-option-item" data-field="packaging_purpose" data-value="container-single-use food-beverage">
+                                                    Container - Single-use food/beverage
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_purpose" data-value="container-multi-use food-beverage">
+                                                    Container - Multi-use food/beverage
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_purpose" data-value="container-other">
+                                                    Container - Other
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_purpose" data-value="bag or packing material">
+                                                    Bag or packing material
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_purpose" data-value="personal item">
+                                                    Personal item
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_purpose" data-value="household item">
+                                                    Household item
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Recycle Code Column -->
+                                        <div class="selection-column">
+                                            <div class="column-header">Recycle Code</div>
+                                            <div class="column-options">
+                                                <button type="button" class="column-option-item" data-field="packaging_recycle_code" data-value="1">
+                                                    1
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_recycle_code" data-value="2">
+                                                    2
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_recycle_code" data-value="3">
+                                                    3
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_recycle_code" data-value="4">
+                                                    4
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_recycle_code" data-value="5">
+                                                    5
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_recycle_code" data-value="6">
+                                                    6
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_recycle_code" data-value="7">
+                                                    7
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Opacity Type Column -->
+                                        <div class="selection-column">
+                                            <div class="column-header">Opacity Type</div>
+                                            <div class="column-options">
+                                                <button type="button" class="column-option-item" data-field="packaging_color_opacity" data-value="Clear">
+                                                    Clear
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color_opacity" data-value="Opaque-Light">
+                                                    Opaque-Light
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color_opacity" data-value="Opaque-Dark">
+                                                    Opaque-Dark
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color_opacity" data-value="Mixed">
+                                                    Mixed
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Color Column -->
+                                        <div class="selection-column">
+                                            <div class="column-header">Color</div>
+                                            <div class="column-options">
+                                                <button type="button" class="column-option-item" data-field="packaging_color" data-value="Clear">
+                                                    Clear
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color" data-value="Black">
+                                                    Black
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color" data-value="Blue">
+                                                    Blue
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color" data-value="Brown">
+                                                    Brown
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color" data-value="Dark Blue">
+                                                    Dark Blue
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color" data-value="Light Blue">
+                                                    Light Blue
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color" data-value="Pink">
+                                                    Pink
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color" data-value="Purple">
+                                                    Purple
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color" data-value="Red">
+                                                    Red
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color" data-value="White">
+                                                    White
+                                                </button>
+                                                <button type="button" class="column-option-item" data-field="packaging_color" data-value="Yellow">
+                                                    Yellow
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Hidden inputs to store selected values -->
+                                    <input type="hidden" name="packaging_purpose[]" class="packaging-purpose-value">
+                                    <input type="hidden" name="packaging_recycle_code[]" class="packaging-recycle-code-value">
+                                    <input type="hidden" name="packaging_color_opacity[]" class="packaging-color-opacity-value">
+                                    <input type="hidden" name="packaging_color[]" class="packaging-color-value">
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="form-navigation">
+                            <button type="button" class="btn-continue" data-next="5">Continue</button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+            
+            <!-- Page 5: Review and Submit -->
+            <template id="template-form-page5">
+                <div class="form-page" id="form-page5" data-page="5">
+                    <h2 class="form-section-title">Review and Submit</h2>
+                    <div class="form-section">
+                        <div class="confirmation-message">
+                            <p>Please review your data before final submission. You can go back to previous pages to make changes if needed.</p>
+                        </div>
+                        <div class="data-summary">
+                            <h3>Data Summary</h3>
+                            <div id="summary-container">
+                                <!-- Summary will be populated by JavaScript -->
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">Additional Notes:</label>
+                            <textarea name="additional_notes" class="form-textarea" placeholder="Any additional information you'd like to provide..."></textarea>
+                        </div>
+                    </div>
+                    <div class="form-navigation">
+                        <button type="button" id="save-button" class="btn-save">Save</button>
+                    </div>
+                </div>
+            </template>
+        </div>
+        
+        <!-- Form data will be submitted through AJAX -->
+        <form id="data-entry-form" style="display:none;">
+            <input type="hidden" name="form_action" value="save_data">
+            <!-- Hidden inputs will be populated with form data before submission -->
+        </form>    </div>
+</div>
+
+<%- include('partials/timeout_modal') %>
+
+<!-- Load jQuery first -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- Load session timeout script -->
+<script src="/js/session-timeout.js"></script>
+<!-- Load other scripts -->
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="/js/map-data-entry.js"></script>
+<!-- Load fancy modal before form-handler -->
+<script src="/js/fancy-modal.js"></script>
+<script src="/js/form-handler.js"></script>
+
+<script>
+// Clear all form cache and initialize form data storage on page load
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== EJS DOMContentLoaded event triggered ===');
+    
+    // Clear all cached form data to start fresh
+    console.log('Clearing all form cache...');
+    sessionStorage.removeItem('microplastics_form_data');
+    
+    // Also clear any other potential form-related cache keys
+    const keysToRemove = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && (key.includes('form') || key.includes('microplastics') || key.includes('packaging'))) {
+            keysToRemove.push(key);
+        }
+    }
+    keysToRemove.forEach(key => sessionStorage.removeItem(key));
+    
+    // Initialize fresh session storage for form data
+    sessionStorage.setItem('microplastics_form_data', JSON.stringify({}));
+    console.log('Form cache cleared and reinitialized.');
+    
+    // Clear all form fields in the visible page
+    clearAllFormFields();
+    
+    // Function to clear all form fields
+    function clearAllFormFields() {
+        console.log('Clearing all form fields...');
+        
+        // Clear all input fields
+        const inputs = document.querySelectorAll('input');
+        inputs.forEach(input => {
+            if (input.type === 'text' || input.type === 'number' || input.type === 'email' || 
+                input.type === 'date' || input.type === 'password' || input.type === 'tel' || 
+                input.type === 'url' || input.type === 'search') {
+                input.value = '';
+            } else if (input.type === 'checkbox' || input.type === 'radio') {
+                input.checked = false;
+            } else if (input.type === 'hidden') {
+                // Don't clear hidden inputs for CSRF tokens, etc.
+                if (!input.name.includes('csrf') && !input.name.includes('token')) {
+                    input.value = '';
+                }
+            }
+        });
+        
+        // Clear all select fields
+        const selects = document.querySelectorAll('select');
+        selects.forEach(select => {
+            select.selectedIndex = 0; // Reset to first option (usually empty option)
+        });
+        
+        // Clear all textarea fields
+        const textareas = document.querySelectorAll('textarea');
+        textareas.forEach(textarea => {
+            textarea.value = '';
+        });
+        
+        console.log('All form fields cleared.');
+    }
+    
+    // Also disable browser autofill to prevent refilling after we clear
+    const formElements = document.querySelectorAll('input, select, textarea');
+    formElements.forEach(element => {
+        element.setAttribute('autocomplete', 'off');
+    });
+    
+    // Force clear any browser-cached values after a short delay
+    setTimeout(() => {
+        clearAllFormFields();
+        console.log('Second pass form field clearing completed.');
+    }, 100);
+    
+    // Additional cleanup when page is fully loaded
+    window.addEventListener('load', function() {
+        console.log('Page fully loaded, performing final cache cleanup...');
+        clearAllFormFields();
+        
+        // Clear any localStorage items that might interfere
+        const localStorageKeysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.includes('form') || key.includes('microplastics') || key.includes('packaging'))) {
+                localStorageKeysToRemove.push(key);
+            }
+        }
+        localStorageKeysToRemove.forEach(key => localStorage.removeItem(key));
+          console.log('Final cleanup completed.');
+        
+        // Reset the initial page load flag to ensure proper behavior on refresh
+        if (typeof window.isPageInitialLoad !== 'undefined') {
+            window.isPageInitialLoad = true;
+        }
+    });
+    
+    // DEBUG: Check if elements exist
+    const container = document.querySelector('.form-pages-container');
+    const button = document.getElementById('page1-continue');
+    console.log('Container exists:', !!container);
+    console.log('Button exists:', !!button);
+    
+    // DEBUG: Add direct click listener to button as backup
+    if (button) {
+        console.log('Adding direct click listener to page1-continue button');
+        button.addEventListener('click', function(event) {
+            console.log('=== DIRECT BUTTON CLICK DETECTED ===');
+            console.log('Event:', event);
+            console.log('Target:', event.target);
+            console.log('Button ID:', event.target.id);
+            console.log('Button classes:', event.target.className);
+            
+            // Check if form-handler.js validation function exists
+            if (typeof validateAndProceedFromPage1 === 'function') {
+                console.log('form-handler.js validation function found, calling it');
+                event.preventDefault();
+                event.stopPropagation();
+                validateAndProceedFromPage1();
+            } else {
+                console.log('form-handler.js validation function NOT found');
+                alert('Validation function not available. Form-handler.js may not be loaded correctly.');
+            }
+        });
+    }
+      // DEBUG: Test if form-handler.js functions are available
+    setTimeout(() => {
+        console.log('=== Checking form-handler.js functions ===');
+        console.log('validateAndProceedFromPage1 exists:', typeof validateAndProceedFromPage1 !== 'undefined');
+        console.log('validateLocationInput exists:', typeof validateLocationInput !== 'undefined');
+        console.log('setupNavigationButtons exists:', typeof setupNavigationButtons !== 'undefined');
+        
+        if (typeof validateAndProceedFromPage1 === 'undefined') {
+            console.error('ERROR: validateAndProceedFromPage1 function not found!');
+            console.log('This means form-handler.js may not be loaded correctly.');
+        }
+    }, 1000);
+    
+    // Pre-fill form with any data already in the session
+    const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
+    for (const key in formData) {
+        const element = document.querySelector(`[name="${key}"]`);
+        if (element) {
+            if (element.type === 'checkbox' || element.type === 'radio') {
+                element.checked = formData[key];
+            } else {
+                element.value = formData[key];
+            }
+        }
+    }
+      // Set up event listeners for Continue buttons - HANDLED BY form-handler.js
+    // document.querySelector('.form-pages-container').addEventListener('click', function(event) {
+    //     if (event.target.classList.contains('btn-continue')) {
+    //         const nextPage = parseInt(event.target.dataset.next);
+    //         
+    //         // Save current form data before moving to next page
+    //         saveCurrentFormData();
+    //         
+    //         // Load the next page
+    //         loadNextPage(nextPage);
+    //         
+    //         // Update progress indicator
+    //         updateProgressSteps(nextPage);
+    //     }
+    // });
+    
+    // Set up event listeners for media type selection changes
+    document.addEventListener('change', function(event) {
+        if (event.target.name === 'media_type') {
+            // Show/hide media-specific sections in page 3
+            const mediaSpecificSections = document.querySelectorAll('.media-specific-section');
+            mediaSpecificSections.forEach(section => {
+                if (section.dataset.mediaType === event.target.value) {
+                    section.style.display = 'block';
+                } else {
+                    section.style.display = 'none';
+                }
+            });
+        }
+        
+        if (event.target.classList.contains('toggle-additional-info')) {
+            const additionalInfoSections = document.getElementById('additional-info-sections');
+            if (event.target.value === 'yes') {
+                additionalInfoSections.style.display = 'block';
+            } else {
+                additionalInfoSections.style.display = 'none';
+            }
+        }
+        
+        if (event.target.name === 'has_quantitative_data') {
+            const quantitativeContainer = document.getElementById('quantitative-counts-container');
+            if (event.target.value === 'yes') {
+                quantitativeContainer.style.display = 'block';
+            } else {
+                quantitativeContainer.style.display = 'none';
+                // Also hide detail sections
+                document.getElementById('microplastics-details').style.display = 'none';
+                document.getElementById('fragments-details').style.display = 'none';
+                document.getElementById('packaging-details').style.display = 'none';
+            }
+        }
+    });
+    
+    // Set up event listeners for particle count inputs
+    document.addEventListener('input', function(event) {
+        if (event.target.id === 'microplastics-count') {
+            const count = parseInt(event.target.value) || 0;
+            const detailsSection = document.getElementById('microplastics-details');
+            detailsSection.style.display = count > 0 ? 'block' : 'none';
+        }
+        
+        if (event.target.id === 'fragments-count') {
+            const count = parseInt(event.target.value) || 0;
+            const detailsSection = document.getElementById('fragments-details');
+            detailsSection.style.display = count > 0 ? 'block' : 'none';
+        }
+        
+        if (event.target.id === 'packaging-count') {
+            const count = parseInt(event.target.value) || 0;
+            const detailsSection = document.getElementById('packaging-details');
+            const itemsContainer = document.getElementById('packaging-items-container');
+            
+            if (count > 0) {
+                detailsSection.style.display = 'block';
+                
+                // Create packaging item forms
+                itemsContainer.innerHTML = '';
+                const template = document.getElementById('packaging-item-template');
+                
+                for (let i = 1; i <= count; i++) {
+                    const itemElement = template.content.cloneNode(true);
+                    itemElement.querySelector('.item-number').textContent = i;
+                    itemsContainer.appendChild(itemElement);
+                }
+            } else {
+                detailsSection.style.display = 'none';
+            }
+        }
+    });
+    
+    // Set up save button
+    document.addEventListener('click', function(event) {
+        if (event.target.id === 'save-button') {
+            submitFormData();
+        }
+    });
+    
+    // Function to save current form data to session storage
+    function saveCurrentFormData() {
+        const currentFormData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
+        const formElements = document.querySelectorAll('.form-pages-container input, .form-pages-container select, .form-pages-container textarea');
+        
+        formElements.forEach(element => {
+            if (element.name) {
+                if (element.type === 'checkbox' || element.type === 'radio') {
+                    if (element.checked) {
+                        currentFormData[element.name] = element.value;
+                    }
+                } else {
+                    currentFormData[element.name] = element.value;
+                }
+            }
+        });
+        
+        sessionStorage.setItem('microplastics_form_data', JSON.stringify(currentFormData));
+    }
+    
+    // Function to load the next form page
+    function loadNextPage(pageNumber) {
+        // Get the template content
+        const template = document.getElementById('template-form-page' + pageNumber);
+        if (!template) return;
+        
+        // Clone the template content
+        const pageContent = template.content.cloneNode(true);
+        
+        // Append to the form pages container
+        document.querySelector('.form-pages-container').appendChild(pageContent);
+        
+        // Pre-fill the newly added page with any existing data
+        const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
+        const newPage = document.getElementById('form-page' + pageNumber);
+        
+        if (newPage) {
+            const formElements = newPage.querySelectorAll('input, select, textarea');
+            formElements.forEach(element => {
+                if (element.name && formData[element.name]) {
+                    if (element.type === 'checkbox' || element.type === 'radio') {
+                        element.checked = (formData[element.name] === element.value);
+                    } else {
+                        element.value = formData[element.name];
+                    }
+                }
+            });
+        }
+        
+        // Scroll to the new page
+        newPage.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    // Function to update progress steps
+    function updateProgressSteps(activeStep) {
+        const steps = document.querySelectorAll('.progress-step');
+        steps.forEach(step => {
+            const stepNumber = parseInt(step.dataset.step);
+            if (stepNumber <= activeStep) {
+                step.classList.add('active');
+            }
+        });
+    }
+    
+    // Function to submit the form data
+    function submitFormData() {
+        // Display a loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'loading-indicator';
+        loadingIndicator.innerHTML = '<div class="spinner"></div><p>Saving data...</p>';
+        document.body.appendChild(loadingIndicator);
+        
+        // Get all form data from session storage
+        const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
+        
+        // Submit via AJAX
+        fetch('/api/save-form-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Remove loading indicator
+            document.body.removeChild(loadingIndicator);
+            
+            if (data.success) {
+                // Clear session storage
+                sessionStorage.removeItem('microplastics_form_data');
+                
+                // Show success message and redirect
+                alert('Data saved successfully!');
+                window.location.href = '/review';
+            } else {
+                alert('Error saving data: ' + data.message);
+            }
+        })
+        .catch(error => {
+            // Remove loading indicator
+            document.body.removeChild(loadingIndicator);
+            console.error('Error:', error);
+            alert('Error saving data. Please try again.');
+        });
+    }
+    
+    // Add CSS for loading indicator and other form styles
+    const style = document.createElement('style');
+    style.textContent = `
+        .loading-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .loading-indicator p {
+            color: white;
+            margin-top: 10px;
+        }
+        .spinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    `;
+    document.head.appendChild(style);
+});
+</script>
+
+<%- include('partials/footer') %>

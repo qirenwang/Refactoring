@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
+    
+    <!-- External CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">
+    
+    <!-- External JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Custom JS -->
+    <script src="/js/common.js"></script>
+    
+    <% if (locals.user) { %>
+        <script src="/js/session-timeout.js"></script>
+    <% } %>
+      <% if (locals.pageSpecificJS && pageSpecificJS.length > 0) { %>
+        <% pageSpecificJS.forEach(function(jsFile) { %>
+            <script src="/<%= jsFile %>"></script>
+        <% }) %>
+    <% } %>
+      <!-- Stagewise Toolbar for Development -->
+    <% if (process.env.NODE_ENV !== 'production') { %>
+        <script src="/js/stagewise-toolbar-enhanced.js"></script>
+    <% } %>
+</head>
+<body>
+    <div class="container">
+        <%- include('partials/header') %>
+          <div class="content">
+            <%- include('partials/sidebar') %>
+            
+            <div class="main-content">
+                <%- body %>
+            </div>
+        </div>
+    </div>
+
+    <% if (locals.user) { %>
+        <%- include('partials/timeout_modal') %>
+    <% } %>
+</body>
+</html>

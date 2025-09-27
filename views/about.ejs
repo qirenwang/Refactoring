@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Management of Microplastics Pollution</title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
+    <!-- Add Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">    <!-- Add Custom JS -->
+    <script src="/js/common.js"></script>
+    
+    <!-- Stagewise Toolbar for Development -->
+    <% if (process.env.NODE_ENV !== 'production') { %>
+        <script src="/js/stagewise-toolbar.js"></script>
+    <% } %>
+</head>
+<body>
+<div class="container">
+    <%- include('partials/header') %>
+    
+    <div class="content">
+        <%- include('partials/sidebar') %>
+        
+        <div class="main-content">
+            <div class="about-header">
+                <h1>About Our Project</h1>
+                <p class="about-subtitle">Dedicated to studying and addressing microplastic pollution in the Great Lakes region</p>
+            </div>
+
+<div class="about-section">
+    <div class="about-section-header">
+        <div class="about-icon">🔬</div>
+        <h2>Project Overview</h2>
+    </div>
+    <div class="about-content">
+        <p>The GLPF Microplastic Project is a collaborative research initiative focused on understanding and addressing microplastic pollution in the Great Lakes ecosystem. Our data collection system enables researchers, environmental organizations, and citizen scientists to contribute to a comprehensive database of microplastic observations.</p>
+        
+        <div class="about-highlights">
+            <div class="highlight-card">
+                <div class="highlight-icon">📊</div>
+                <h3>Data Collection</h3>
+                <p>Gathering microplastic observations across the Great Lakes region through standardized protocols</p>
+            </div>
+            <div class="highlight-card">
+                <div class="highlight-icon">🔍</div>
+                <h3>Research</h3>
+                <p>Analyzing patterns and impacts of microplastic pollution to inform environmental policy</p>
+            </div>            <div class="highlight-card">
+                <div class="highlight-icon">🌊</div>
+                <h3>Conservation</h3>
+                <p>Developing strategies to reduce microplastic contamination in our freshwater ecosystems</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="about-section">
+    <div class="about-section-header">
+        <div class="about-icon">👥</div>
+        <h2>Our Team</h2>
+    </div>    <div class="about-content">
+        <p>Our interdisciplinary team brings together experts in environmental science, data analysis, policy development, and community engagement.</p>
+        
+        <div class="team-grid">
+            <div class="team-member">
+                <div class="member-photo">
+                    <div class="photo-placeholder">
+                        <span>JP</span>
+                    </div>
+                </div>
+                <div class="member-info">
+                    <h3>Name 1</h3>
+                    <p class="member-title">Principal Investigator</p>
+                    <p class="member-bio">Specializing in aquatic ecology with over 15 years of experience studying microplastic pollution.</p>
+                </div>
+            </div>
+            
+            <div class="team-member">
+                <div class="member-photo">
+                    <div class="photo-placeholder">
+                        <span>AS</span>
+                    </div>
+                </div>
+                <div class="member-info">
+                    <h3>Name 2</h3>
+                    <p class="member-title">Data Scientist</p>
+                    <p class="member-bio">Leading our data analysis efforts and developing predictive models for microplastic distribution.</p>
+                </div>
+            </div>
+            
+            <div class="team-member">
+                <div class="member-photo">
+                    <div class="photo-placeholder">
+                        <span>MR</span>
+                    </div>
+                </div>
+                <div class="member-info">
+                    <h3>Name 3</h3>
+                    <p class="member-title">Community Engagement Director</p>
+                    <p class="member-bio">Coordinating our citizen science initiatives and educational outreach programs.</p>
+                </div>
+            </div>
+            
+            <div class="team-member">
+                <div class="member-photo">
+                    <div class="photo-placeholder">
+                        <span>KL</span>
+                    </div>
+                </div>
+                <div class="member-info">
+                    <h3>Name 4</h3>
+                    <p class="member-title">Environmental Policy Advisor</p>
+                    <p class="member-bio">Working with regulatory agencies to translate our research into effective policy recommendations.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="about-section">
+    <div class="about-section-header">
+        <div class="about-icon">🤝</div>
+        <h2>Our Partners</h2>
+    </div>
+    <div class="about-content">
+        <p>This project is made possible through collaboration with various academic institutions, government agencies, and nonprofit organizations.</p>
+        
+        <div class="partners-grid">
+            <div class="partner-logo">
+                <div class="logo-placeholder">Partner 1</div>
+            </div>
+            <div class="partner-logo">
+                <div class="logo-placeholder">Partner 2</div>
+            </div>
+            <div class="partner-logo">
+                <div class="logo-placeholder">Partner 3</div>
+            </div>
+            <div class="partner-logo">
+                <div class="logo-placeholder">Partner 4</div>
+            </div>
+            <div class="partner-logo">
+                <div class="logo-placeholder">Partner 5</div>
+            </div>
+            <div class="partner-logo">
+                <div class="logo-placeholder">Partner 6</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="about-section">
+    <div class="about-section-header">
+        <div class="about-icon">✉️</div>
+        <h2>Contact Us</h2>
+    </div>
+    <div class="about-content">        <div class="contact-container">
+            <div class="contact-info">
+                <div class="contact-method">
+                    <div class="contact-icon">📧</div>
+                    <div class="contact-detail">
+                        <h3>Email</h3>
+                        <p><a href="mailto:contact@microplasticproject.org">contact@microplasticproject.org</a></p>
+                    </div>
+                </div>
+                
+                <div class="contact-method">
+                    <div class="contact-icon">📞</div>
+                    <div class="contact-detail">
+                        <h3>Phone</h3>
+                        <p>(xxx) 123-4567</p>
+                    </div>
+                </div>
+                
+                <div class="contact-method">
+                    <div class="contact-icon">📍</div>
+                    <div class="contact-detail">
+                        <h3>Address</h3>
+                        <p>42 W Warren Ave<br>Detroit, MI 48202</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="social-links">
+                <h3>Follow Us</h3>
+                <div class="social-icons">
+                    <a href="#" class="social-icon" title="Twitter">
+                        <span>𝕏</span>
+                    </a>
+                    <a href="#" class="social-icon" title="Facebook">
+                        <span>f</span>
+                    </a>
+                    <a href="#" class="social-icon" title="Instagram">
+                        <span>📷</span>
+                    </a>
+                    <a href="#" class="social-icon" title="LinkedIn">
+                        <span>in</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>        </div>
+    </div>
+</div>
+
+<%- include('partials/footer') %>

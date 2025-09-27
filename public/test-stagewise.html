@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stagewise Toolbar Test</title>
+</head>
+<body>
+    <h1>Stagewise Toolbar Test Page</h1>
+    <p>This page is used to test the stagewise toolbar integration.</p>
+    <p>If you're in development mode, you should see a toolbar in the top-right corner.</p>
+      <div id="test-content">
+        <h2>测试元素</h2>
+        <p>这是一个段落文本，可以选择并进行AI编辑。</p>
+        <button onclick="alert('按钮被点击了!')">测试按钮</button>
+        <input type="text" placeholder="测试输入框" style="margin: 10px; padding: 5px;">
+        <textarea placeholder="测试文本区域" style="margin: 10px; padding: 5px; display: block;"></textarea>
+        
+        <div style="background: #f0f0f0; padding: 15px; margin: 10px 0; border-radius: 5px;">
+            <h3>可编辑区域</h3>
+            <p>这是一个可以被AI编辑的区域。点击右上角的Stagewise工具栏，然后选择"选择元素模式"来选择这个区域。</p>
+        </div>
+        
+        <ul>
+            <li>列表项 1</li>
+            <li>列表项 2</li>
+            <li>列表项 3</li>
+        </ul>
+    </div><!-- Load the enhanced stagewise toolbar -->
+    <script src="/js/stagewise-toolbar-enhanced.js"></script>
+</body>
+</html>

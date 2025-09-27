@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enter Data by File - Microplastics Data Entry</title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">    <!-- Add Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">
+    <!-- Add jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>    <!-- Add Custom JS -->
+    <script src="/js/common.js"></script>
+    <script src="/js/session-timeout.js"></script>
+    
+    <!-- Stagewise Toolbar for Development -->
+    <% if (process.env.NODE_ENV !== 'production') { %>
+        <script src="/js/stagewise-toolbar.js"></script>
+    <% } %>
+</head>
+<body>
+<div class="container">
+    <%- include('partials/header') %>
+    
+    <div class="content">
+        <%- include('partials/sidebar') %>
+    
+    <div class="main-content">
+        <div class="instruction">
+            <p style="font-size: 16px; line-height: 1.6; color: var(--text-color);">
+                Some introduction about the upload rules:
+            </p>
+            <ol style="margin-top: 15px; margin-left: 20px; line-height: 1.6; color: var(--text-color);">
+                <li>First rule about file format and requirements</li>
+                <li>Second rule about data organization</li>
+            </ol>
+        </div>
+        
+        <div style="margin: 30px 0;">
+            <div style="display: flex; align-items: center; margin-bottom: 25px;">
+                <span style="font-size: 16px; margin-right: 15px; color: var(--text-color);">
+                    link for file template:
+                </span>
+                <a href="#" class="login-btn" style="text-decoration: none;">download</a>
+            </div>
+            
+            <div style="margin-top: 50px;">
+                <form action="/api/upload-file-data" method="post" enctype="multipart/form-data" id="upload-form">
+                    <label style="display: block; font-size: 16px; margin-bottom: 15px; color: var(--text-color);">
+                        submit the file:
+                    </label>
+                    <input type="file" name="dataFile" id="dataFile" style="padding: 10px; border: 1px solid var(--border-color); border-radius: var(--border-radius); width: 100%; max-width: 400px;" accept=".csv,.xlsx,.json">
+                    <div style="margin-top: 25px;">
+                        <button type="submit" class="login-btn" style="border: none; cursor: pointer;">
+                            Upload File
+                        </button>
+                    </div>
+                </form>            </div>
+        </div>
+    </div>
+</div>
+
+<%- include('partials/timeout_modal') %>
+
+<script src="/js/file-upload.js"></script>
+<script>
+$(document).ready(function() {
+    $('#upload-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const fileInput = $('#dataFile')[0];
+        
+        if (!fileInput.files[0]) {
+            showAlert('Please select a file to upload.', 'danger');
+            return;
+        }
+        
+        // Show loading state
+        const submitBtn = $(this).find('button[type="submit"]');
+        const originalText = submitBtn.text();
+        submitBtn.text('Uploading...').prop('disabled', true);
+        
+        $.ajax({
+            url: '/api/upload-file-data',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    showAlert('File uploaded successfully!', 'success');
+                    $('#upload-form')[0].reset();
+                } else {
+                    showAlert('Error: ' + response.message, 'danger');
+                }
+            },
+            error: function(xhr, status, error) {
+                showAlert('Upload failed. Please try again.', 'danger');
+                console.error('Upload error:', error);
+            },
+            complete: function() {
+                submitBtn.text(originalText).prop('disabled', false);
+            }
+        });
+    });
+});
+
+function showAlert(message, type) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const alertHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert" style="margin-top: 20px;">
+            ${message}
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+    `;
+    
+    $('.main-content').prepend(alertHtml);
+    
+    setTimeout(function() {        $('.alert').alert('close');
+    }, 5000);
+}
+</script>
+</body>
+</html>

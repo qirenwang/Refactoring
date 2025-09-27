@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile - Microplastics Data Entry</title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
+    <!-- Add Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">
+    <!-- Add Fancy Modal CSS -->
+    <link rel="stylesheet" href="/css/fancy-modal.css">
+    <!-- Add Custom JS -->
+    <script src="/js/common.js"></script>
+    
+    <!-- Stagewise Toolbar for Development -->
+    <% if (process.env.NODE_ENV !== 'production') { %>
+        <script src="/js/stagewise-toolbar.js"></script>
+    <% } %>
+</head>
+<body>
+<div class="container">
+    <%- include('partials/header') %>
+    
+    <div class="content">
+        <%- include('partials/sidebar') %>
+        
+        <div class="main-content">
+            <div class="profile-container">
+                <h1 class="page-title">
+                    <i class="fas fa-user"></i>
+                    My Profile
+                </h1>
+                
+                <div class="profile-content">
+                    <!-- Success/Error Messages -->
+                    <% if (typeof success !== 'undefined' && success) { %>
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i>
+                            Profile updated successfully!
+                        </div>
+                    <% } %>
+                    
+                    <% if (typeof error !== 'undefined' && error) { %>
+                        <div class="alert alert-error">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <%= error %>
+                        </div>
+                    <% } %>
+                    
+                    <form id="profile-form" method="POST" action="/my-profile">
+                        <!-- Basic Information Section -->
+                        <div class="profile-section">
+                            <h2 class="section-title">
+                                <i class="fas fa-user-circle"></i>
+                                Basic Information
+                            </h2>
+                            
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="username" class="form-label">
+                                        <i class="fas fa-user"></i>
+                                        Username
+                                    </label>
+                                    <input type="text" id="username" name="username" class="form-input" 
+                                           value="<%= user.username %>" readonly>
+                                    <small class="form-help">Username cannot be changed</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="full_name" class="form-label">
+                                        <i class="fas fa-id-card"></i>
+                                        Full Name *
+                                    </label>
+                                    <input type="text" id="full_name" name="full_name" class="form-input" 
+                                           value="<%= user.full_name || '' %>" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="email" class="form-label">
+                                        <i class="fas fa-envelope"></i>
+                                        Email Address *
+                                    </label>
+                                    <input type="email" id="email" name="email" class="form-input" 
+                                           value="<%= user.email %>" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="cell_phone" class="form-label">
+                                        <i class="fas fa-mobile-alt"></i>
+                                        Cell Phone
+                                    </label>
+                                    <input type="tel" id="cell_phone" name="cell_phone" class="form-input" 
+                                           value="<%= user.cell_phone || '' %>" 
+                                           placeholder="(xxx) xxx-xxxx">
+                                    <small class="form-help">Used for password reset purposes</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="institution" class="form-label">
+                                        <i class="fas fa-university"></i>
+                                        Institution/Organization *
+                                    </label>
+                                    <input type="text" id="institution" name="institution" class="form-input" 
+                                           value="<%= user.institution || '' %>" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Sample Preferences Section -->
+                        <div class="profile-section">
+                            <h2 class="section-title">
+                                <i class="fas fa-cog"></i>
+                                Sample Preferences
+                            </h2>
+                            
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="sample_confidentiality" class="form-label">
+                                        <i class="fas fa-shield-alt"></i>
+                                        Sample Data Confidentiality
+                                    </label>
+                                    <select id="sample_confidentiality" name="sample_confidentiality" class="form-select">
+                                        <option value="public" <%= (user.sample_confidentiality || 'public') === 'public' ? 'selected' : '' %>>
+                                            Public - Data can be shared openly
+                                        </option>
+                                        <option value="restricted" <%= user.sample_confidentiality === 'restricted' ? 'selected' : '' %>>
+                                            Restricted - Data requires permission to access
+                                        </option>
+                                        <option value="private" <%= user.sample_confidentiality === 'private' ? 'selected' : '' %>>
+                                            Private - Data is confidential
+                                        </option>
+                                    </select>
+                                    <small class="form-help">Default confidentiality setting for new samples</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="sample_storage_location" class="form-label">
+                                        <i class="fas fa-warehouse"></i>
+                                        Default Sample Storage Location
+                                    </label>
+                                    <select id="sample_storage_location" name="sample_storage_location" class="form-select">
+                                        <option value="">-- Select Storage Location --</option>
+                                        <% if (typeof storageLocations !== 'undefined' && storageLocations) { %>
+                                            <% storageLocations.forEach(location => { %>
+                                                <option value="<%= location.StorageLocUniqueID %>" 
+                                                        <%= user.sample_storage_location == location.StorageLocUniqueID ? 'selected' : '' %>>
+                                                    <%= location.StorageLoc_Desc %>
+                                                </option>
+                                            <% }); %>
+                                        <% } %>
+                                    </select>
+                                    <small class="form-help">Default storage location for new samples</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Security Section -->
+                        <div class="profile-section">
+                            <h2 class="section-title">
+                                <i class="fas fa-lock"></i>
+                                Security
+                            </h2>
+                            
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="current_password" class="form-label">
+                                        <i class="fas fa-key"></i>
+                                        Current Password
+                                    </label>
+                                    <input type="password" id="current_password" name="current_password" class="form-input">
+                                    <small class="form-help">Required only if changing password</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="new_password" class="form-label">
+                                        <i class="fas fa-lock"></i>
+                                        New Password
+                                    </label>
+                                    <input type="password" id="new_password" name="new_password" class="form-input">
+                                    <small class="form-help">Leave blank to keep current password</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="confirm_password" class="form-label">
+                                        <i class="fas fa-lock"></i>
+                                        Confirm New Password
+                                    </label>
+                                    <input type="password" id="confirm_password" name="confirm_password" class="form-input">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Account Information -->
+                        <div class="profile-section">
+                            <h2 class="section-title">
+                                <i class="fas fa-info-circle"></i>
+                                Account Information
+                            </h2>
+                            
+                            <div class="account-info">
+                                <div class="info-item">
+                                    <span class="info-label">Account Created:</span>
+                                    <span class="info-value"><%= new Date(user.created_at).toLocaleDateString() %></span>
+                                </div>
+                                <% if (user.updated_at && user.updated_at !== user.created_at) { %>
+                                <div class="info-item">
+                                    <span class="info-label">Last Updated:</span>
+                                    <span class="info-value"><%= new Date(user.updated_at).toLocaleDateString() %></span>
+                                </div>
+                                <% } %>
+                            </div>
+                        </div>
+                        
+                        <!-- Form Actions -->
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">
+                                <i class="fas fa-save"></i>
+                                Update Profile
+                            </button>
+                            <button type="button" class="btn-secondary" onclick="location.reload()">
+                                <i class="fas fa-undo"></i>
+                                Reset Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<%- include('partials/timeout_modal') %>
+
+<!-- Load jQuery -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- Load session timeout script -->
+<script src="/js/session-timeout.js"></script>
+<!-- Load fancy modal -->
+<script src="/js/fancy-modal.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Phone number formatting
+    const phoneInput = document.getElementById('cell_phone');
+    if (phoneInput) {
+        phoneInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length >= 6) {
+                value = value.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
+            } else if (value.length >= 3) {
+                value = value.replace(/(\d{3})(\d{0,3})/, '($1) $2');
+            }
+            e.target.value = value;
+        });
+    }
+    
+    // Password validation
+    const newPassword = document.getElementById('new_password');
+    const confirmPassword = document.getElementById('confirm_password');
+    const currentPassword = document.getElementById('current_password');
+    
+    function validatePasswords() {
+        if (newPassword.value || confirmPassword.value) {
+            if (newPassword.value !== confirmPassword.value) {
+                confirmPassword.setCustomValidity('Passwords do not match');
+                return false;
+            } else {
+                confirmPassword.setCustomValidity('');
+            }
+            
+            if (!currentPassword.value) {
+                currentPassword.setCustomValidity('Current password is required to change password');
+                return false;
+            } else {
+                currentPassword.setCustomValidity('');
+            }
+        } else {
+            confirmPassword.setCustomValidity('');
+            currentPassword.setCustomValidity('');
+        }
+        return true;
+    }
+    
+    newPassword.addEventListener('input', validatePasswords);
+    confirmPassword.addEventListener('input', validatePasswords);
+    currentPassword.addEventListener('input', validatePasswords);
+    
+    // Form submission
+    document.getElementById('profile-form').addEventListener('submit', function(e) {
+        if (!validatePasswords()) {
+            e.preventDefault();
+            return false;
+        }
+    });
+});
+</script>
+
+</body>
+</html>

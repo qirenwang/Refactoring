@@ -1,0 +1,172 @@
+<!-- Page 3: Media Type -->
+<template id="template-form-page3">
+    <div class="form-page" id="form-page3" data-page="3">
+        <h2 class="form-section-title">From what media did you collect plastic?</h2>
+        <p class="instruction">Note: consider keeping samples from different media types separate, for easier interpretation of results later.</p>
+        <div class="form-section">
+            <div class="media-selection-container">
+                <p class="selection-instruction">Choose one media type and specify details:</p>
+                
+                <div class="media-options-vertical">
+                    <!-- In Water Option -->
+                    <div class="media-option-group">
+                        <div class="media-option-header" onclick="document.getElementById('water').click();">
+                            <input type="radio" id="water" name="media_type" value="water" class="media-radio">
+                            <div class="media-icon">
+                                <i class="fas fa-water"></i>
+                            </div>
+                            <label for="water" class="media-label">In Water</label>
+                            <span class="selection-indicator">✓</span>
+                        </div>
+                        <div class="media-suboptions" id="water-suboptions" style="display: none;">
+                            <p class="suboption-label">Water type:</p>
+                            <div class="suboption-group">
+                                <label class="suboption-item">
+                                    <input type="radio" name="water_type" value="river_stream">
+                                    <span>River/Stream</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="water_type" value="pond">
+                                    <span>Pond</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="water_type" value="lake">
+                                    <span>Lake</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="water_type" value="groundwater">
+                                    <span>Groundwater</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="water_type" value="stormwater">
+                                    <span>Stormwater</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="water_type" value="wastewater_influent">
+                                    <span>Wastewater Influent</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="water_type" value="wastewater_effluent">
+                                    <span>Wastewater Effluent/Discharge</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="water_type" value="drinking_water_raw">
+                                    <span>Drinking Water (Raw)</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="water_type" value="drinking_water_treated">
+                                    <span>Drinking Water (Treated)</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="water_type" value="other">
+                                    <span>Other</span>
+                                </label>
+                            </div>
+                            <div class="other-description-container" id="water-other-description" style="display: none; margin-top: 10px;">
+                                <textarea name="water_type_other_description" class="other-description-input" rows="2" placeholder="Please explain the water type..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- In Aquatic Sediment Option -->
+                    <div class="media-option-group">
+                        <div class="media-option-header" onclick="document.getElementById('soil_sediment').click();">
+                            <input type="radio" id="soil_sediment" name="media_type" value="soil_sediment" class="media-radio">
+                            <div class="media-icon">
+                                <i class="fas fa-mountain"></i>
+                            </div>
+                            <label for="soil_sediment" class="media-label">In Aquatic Sediment</label>
+                            <span class="selection-indicator">✓</span>
+                        </div>
+                        <div class="media-suboptions" id="sediment-suboptions" style="display: none;">
+                            <p class="suboption-label">Sediment source:</p>
+                            <div class="suboption-group">
+                                <label class="suboption-item">
+                                    <input type="radio" name="sediment_type" value="river_stream">
+                                    <span>River/Stream</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="sediment_type" value="pond">
+                                    <span>Pond</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="sediment_type" value="lake">
+                                    <span>Lake</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="sediment_type" value="groundwater">
+                                    <span>Groundwater</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="sediment_type" value="stormwater">
+                                    <span>Stormwater</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="sediment_type" value="sludge_wastewater">
+                                    <span>Sludge (Wastewater Treatment)</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="sediment_type" value="sludge_water">
+                                    <span>Sludge (Water Treatment)</span>
+                                </label>
+                                <label class="suboption-item">
+                                    <input type="radio" name="sediment_type" value="other">
+                                    <span>Other</span>
+                                </label>
+                            </div>
+                            <div class="other-description-container" id="sediment-other-description" style="display: none; margin-top: 10px;">
+                                <textarea name="sediment_type_other_description" class="other-description-input" rows="2" placeholder="Please explain the sediment source..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- In Terrestrial Soil Option -->
+                    <div class="media-option-group">
+                        <div class="media-option-header" onclick="document.getElementById('in_soil').click();">
+                            <input type="radio" id="in_soil" name="media_type" value="in_soil" class="media-radio">
+                            <div class="media-icon">
+                                <i class="fas fa-seedling"></i>
+                            </div>
+                            <label for="in_soil" class="media-label">In Terrestrial Soil</label>
+                            <span class="selection-indicator">✓</span>
+                        </div>
+                    </div>
+
+                    <!-- On Soil or Land Surface Option -->
+                    <div class="media-option-group">
+                        <div class="media-option-header" onclick="document.getElementById('soil_litter').click();">
+                            <input type="radio" id="soil_litter" name="media_type" value="soil_litter" class="media-radio">
+                            <div class="media-icon">
+                                <i class="fas fa-trash-alt"></i>
+                            </div>
+                            <label for="soil_litter" class="media-label">On Soil or Land Surface</label>
+                            <span class="selection-indicator">✓</span>
+                        </div>
+                    </div>
+
+                    <!-- Mixed Media Option -->
+                    <div class="media-option-group">
+                        <div class="media-option-header" onclick="document.getElementById('mixed_composite').click();">
+                            <input type="radio" id="mixed_composite" name="media_type" value="mixed_composite" class="media-radio">
+                            <div class="media-icon">
+                                <i class="fas fa-layer-group"></i>
+                            </div>
+                            <label for="mixed_composite" class="media-label">Mixed media</label>
+                            <span class="selection-indicator">✓</span>
+                        </div>
+                        <div class="media-suboptions" id="mixed-suboptions" style="display: none;">
+                            <p class="suboption-label">List sources that could help in data interpretation (optional):</p>
+                            <div class="mixed-description-container">
+                                <textarea name="mixed_media_description" class="mixed-description-input" rows="3" placeholder="Please briefly describe the mixed media sources..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-navigation">
+            <button type="button" id="page3-continue" class="btn-continue" data-next="4">Continue</button>
+        </div>
+    </div>
+</template>

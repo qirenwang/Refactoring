@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Management of Microplastics Pollution</title>
+    <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
+    <!-- Add Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Add Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add Custom CSS -->
+    <link rel="stylesheet" href="/css/mp_style.css">
+    <!-- Add Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>    <!-- Add Custom JS -->
+    <script src="/js/common.js"></script>
+    <script src="/js/map-home.js"></script>
+    
+    <!-- Stagewise Toolbar for Development -->
+    <% if (process.env.NODE_ENV !== 'production') { %>
+        <script src="/js/stagewise-toolbar.js"></script>
+    <% } %>
+</head>
+<body>
+<div class="container">
+    <%- include('partials/header') %>
+    
+    <div class="content">
+        <%- include('partials/sidebar') %>
+        
+        <div class="main-content">
+        <div class="map-section">
+    <div class="interactive-map-container">
+        <h2>Interactive Map of Plastic and Microplastic Data</h2>
+        <div id="home-map"></div>        <div class="map-legend">
+            <div class="legend-row">
+                <div class="legend-item">
+                    <span class="legend-marker red"></span>
+                    <span>sample type 1</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-marker blue"></span>
+                    <span>sample type 2</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-marker green"></span>
+                    <span>sample type 3</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-marker purple"></span>
+                    <span>sample type 4</span>
+                </div>
+            </div>
+            <div class="legend-row">
+                <div class="legend-item">
+                    <span class="legend-marker orange"></span>
+                    <span>sample type 5</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-marker yellow"></span>
+                    <span>sample type 6</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-marker brown"></span>
+                    <span>sample type 7</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-marker pink"></span>
+                    <span>sample type 8</span>
+                </div>
+            </div>
+            <div class="legend-row">
+                <div class="legend-item">
+                    <span class="legend-marker gray"></span>
+                    <span>sample type 9</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-marker teal"></span>
+                    <span>sample type 10</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="project-intro-section">
+    <div class="intro-text-container">
+        <div class="intro-header">
+            <i class="fas fa-microscope intro-icon"></i>
+            <h2>Introduction To The Data System</h2>
+        </div>
+        
+        <div class="intro-content">
+            <div class="intro-card">
+                <div class="card-header">
+                    <i class="fas fa-exclamation-triangle text-warning"></i>
+                    <h3>The Problem</h3>
+                </div>
+                <p>Microplastics in our environment mainly come from the breakdown of larger pieces of plastic. Through wear, fragmentation, and weathering the packaging and products we use end up in water, soil and air. From there, microplastics can enter our drinking water, lungs, bloodstream and other organs like our heart and brain.</p>
+            </div>
+            
+            <div class="intro-card">
+                <div class="card-header">
+                    <i class="fas fa-lightbulb text-primary"></i>
+                    <h3>Our Solution</h3>
+                </div>
+                <p>This free online data system is designed to help address the problem of microplastics by Wayne State University in Detroit, Michigan, funded by the Great Lakes Protection Fund, with the help of many local organizations region-wide.</p>
+            </div>
+            
+            <div class="intro-card">
+                <div class="card-header">
+                    <i class="fas fa-chart-line text-success"></i>
+                    <h3>System Purpose</h3>
+                </div>
+                <p>The system's purpose is to support the sharing and analysis of plastics data that can help us better understand the sources and pathways of microplastics pollution. Users enter details about plastics and microplastics they collect from the environment and download data for analysis. Manufacturing and recycling industries use the system to improve their internal processes to reduce microplastics in final products and waste outputs.</p>
+                <div class="highlight-box">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>The system can be used confidentially by entering only a zip code as a location identifier.</span>
+                </div>
+            </div>
+            
+            <div class="intro-card">
+                <div class="card-header">
+                    <i class="fas fa-book-open text-info"></i>
+                    <h3>Resources & Support</h3>
+                </div>
+                <p>Our downloadable manuals and protocols help users collect comparable and scientifically meaningful data. Some users arrange to send us plastic samples for chemical analysis to further expand the power of the collected data.</p>
+                <div class="cta-section">
+                    <p><strong>Please review our materials and let us know if you have any questions.</strong></p>
+                    <div class="action-buttons">
+                        <a href="/documentation" class="btn btn-primary">
+                            <i class="fas fa-download"></i>
+                            Download Manuals
+                        </a>
+                        <a href="/contact" class="btn btn-outline">
+                            <i class="fas fa-envelope"></i>
+                            Contact Us
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="images-section">
+    <div class="image-container">
+        <img src="/assets/home_fig1.gif" alt="Project Figure 1" class="home-image">
+    </div>    <div class="image-container">
+        <img src="/assets/home_fig2.gif" alt="Project Figure 2" class="home-image">
+    </div>
+</div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

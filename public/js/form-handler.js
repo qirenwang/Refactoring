@@ -1,0 +1,2858 @@
+// Form-handler.js - Handles multi-page form functionality and session storage
+// Author: [Your Name]
+// Date: May 18, 2025
+
+// Global variables
+let currentPage = 1;
+let loadedPages = 1; // Track how many pages have been loaded
+let formData = {};
+const formStorageKey = 'microplastics_form_data';
+let isPageInitialLoad = true; // Flag to track if this is initial page load/refresh
+
+// Location validation and priority system functions - GLOBAL SCOPE
+async function validateAndProceedFromPage1() {
+    console.log('=== validateAndProceedFromPage1 called ===');
+    
+    try {
+        const locationData = validateLocationInput();
+        console.log('Location validation result:', locationData);
+        
+        if (!locationData.isValid) {
+            console.log('Validation failed, showing error:', locationData.message);
+            await showValidationError(locationData.message);
+            return;
+        }
+        
+        // Show confirmation dialog based on whether it's existing or new location
+        if (locationData.isExistingLocation) {
+            console.log('Showing existing location confirmation');
+            await showExistingLocationConfirmation(locationData);
+        } else {
+            console.log('Showing new location confirmation');
+            await showNewLocationConfirmation(locationData);
+        }
+    } catch (error) {
+        console.error('Error in validateAndProceedFromPage1:', error);
+        await showValidationError('An error occurred during validation. Please try again.');
+    }
+}
+
+function validateLocationInput() {
+    // Option 1: Previously sampled location (has priority)
+    const locationSelect = document.getElementById('location-select');
+    const selectedLocationId = locationSelect ? locationSelect.value : '';      // Option 2: New location fields
+    const locationName = document.getElementById('location-name')?.value?.trim() || '';
+    const locationShortCode = document.getElementById('location-shortcode')?.value?.trim() || '';
+    const locationDescription = document.getElementById('location-description')?.value?.trim() || '';
+    const latitude = document.getElementById('latitude')?.value?.trim() || '';
+    const longitude = document.getElementById('longitude')?.value?.trim() || '';
+    const streetAddress = document.querySelector('input[name="streetaddress"]')?.value?.trim() || '';
+    const city = document.querySelector('input[name="city"]')?.value?.trim() || '';
+    const state = document.querySelector('input[name="state"]')?.value?.trim() || '';
+    const country = document.querySelector('input[name="country"]')?.value?.trim() || '';
+    const zipCode = document.querySelector('input[name="zip_code"]')?.value?.trim() || '';
+    
+    // Priority system: Option 1 overrides Option 2
+    if (selectedLocationId) {
+        return {
+            isValid: true,
+            isExistingLocation: true,
+            locationId: selectedLocationId,
+            locationName: locationSelect.options[locationSelect.selectedIndex].text
+        };
+    }      // If Option 1 is not selected, validate Option 2
+    if (!locationName) {
+        return {
+            isValid: false,
+            message: 'A location name is required for new locations. Or select an existing location to continue.'
+        };
+    }
+    
+    if (!locationShortCode) {
+        return {
+            isValid: false,
+            message: 'Location short code is required for new locations.'
+        };
+    }
+    
+    if (!locationDescription) {
+        return {
+            isValid: false,
+            message: 'Location description is required for new locations.'
+        };
+    }
+    
+    // Check if at least one location group is provided
+    const hasCoordinates = latitude && longitude;
+    const hasAddress = streetAddress && city && state && country;
+    const hasZipCode = zipCode;
+    
+    if (!hasCoordinates && !hasAddress && !hasZipCode) {
+        return {
+            isValid: false,
+            message: 'Please provide either coordinates, complete address, or zip code for the new location.'
+        };
+    }
+    
+    // Validate coordinates if provided
+    if (latitude || longitude) {
+        const lat = parseFloat(latitude);
+        const lng = parseFloat(longitude);
+        
+        if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            return {
+                isValid: false,
+                message: 'Please provide valid coordinates (latitude: -90 to 90, longitude: -180 to 180).'
+            };
+        }
+    }      return {
+        isValid: true,
+        isExistingLocation: false,
+        locationData: {
+            locationName,
+            locationShortCode,
+            locationDescription,
+            latitude: latitude || null,
+            longitude: longitude || null,
+            streetAddress: streetAddress || null,
+            city: city || null,
+            state: state || null,
+            country: country || null,
+            zipCode: zipCode || null
+        }
+    };
+}
+
+async function showValidationError(message) {
+    // Also show fancy modal for immediate attention
+    await window.showErrorMessage(message, 'Validation Error');
+    
+    // Keep the existing inline error display for reference
+    let errorElement = document.getElementById('location-validation-error');
+    if (!errorElement) {
+        errorElement = document.createElement('div');
+        errorElement.id = 'location-validation-error';
+        errorElement.className = 'validation-error';
+        errorElement.style.cssText = `
+            background-color: #fee;
+            color: #c33;
+            padding: 10px;
+            border: 1px solid #fcc;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        `;
+        
+        // Insert before the continue button
+        const continueButton = document.getElementById('page1-continue');
+        continueButton.parentNode.insertBefore(errorElement, continueButton);
+    }
+    
+    errorElement.textContent = message;
+    errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function showExistingLocationConfirmation(locationData) {
+    try {
+        const confirmed = await window.showLocationConfirmationModal(locationData.locationName);
+        
+        if (confirmed) {
+            // Save the selection to form data
+            formData['location_id'] = locationData.locationId;
+            formData['location_type'] = 'existing';
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            
+            // Clear any validation errors
+            clearValidationError();
+            proceedToNextPage();
+        }
+    } catch (error) {
+        console.error('Error in location confirmation:', error);
+        window.showErrorMessage('An error occurred while confirming the location selection.');
+    }
+}
+
+async function showNewLocationConfirmation(locationData) {
+    const data = locationData.locationData;
+      const locationDetails = {
+        name: data.locationName,
+        shortcode: data.locationShortCode,
+        description: data.locationDescription,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        address: data.streetAddress ? `${data.streetAddress}, ${data.city}, ${data.state}, ${data.country}` : '',
+        zipcode: data.zipCode
+    };
+    
+    try {
+        const confirmed = await window.showNewLocationConfirmationModal(locationDetails);
+        
+        if (confirmed) {
+            await saveNewLocationAndProceed(locationData);
+        }
+    } catch (error) {
+        console.error('Error in new location confirmation:', error);
+        window.showErrorMessage('An error occurred while confirming the new location details.');
+    }
+}
+
+async function saveNewLocationAndProceed(locationData) {
+    const continueButton = document.getElementById('page1-continue');
+    const originalText = continueButton.textContent;
+    
+    try {
+        // Show progress modal
+        window.showProgress('Saving New Location', 'Please wait while we save your new location...');
+        
+        // Disable button
+        continueButton.disabled = true;
+        
+        // Clear any validation errors
+        clearValidationError();
+        
+        // Send data to server
+        const response = await fetch('/api/locations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(locationData.locationData)
+        });
+        
+        const data = await response.json();
+        
+        // Hide progress modal
+        window.hideProgress();
+        
+        if (data.success) {
+            // Save the new location ID to form data
+            formData['location_id'] = data.locationId;
+            formData['location_type'] = 'new';
+            formData['location_name'] = locationData.locationData.locationName;
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            
+            // Show success message with fancy modal
+            await window.showSuccessMessage(`Location "${locationData.locationData.locationName}" has been saved successfully!`);
+            
+            // Refresh the location dropdown for future use
+            if (typeof fetchLocations === 'function') {
+                fetchLocations();
+            }
+            
+            // Proceed to next page
+            proceedToNextPage();
+            
+        } else {
+            // Show error message with fancy modal
+            await window.showErrorMessage('Failed to save location: ' + (data.message || 'Unknown error'));
+            continueButton.disabled = false;
+        }
+    } catch (error) {
+        console.error('Error saving location:', error);
+        window.hideProgress();
+        await window.showErrorMessage('Error connecting to server. Please try again.');
+        continueButton.disabled = false;
+    }
+}
+
+function showSuccessMessage(message) {
+    // Create success message element
+    let successElement = document.getElementById('location-success-message');
+    if (!successElement) {
+        successElement = document.createElement('div');
+        successElement.id = 'location-success-message';
+        successElement.className = 'success-message';
+        successElement.style.cssText = `
+            background-color: #dfd;
+            color: #363;
+            padding: 10px;
+            border: 1px solid #cfc;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        `;
+        
+        // Insert before the continue button
+        const continueButton = document.getElementById('page1-continue');
+        continueButton.parentNode.insertBefore(successElement, continueButton);
+    }
+    
+    successElement.textContent = message;
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        if (successElement.parentNode) {
+            successElement.parentNode.removeChild(successElement);
+        }
+    }, 3000);
+}
+
+function clearValidationError() {
+    const errorElement = document.getElementById('location-validation-error');
+    if (errorElement && errorElement.parentNode) {
+        errorElement.parentNode.removeChild(errorElement);
+    }
+}
+
+// Function to save current page data to session storage
+function saveCurrentPageData() {
+    const currentPageElement = document.getElementById(`form-page${currentPage}`);
+
+    if (!currentPageElement) return;
+
+    // Get all input, select, and textarea elements in the current page
+    const formElements = currentPageElement.querySelectorAll('input, select, textarea');
+
+    // Save each element's value
+    formElements.forEach(element => {
+        if (element.name && element.name.trim() !== '') {
+            if (element.type === 'radio' || element.type === 'checkbox') {
+                if (element.checked) {
+                    formData[element.name] = element.value;
+                }
+            } else {
+                formData[element.name] = element.value;
+            }
+        }
+    });
+
+    // Save to session storage
+    sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+}
+
+// Function to scroll to a specific page
+function scrollToPage(pageNumber) {
+    const targetPage = document.getElementById(`form-page${pageNumber}`);
+    if (targetPage) {
+        targetPage.scrollIntoView({ behavior: 'smooth' });
+    }
+}
+
+// Function to update progress indicator steps
+function updateProgressSteps(currentPage) {
+    document.querySelectorAll('.progress-step').forEach(step => {
+        const stepNumber = parseInt(step.dataset.step);
+
+        // Remove all statuses
+        step.classList.remove('active', 'completed');
+
+        if (stepNumber === currentPage) {
+            step.classList.add('active');
+        } else if (stepNumber < currentPage) {
+            step.classList.add('completed');
+        }
+    });
+}
+
+// Function to fill form fields in a specific page
+function fillFormFieldsInPage(pageElement) {
+    if (!pageElement) return;
+
+    const formElements = pageElement.querySelectorAll('input, select, textarea');
+
+    formElements.forEach(element => {
+        if (element.name && formData[element.name] !== undefined) {
+            if (element.type === 'radio' || element.type === 'checkbox') {
+                element.checked = (formData[element.name] === element.value || 
+                                 (element.type === 'checkbox' && formData[element.name] === true));
+            } else {
+                element.value = formData[element.name];
+            }
+        }
+    });
+}
+
+// Function to clear form fields in a specific page
+function clearFormFieldsInPage(pageElement) {
+    if (!pageElement) return;
+
+    const formElements = pageElement.querySelectorAll('input, select, textarea');
+
+    formElements.forEach(element => {
+        if (element.type === 'radio' || element.type === 'checkbox') {
+            element.checked = false;
+        } else if (element.tagName === 'SELECT') {
+            element.selectedIndex = 0;
+        } else {
+            element.value = '';
+        }
+    });
+}
+
+// Function to update existing page content based on current form data
+function updateExistingPageContent(pageElement, pageNumber) {
+    if (!pageElement) return;
+
+    // Fill form fields with current data
+    fillFormFieldsInPage(pageElement);
+
+    // Apply page-specific updates based on previous page data
+    if (pageNumber === 2) {
+        updatePage2Content();
+    } else if (pageNumber === 3) {
+        updatePage3Content();
+    } else if (pageNumber === 4) {
+        updatePage4Content();
+    } else if (pageNumber === 5) {
+        generateSummary();
+    }
+}
+
+// Function to update page 2 content based on page 1 data
+function updatePage2Content() {
+    // Update any dynamic content based on location selection
+    if (formData.location_id) {
+        console.log('Updating page 2 based on location:', formData.location_id);
+    }
+}
+
+// Function to update page 3 content based on page 2 data
+function updatePage3Content() {
+    // Update media-specific sections in form-page3
+    const mediaType = formData.media_type;
+    if (mediaType) {
+        updateFormPage3MediaSections(mediaType);
+    }
+}
+
+// Function to update page 4 content based on previous pages data
+function updatePage4Content() {
+    // Update particle details sections based on sample and media type
+    updateFormPage4Sections();
+
+    // Show/hide quantitative data sections
+    if (formData.has_quantitative_data === 'yes') {
+        const quantitativeContainer = document.getElementById('quantitative-counts-container');
+        if (quantitativeContainer) {
+            quantitativeContainer.style.display = 'block';
+        }
+    }
+}
+
+// Function to update page 4 sections based on count values
+function updateFormPage4Sections() {
+    console.log('updateFormPage4Sections called');
+    
+    // Get current form data from session storage
+    const currentFormData = JSON.parse(sessionStorage.getItem('microplastics_form_data') || '{}');
+    
+    // Update microplastics details section and sample amount
+    const microplasticsCount = parseInt(currentFormData['microplastics_count']) || 0;
+    const microplasticsDetails = document.getElementById('microplastics-details');
+    const microplasticsAmountContainer = document.getElementById('microplastics-amount-container');
+    if (microplasticsDetails) {
+        microplasticsDetails.style.display = microplasticsCount > 0 ? 'block' : 'none';
+        console.log('Microplastics details section:', microplasticsCount > 0 ? 'shown' : 'hidden');
+    }
+    if (microplasticsAmountContainer) {
+        microplasticsAmountContainer.style.display = microplasticsCount > 0 ? 'block' : 'none';
+    }
+    
+    // Update fragments details section and sample amount
+    const fragmentsCount = parseInt(currentFormData['fragments_count']) || 0;
+    const fragmentsDetails = document.getElementById('fragments-details');
+    const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
+    if (fragmentsDetails) {
+        fragmentsDetails.style.display = fragmentsCount > 0 ? 'block' : 'none';
+        console.log('Fragments details section:', fragmentsCount > 0 ? 'shown' : 'hidden');
+    }
+    if (fragmentsAmountContainer) {
+        fragmentsAmountContainer.style.display = fragmentsCount > 0 ? 'block' : 'none';
+    }
+    
+    // Update packaging details section and sample amount
+    const packagingCount = parseInt(currentFormData['packaging_count']) || 0;
+    const packagingDetails = document.getElementById('packaging-details');
+    const packagingAmountContainer = document.getElementById('packaging-amount-container');
+    if (packagingDetails) {
+        packagingDetails.style.display = packagingCount > 0 ? 'block' : 'none';
+        
+        // If packaging count > 0, update the packaging items
+        if (packagingCount > 0) {
+            updatePackagingItems(packagingCount);
+        }
+        console.log('Packaging details section:', packagingCount > 0 ? 'shown' : 'hidden');
+    }
+    if (packagingAmountContainer) {
+        packagingAmountContainer.style.display = packagingCount > 0 ? 'block' : 'none';
+    }
+    
+    // Update unit options based on selected media type
+    updateSampleAmountUnits(currentFormData['media_type']);
+    
+    // Update quantitative data container visibility
+    const hasQuantitativeData = currentFormData['has_quantitative_data'];
+    const quantitativeContainer = document.getElementById('quantitative-counts-container');
+    if (quantitativeContainer) {
+        quantitativeContainer.style.display = hasQuantitativeData === 'yes' ? 'block' : 'none';
+        console.log('Quantitative container:', hasQuantitativeData === 'yes' ? 'shown' : 'hidden');
+    }
+    
+    // Update formpage4 additional info sections based on media type
+    updateFormPage4MediaSections();
+}
+
+// Function to update page 4 media-specific sections based on selected media type
+function updateFormPage4MediaSections() {
+    console.log('updateFormPage4MediaSections called');
+    
+    // Get current form data from session storage
+    const currentFormData = JSON.parse(sessionStorage.getItem('microplastics_form_data') || '{}');
+    const selectedMediaType = currentFormData['media_type'];
+    
+    if (!selectedMediaType) {
+        console.log('No media type selected, hiding all media-specific sections in page 4');
+        return;
+    }
+    
+    console.log('Updating page 4 media sections for media type:', selectedMediaType);
+    
+    // Get the form page 4 container
+    const formPage4 = document.getElementById('form-page4');
+    if (!formPage4) {
+        console.log('Form page 4 not found');
+        return;
+    }
+    
+    // Hide all media-specific sections in page 4
+    const mediaSpecificSections = formPage4.querySelectorAll('.media-specific-section');
+    mediaSpecificSections.forEach(section => {
+        section.style.display = 'none';
+    });
+    
+    // Show the section that matches the selected media type
+    const selectedSection = formPage4.querySelector(`.media-specific-section[data-media-type="${selectedMediaType}"]`);
+    if (selectedSection) {
+        selectedSection.style.display = 'block';
+        console.log(`Showing media section for: ${selectedMediaType}`);
+    } else {
+        console.log(`No media section found for: ${selectedMediaType}`);
+    }
+}
+
+// Function to load and append the next page to the container
+function loadAndAppendNextPage(pageNumber) {
+    // Show loading indicator
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'loading-indicator';
+    loadingIndicator.innerHTML = '<div class="spinner"></div><span>Loading next section...</span>';
+    document.querySelector('.form-pages-container').appendChild(loadingIndicator);
+
+    // Get the form page container
+    const formPagesContainer = document.querySelector('.form-pages-container');
+
+    try {
+        // Get template for the next page from the template container
+        const templateId = `template-form-page${pageNumber}`;
+        const template = document.getElementById(templateId);
+
+        if (!template) {
+            throw new Error(`Template not found: ${templateId}`);
+        }
+
+        // Clone the template content
+        const pageContent = template.content.cloneNode(true);
+
+        // Remove loading indicator
+        loadingIndicator.remove();
+
+        // Append the new page to the container
+        formPagesContainer.appendChild(pageContent);
+
+        // Get the newly added form page
+        const newPage = document.getElementById(`form-page${pageNumber}`);
+
+        // Add fade-in class for animation
+        if (newPage) {
+            newPage.classList.add('fade-in');
+
+            // Scroll to the newly added page
+            newPage.scrollIntoView({ behavior: 'smooth' });
+
+            // Fill in form fields from session data if available, but only if this is not initial page load
+            if (isPageInitialLoad) {
+                // Clear form fields on initial load/refresh to ensure clean state
+                clearFormFieldsInPage(newPage);
+                // Set flag to false after first dynamic page load
+                isPageInitialLoad = false;
+            } else {
+                // Fill with cached data for subsequent navigations
+                fillFormFieldsInPage(newPage);
+            }
+
+            // If loading page 4, update the particle details sections and auto-select additional info
+            if (pageNumber === 4) {
+                updateFormPage4Sections();
+            }
+        }
+    } catch (error) {
+        console.error('Error loading next form page:', error);
+        loadingIndicator.remove();
+
+        // Show error message
+        const errorMessage = document.createElement('div');
+        errorMessage.className = 'error-message';
+        errorMessage.textContent = 'Failed to load the next section. Please try again.';
+        formPagesContainer.appendChild(errorMessage);
+
+        // Add a retry button
+        const retryButton = document.createElement('button');
+        retryButton.textContent = 'Retry';
+        retryButton.className = 'retry-button';
+        retryButton.onclick = () => {
+            errorMessage.remove();
+            loadAndAppendNextPage(pageNumber);
+        };
+        errorMessage.appendChild(retryButton);
+    }
+}
+
+function proceedToNextPage() {
+    // Save current page data
+    saveCurrentPageData();
+    
+    const nextPage = 2;
+    
+    // Check if the page already exists in the DOM
+    const existingPage = document.getElementById(`form-page${nextPage}`);
+    
+    if (existingPage) {
+        // Page exists, update its content and scroll to it
+        updateExistingPageContent(existingPage, nextPage);
+        scrollToPage(nextPage);
+    } else {
+        // Page doesn't exist, load it for the first time
+        loadAndAppendNextPage(nextPage);
+        loadedPages = Math.max(loadedPages, nextPage);
+    }
+    
+    // Update current page tracker
+    currentPage = nextPage;
+    
+    // Update progress steps
+    updateProgressSteps(currentPage);
+    
+    // Reset continue button
+    const continueButton = document.getElementById('page1-continue');
+    continueButton.textContent = 'Continue';
+    continueButton.disabled = false;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== Form-handler.js DOMContentLoaded ===');
+
+    // Initialize form data from session storage or create new object
+    formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+
+    // Initialize device installation period radio button default selection
+    initializeDeviceInstallationPeriod();
+
+    // Pre-fill form fields from session
+    // fillFormFieldsFromSession();
+
+    // Set up navigation buttons
+    setupNavigationButtons();
+
+    // Set up form fields change tracking
+    setupFormFieldTracking();
+
+    // Setup summary generation for the final page
+    setupSummaryGeneration();
+
+    // Set up packaging count handler - call only once
+    setupPackagingCountHandler();
+
+    // Function to handle packaging count input - centralized in one place
+    function setupPackagingCountHandler() {
+        console.log('Setting up packaging count handler');
+
+        // Use event delegation to handle packaging-count input changes
+        document.addEventListener('input', function(event) {
+            if (event.target.id === 'packaging-count') {
+                const value = event.target.value;
+                console.log('Input Event - Packaging count changed to:', value);
+
+                // Store the value in formData
+                formData['packaging_count'] = value;
+                sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+
+                // Update UI based on current value
+                updatePackagingUI(parseInt(value) || 0);
+            }
+        });
+    }
+
+    // Function to update UI based on packaging count
+    function updatePackagingUI(count) {
+        console.log('Updating UI for packaging count:', count);
+
+        // Update visibility of packaging details section
+        const packagingDetails = document.getElementById('packaging-details');
+        if (packagingDetails) {
+            packagingDetails.style.display = count > 0 ? 'block' : 'none';
+
+            // Only update packaging items if the section is visible
+            if (count > 0) {
+                updatePackagingItems(count);
+            }
+        }
+    }    // Function to update packaging items - separated from event handler
+    function updatePackagingItems(count) {
+        console.log('Updating packaging items for count:', count);
+
+        const packagingItemsContainer = document.getElementById('packaging-items-container');
+        if (!packagingItemsContainer) return;
+
+        // Clear existing items
+        packagingItemsContainer.innerHTML = '';
+
+        // Generate new forms for each packaging item
+        for (let i = 1; i <= count; i++) {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'packaging-item';
+            itemDiv.innerHTML = `
+                <h4>Packaging Item #${i}</h4>
+                <div class="form-group">
+                    <label for="packaging-userpiece-${i}">UserPieceID Label:</label>
+                    <input type="text" id="packaging-userpiece-${i}" name="packaging_userpiece_${i}" class="form-input" placeholder="User defined">
+                </div>
+                
+                <!-- Four-Column Selection Interface -->
+                <div class="selection-grid-title">Package Details Selection</div>
+                <div class="selection-grid-subtitle">Click one option from each column to classify your package</div>
+                
+                <div class="packaging-selection-grid">
+                    <!-- Purpose Column -->
+                    <div class="selection-column">
+                        <div class="column-header">Purpose</div>
+                        <div class="column-options">
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="container-single-use food-beverage">
+                                Container - Single-use food/beverage
+                            </button>
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="container-multi-use food-beverage">
+                                Container - Multi-use food/beverage
+                            </button>
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="container-other">
+                                Container - Other
+                            </button>
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="bag or packing material">
+                                Bag or packing material
+                            </button>
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="personal item">
+                                Personal item
+                            </button>
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="household item">
+                                Household item
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Recycle Code Column -->
+                    <div class="selection-column">
+                        <div class="column-header">Recycle Code</div>
+                        <div class="column-options">
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="1">1</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="2">2</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="3">3</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="4">4</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="5">5</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="6">6</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="7">7</button>
+                        </div>
+                    </div>
+
+                    <!-- Opacity Type Column -->
+                    <div class="selection-column">
+                        <div class="column-header">Opacity Type</div>
+                        <div class="column-options">
+                            <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Clear">Clear</button>
+                            <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Opaque-Light">Opaque-Light</button>
+                            <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Opaque-Dark">Opaque-Dark</button>
+                            <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Mixed">Mixed</button>
+                        </div>
+                    </div>
+
+                    <!-- Color Column -->
+                    <div class="selection-column">
+                        <div class="column-header">Color</div>
+                        <div class="column-options">
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Clear">Clear</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Black">Black</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Blue">Blue</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Brown">Brown</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Dark Blue">Dark Blue</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Light Blue">Light Blue</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Pink">Pink</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Purple">Purple</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Red">Red</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="White">White</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Yellow">Yellow</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden inputs to store selected values -->
+                <input type="hidden" name="packaging_purpose_${i}" class="packaging-purpose-value">
+                <input type="hidden" name="packaging_recycle_code_${i}" class="packaging-recycle-code-value">
+                <input type="hidden" name="packaging_color_opacity_${i}" class="packaging-color-opacity-value">
+                <input type="hidden" name="packaging_color_${i}" class="packaging-color-value">
+                
+                <div style="display: none;" class="item-number">${i}</div>
+                <hr>
+            `;
+            packagingItemsContainer.appendChild(itemDiv);
+        }        // Re-fill form fields from session if available
+        fillFormFieldsFromSession();
+        
+        // Restore selection states
+        setTimeout(() => {
+            restorePackagingSelections();
+        }, 100);
+    }
+
+    // Set up event delegation for media options in form-page3 (both old and new layouts)
+    document.addEventListener('click', function(event) {
+        // Check if the clicked element is a media option or inside one (old layout)
+        const mediaOption = event.target.closest('.media-option');
+        // Check if the clicked element is a media option header (new vertical layout)
+        const mediaOptionHeader = event.target.closest('.media-option-header');
+        
+        if (mediaOption) {
+            // Handle old horizontal layout
+            const radioInput = mediaOption.querySelector('input[type="radio"]');
+            if (radioInput) {
+                // Select the radio button
+                radioInput.checked = true;
+
+                // Remove selected class from all media options
+                document.querySelectorAll('.media-option').forEach(option => {
+                    option.classList.remove('selected');
+                });
+
+                // Add selected class to the clicked option
+                mediaOption.classList.add('selected');
+
+                // Update formData
+                const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+                formData[radioInput.name] = radioInput.value;
+                sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+
+                // If form-page3 is already loaded, update visible sections
+                updateFormPage3MediaSections(radioInput.value);
+                
+                // Also update formpage4 media sections if page 4 is loaded and additional_info is yes
+                const formPage4 = document.getElementById('form-page4');
+                if (formPage4) {
+                    const additionalInfoYes = document.querySelector('input[name="additional_info"][value="yes"]:checked');
+                    if (additionalInfoYes) {
+                        updateFormPage4MediaSections();
+                    }
+                }
+            }
+        } else if (mediaOptionHeader) {
+            // Handle new vertical layout
+            const radioInput = mediaOptionHeader.querySelector('input[type="radio"]');
+            if (radioInput) {
+                // Select the radio button
+                radioInput.checked = true;
+
+                // Update formData
+                const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+                formData[radioInput.name] = radioInput.value;
+                sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+
+                // Show/hide suboptions and update sections
+                updateFormPage3MediaSections(radioInput.value);
+                
+                // Also update formpage4 media sections if page 4 is loaded and additional_info is yes
+                const formPage4 = document.getElementById('form-page4');
+                if (formPage4) {
+                    const additionalInfoYes = document.querySelector('input[name="additional_info"][value="yes"]:checked');
+                    if (additionalInfoYes) {
+                        updateFormPage4MediaSections();
+                    }
+                }
+            }
+        }
+    });
+
+    // Add event delegation for suboption selections
+    document.addEventListener('change', function(event) {
+        // Handle suboption radio buttons
+        if (event.target.name === 'water_type' || 
+            event.target.name === 'sediment_type' || 
+            event.target.name === 'soil_landscape_type' || 
+            event.target.name === 'surface_landscape_type') {
+            
+            // Update formData with suboption selection
+            const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+            formData[event.target.name] = event.target.value;
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            
+            // Handle "Other" option descriptions
+            if (event.target.name === 'water_type') {
+                const otherDescription = document.getElementById('water-other-description');
+                if (otherDescription) {
+                    otherDescription.style.display = event.target.value === 'other' ? 'block' : 'none';
+                }
+            } else if (event.target.name === 'sediment_type') {
+                const otherDescription = document.getElementById('sediment-other-description');
+                if (otherDescription) {
+                    otherDescription.style.display = event.target.value === 'other' ? 'block' : 'none';
+                }
+            }
+        }
+
+        // Handle mixed media description
+        if (event.target.name === 'mixed_media_description') {
+            const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+            formData[event.target.name] = event.target.value;
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+        }
+        
+        // Handle other description text areas
+        if (event.target.name === 'water_type_other_description' || 
+            event.target.name === 'sediment_type_other_description') {
+            const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+            formData[event.target.name] = event.target.value;
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+        }
+    });
+
+    // Add event delegation for additional info toggle in form-page4
+    document.addEventListener('change', function(event) {
+        if (event.target.classList.contains('toggle-additional-info')) {
+            const showAdditionalInfo = event.target.value === 'yes';
+            const additionalInfoSections = document.getElementById('additional-info-sections');
+
+            if (additionalInfoSections) {
+                additionalInfoSections.style.display = showAdditionalInfo ? 'block' : 'none';
+
+                // If showing additional info, update media sections for both page 3 and page 4
+                if (showAdditionalInfo) {
+                    const selectedMediaType = document.querySelector('input[name="media_type"]:checked');
+                    if (selectedMediaType) {
+                        // Update page 3 sections (if page 3 is loaded)
+                        const formPage3 = document.getElementById('form-page3');
+                        if (formPage3) {
+                            updateFormPage3MediaSections(selectedMediaType.value);
+                        }
+                        
+                        // Update page 4 media sections (if page 4 is loaded)
+                        const formPage4 = document.getElementById('form-page4');
+                        if (formPage4) {
+                            updateFormPage4MediaSections();
+                        }
+                    }
+                } else {
+                    // Hide all media sections in page 4 when "No" is selected
+                    const formPage4 = document.getElementById('form-page4');
+                    if (formPage4) {
+                        const mediaSpecificSections = formPage4.querySelectorAll('.media-specific-section');
+                        mediaSpecificSections.forEach(section => {
+                            section.style.display = 'none';
+                        });
+                    }
+                }
+            }
+        }
+    });
+
+    // Add event delegation for quantitative data toggle in form-page4
+    document.addEventListener('change', function(event) {
+        if (event.target.name === 'has_quantitative_data') {
+            const showQuantitativeData = event.target.value === 'yes';
+            const quantitativeCountsContainer = document.getElementById('quantitative-counts-container');
+
+            if (quantitativeCountsContainer) {
+                quantitativeCountsContainer.style.display = showQuantitativeData ? 'block' : 'none';
+
+                // Hide all detail sections when "No" is selected
+                if (!showQuantitativeData) {
+                    const microplasticsDetails = document.getElementById('microplastics-details');
+                    const fragmentsDetails = document.getElementById('fragments-details');
+                    const packagingDetails = document.getElementById('packaging-details');
+
+                    if (microplasticsDetails) microplasticsDetails.style.display = 'none';
+                    if (fragmentsDetails) fragmentsDetails.style.display = 'none';
+                    if (packagingDetails) packagingDetails.style.display = 'none';
+                } else {
+                    // When "Yes" is selected, check values and show appropriate sections
+                    // Check microplastics count
+                    const microplasticsInput = document.getElementById('microplastics-count');
+                    if (microplasticsInput) {
+                        const microplasticsCount = parseInt(microplasticsInput.value) || 0;
+                        const microplasticsDetails = document.getElementById('microplastics-details');
+
+                        if (microplasticsDetails) {
+                            microplasticsDetails.style.display = microplasticsCount > 0 ? 'block' : 'none';
+                        }
+
+                        // Add change event listener - but don't duplicate
+                        if (!microplasticsInput.hasAttribute('data-event-bound')) {
+                            microplasticsInput.setAttribute('data-event-bound', 'true');
+                            microplasticsInput.addEventListener('input', function() {
+                                const count = parseInt(this.value) || 0;
+                                const details = document.getElementById('microplastics-details');
+                                if (details) {
+                                    details.style.display = count > 0 ? 'block' : 'none';
+                                }
+                                // Save to formData
+                                formData['microplastics_count'] = this.value;
+                                sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+                            });
+                        }
+                    }
+
+                    // Check fragments count
+                    const fragmentsInput = document.getElementById('fragments-count');
+                    if (fragmentsInput) {
+                        const fragmentsCount = parseInt(fragmentsInput.value) || 0;
+                        const fragmentsDetails = document.getElementById('fragments-details');
+
+                        if (fragmentsDetails) {
+                            fragmentsDetails.style.display = fragmentsCount > 0 ? 'block' : 'none';
+                        }
+
+                        // Add change event listener - but don't duplicate
+                        if (!fragmentsInput.hasAttribute('data-event-bound')) {
+                            fragmentsInput.setAttribute('data-event-bound', 'true');
+                            fragmentsInput.addEventListener('input', function() {
+                                const count = parseInt(this.value) || 0;
+                                const details = document.getElementById('fragments-details');
+                                if (details) {
+                                    details.style.display = count > 0 ? 'block' : 'none';
+                                }
+                                // Save to formData
+                                formData['fragments_count'] = this.value;
+                                sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+                            });
+                        }
+                    }
+
+                    // Check packaging count - do not add another event handler here!
+                    const packagingInput = document.getElementById('packaging-count');
+                    if (packagingInput) {
+                        // Just update the UI based on the current value
+                        const packagingCount = parseInt(packagingInput.value) || 0;
+                        updatePackagingUI(packagingCount);
+                    }
+                }
+            }
+
+            // Update formData
+            formData[event.target.name] = event.target.value;
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+        }
+    });
+
+    // Add event delegation for device installation period toggle in form-page2
+    document.addEventListener('change', function(event) {
+        if (event.target.name === 'device_installation_period') {
+            const isDevicePeriod = event.target.value === 'yes';
+            const singleSection = document.getElementById('single-collection-section');
+            const deviceSection = document.getElementById('device-period-section');
+            
+            if (singleSection && deviceSection) {
+                if (isDevicePeriod) {
+                    // Show device period section, hide single collection
+                    singleSection.style.display = 'none';
+                    deviceSection.style.display = 'block';
+                    
+                    // Clear single date field since it's not needed
+                    const singleDateInput = document.getElementById('sample-date');
+                    if (singleDateInput) singleDateInput.value = '';
+                } else {
+                    // Show single collection section, hide device period
+                    singleSection.style.display = 'block';
+                    deviceSection.style.display = 'none';
+                    
+                    // Clear device date fields since they're not needed
+                    const startDateInput = document.getElementById('device-start-date');
+                    const endDateInput = document.getElementById('device-end-date');
+                    if (startDateInput) startDateInput.value = '';
+                    if (endDateInput) endDateInput.value = '';
+                }
+                
+                // Update formData
+                const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+                formData[event.target.name] = event.target.value;
+                sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            }
+        }
+    });
+
+    // Function to update media-specific sections in form-page3
+    function updateFormPage3MediaSections(mediaType) {
+        // Check if form-page3 is loaded
+        const formPage3 = document.getElementById('form-page3');
+        if (!formPage3) return;
+
+        // Hide all media-specific sections first (for page 4)
+        const mediaSpecificSections = formPage3.querySelectorAll('.media-specific-section');
+        mediaSpecificSections.forEach(section => {
+            section.style.display = 'none';
+        });
+
+        // Show the section for the selected media type (for page 4)
+        const selectedSection = formPage3.querySelector(`.media-specific-section[data-media-type="${mediaType}"]`);
+        if (selectedSection) {
+            selectedSection.style.display = 'block';
+        }
+
+        // Handle new vertical media options and suboptions
+        handleMediaSuboptions(mediaType);
+    }
+
+    // Function to handle media suboptions display
+    function handleMediaSuboptions(mediaType) {
+        // Hide all suboptions first
+        const allSuboptions = document.querySelectorAll('.media-suboptions');
+        allSuboptions.forEach(suboption => {
+            suboption.style.display = 'none';
+        });
+
+        // Hide all "other" description boxes first
+        const allOtherDescriptions = document.querySelectorAll('.other-description-container');
+        allOtherDescriptions.forEach(container => {
+            container.style.display = 'none';
+        });
+
+        // Show suboptions for the selected media type
+        if (mediaType) {
+            let suboptions = null;
+            switch(mediaType) {
+                case 'water':
+                    suboptions = document.getElementById('water-suboptions');
+                    // Check if "other" is selected for water type
+                    setTimeout(() => {
+                        const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+                        if (formData.water_type === 'other') {
+                            const otherDescription = document.getElementById('water-other-description');
+                            if (otherDescription) {
+                                otherDescription.style.display = 'block';
+                            }
+                        }
+                    }, 100);
+                    break;
+                case 'soil_sediment':
+                    suboptions = document.getElementById('sediment-suboptions');
+                    // Check if "other" is selected for sediment type
+                    setTimeout(() => {
+                        const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+                        if (formData.sediment_type === 'other') {
+                            const otherDescription = document.getElementById('sediment-other-description');
+                            if (otherDescription) {
+                                otherDescription.style.display = 'block';
+                            }
+                        }
+                    }, 100);
+                    break;
+                case 'in_soil':
+                    suboptions = document.getElementById('soil-suboptions');
+                    break;
+                case 'soil_litter':
+                    suboptions = document.getElementById('surface-suboptions');
+                    break;
+                case 'mixed_composite':
+                    suboptions = document.getElementById('mixed-suboptions');
+                    break;
+            }
+
+            if (suboptions) {
+                suboptions.style.display = 'block';
+            }
+            
+            // Update sample amount unit options based on media type
+            updateSampleAmountUnits(mediaType);
+        }
+    }    // Function to set up navigation buttons
+    function setupNavigationButtons() {
+        console.log('Setting up navigation buttons...');
+        
+        // Check if form-pages-container exists
+        const container = document.querySelector('.form-pages-container');
+        if (!container) {
+            console.error('form-pages-container not found!');
+            return;
+        }
+        
+        console.log('form-pages-container found, adding event listener');
+        
+        // Set up event delegation for continue buttons
+        container.addEventListener('click', function(event) {
+            console.log('Click event detected on:', event.target);
+            
+            // Check if the clicked element is a continue button
+            if (event.target.classList.contains('btn-continue')) {
+                console.log('Continue button clicked:', event.target.id, event.target);
+                
+                // Special validation for page 1 (location information)
+                if (event.target.id === 'page1-continue' || 
+                    (event.target.dataset && event.target.dataset.next === '2' && currentPage === 1)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    console.log('Triggering page 1 validation');
+                    validateAndProceedFromPage1();
+                    return;
+                }
+
+                // Special validation for page 2 (sampling event information)
+                if (event.target.id === 'page2-continue' || 
+                    (event.target.dataset && event.target.dataset.next === '3' && currentPage === 2)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    console.log('Triggering page 2 validation');
+                    
+                    if (!validatePage2()) {
+                        return; // Stop navigation if validation fails
+                    }
+                }
+
+                // Save current page data
+                saveCurrentPageData();
+
+                const nextPage = event.target.dataset.next ? parseInt(event.target.dataset.next) : currentPage + 1;
+
+                // Check if the page already exists in the DOM
+                const existingPage = document.getElementById(`form-page${nextPage}`);
+                
+                if (existingPage) {
+                    // Page exists, update its content and scroll to it
+                    updateExistingPageContent(existingPage, nextPage);
+                    scrollToPage(nextPage);
+                } else {
+                    // Page doesn't exist, load it for the first time
+                    loadAndAppendNextPage(nextPage);
+                    loadedPages = Math.max(loadedPages, nextPage);
+                }
+
+                // Update current page tracker
+                currentPage = nextPage;
+
+                // Update progress steps
+                updateProgressSteps(currentPage);
+
+                // If navigating to page 4, update the particle details sections
+                if (nextPage === 4) {
+                    updateFormPage4Sections();
+                }
+
+                // If navigating to the last page, generate summary
+                if (nextPage === 5) {
+                    generateSummary();
+                }
+            }
+
+            // Check if the clicked element is the save button
+            if (event.target.id === 'save-button') {
+                event.preventDefault();
+                saveCurrentPageData();
+
+                // Show the next steps options instead of the old confirmation dialog
+                showNextStepsOptions();
+            }
+        });
+    }
+
+    // Function to show confirmation dialog for iteration
+    function showIterationConfirmation() {
+        // Create a modal overlay
+        const modalOverlay = document.createElement('div');
+        modalOverlay.className = 'modal-overlay';
+        modalOverlay.style.position = 'fixed';
+        modalOverlay.style.top = '0';
+        modalOverlay.style.left = '0';
+        modalOverlay.style.width = '100%';
+        modalOverlay.style.height = '100%';
+        modalOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        modalOverlay.style.display = 'flex';
+        modalOverlay.style.justifyContent = 'center';
+        modalOverlay.style.alignItems = 'center';
+        modalOverlay.style.zIndex = '1000';
+
+        // Create modal content
+        const modalContent = document.createElement('div');
+        modalContent.className = 'modal-content';
+        modalContent.style.backgroundColor = '#fff';
+        modalContent.style.padding = '20px';
+        modalContent.style.borderRadius = '5px';
+        modalContent.style.maxWidth = '400px';
+        modalContent.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.2)';
+
+        // Add message
+        const messageElement = document.createElement('h3');
+        messageElement.textContent = 'Continue to iterate?';
+        messageElement.style.marginBottom = '20px';
+
+        // Add description
+        const descriptionElement = document.createElement('p');
+        descriptionElement.textContent = 'Would you like to submit this data and enter another sample?';
+        descriptionElement.style.marginBottom = '20px';
+
+        // Create buttons container
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.style.display = 'flex';
+        buttonsContainer.style.justifyContent = 'space-between';
+
+        // Create Yes button
+        const yesButton = document.createElement('button');
+        yesButton.textContent = 'Yes, enter another sample';
+        yesButton.className = 'btn btn-primary';
+        yesButton.style.marginRight = '10px';
+        yesButton.style.padding = '8px 16px';
+
+        // Create No button
+        const noButton = document.createElement('button');
+        noButton.textContent = 'No, finish and exit';
+        noButton.className = 'btn btn-secondary';
+        noButton.style.padding = '8px 16px';
+
+        // Add event listeners to buttons
+        yesButton.addEventListener('click', function() {
+            // Close the modal
+            document.body.removeChild(modalOverlay);
+
+            // Submit data but preserve location information for next iteration
+            submitFormDataAndIterate();
+        });
+
+        noButton.addEventListener('click', function() {
+            // Close the modal
+            document.body.removeChild(modalOverlay);
+
+            // Submit form data normally (using new function to avoid conflicts)
+            submitFormDataOnly();
+        });
+
+        // Assemble the modal
+        buttonsContainer.appendChild(yesButton);
+        buttonsContainer.appendChild(noButton);
+        modalContent.appendChild(messageElement);
+        modalContent.appendChild(descriptionElement);
+        modalContent.appendChild(buttonsContainer);
+        modalOverlay.appendChild(modalContent);
+
+        // Add the modal to the document
+        document.body.appendChild(modalOverlay);
+    }
+
+    // Function to show next steps options after saving
+    function showNextStepsOptions() {
+        // Hide the save button
+        const saveButton = document.getElementById('save-button');
+        if (saveButton) {
+            saveButton.style.display = 'none';
+        }
+
+        // Show the next steps container
+        const nextStepsContainer = document.getElementById('next-steps-options');
+        if (nextStepsContainer) {
+            nextStepsContainer.style.display = 'block';
+
+            // Add event listeners to the option buttons
+            const newLocationButton = document.getElementById('new-location-date');
+            const differentMediaButton = document.getElementById('different-media');
+            const sameMediaSampleButton = document.getElementById('same-media-sample');
+
+            if (newLocationButton) {
+                newLocationButton.addEventListener('click', function() {
+                    handleNewLocationDate();
+                });
+            }
+
+            if (differentMediaButton) {
+                differentMediaButton.addEventListener('click', function() {
+                    handleDifferentMedia();
+                });
+            }
+
+            if (sameMediaSampleButton) {
+                sameMediaSampleButton.addEventListener('click', function() {
+                    handleSameMediaSample();
+                });
+            }
+        }
+    }
+
+    // Handler for Option A: Start New Location/Date
+    function handleNewLocationDate() {
+        // First save current data in background (without alert)
+        saveFormDataSilently().then(() => {
+            // Clear all form data
+            formData = {};
+            sessionStorage.removeItem(formStorageKey);
+            
+            // Reset to page 1 (location and date)
+            navigateToPage(1);
+            
+            // Clear all form fields
+            clearAllFormFields();
+            
+            // Show success message
+            showTemporaryMessage('Data saved! Starting fresh data entry for new location and date', 'success');
+        }).catch(error => {
+            console.error('Error saving data:', error);
+            showTemporaryMessage('Error saving data: ' + error.message, 'error');
+        });
+    }
+
+    // Handler for Option B: Different Media Type (same location/date)
+    function handleDifferentMedia() {
+        // First save current data in background (without alert)
+        saveFormDataSilently().then(() => {
+            // Preserve location and date data from pages 1-2
+            const preservedData = {};
+            
+            // Keep location and date information
+            Object.keys(formData).forEach(key => {
+                if (key.includes('location') || key.includes('date') || key.includes('time') || 
+                    key.includes('latitude') || key.includes('longitude') || key.includes('lulc')) {
+                    preservedData[key] = formData[key];
+                }
+            });
+            
+            // Reset form data but keep preserved data
+            formData = preservedData;
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            
+            // Go to page 3 (media type selection)
+            navigateToPage(3);
+            
+            // Clear media-specific fields only
+            clearMediaSpecificFields();
+            
+            // Show success message
+            showTemporaryMessage('Data saved! Select different media type for same location/date', 'success');
+        }).catch(error => {
+            console.error('Error saving data:', error);
+            showTemporaryMessage('Error saving data: ' + error.message, 'error');
+        });
+    }
+
+    // Handler for Option C: Additional Sample (same media, location, date)
+    function handleSameMediaSample() {
+        // First save current data in background (without alert)
+        saveFormDataSilently().then(() => {
+            // Preserve location, date, and media type data from pages 1-3
+            const preservedData = {};
+            
+            // Keep location, date, and media type information
+            Object.keys(formData).forEach(key => {
+                if (key.includes('location') || key.includes('date') || key.includes('time') || 
+                    key.includes('latitude') || key.includes('longitude') || key.includes('lulc') ||
+                    key.includes('media_type') || key.includes('water_type') || key.includes('sediment_type')) {
+                    preservedData[key] = formData[key];
+                }
+            });
+            
+            // Reset form data but keep preserved data
+            formData = preservedData;
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            
+            // Go to page 4 (additional sampling information)
+            navigateToPage(4);
+            
+            // Clear sample-specific fields only
+            clearSampleSpecificFields();
+            
+            // Show success message
+            showTemporaryMessage('Data saved! Enter additional sample for same media and location', 'success');
+        }).catch(error => {
+            console.error('Error saving data:', error);
+            showTemporaryMessage('Error saving data: ' + error.message, 'error');
+        });
+    }
+
+    // Function to navigate to a specific page (load if not exists, then scroll)
+    function navigateToPage(pageNumber) {
+        // Check if the page already exists in the DOM
+        const existingPage = document.getElementById(`form-page${pageNumber}`);
+        
+        if (existingPage) {
+            // Page exists, update its content and scroll to it
+            updateExistingPageContent(existingPage, pageNumber);
+            scrollToPage(pageNumber);
+        } else {
+            // Page doesn't exist, load it for the first time
+            loadAndAppendNextPage(pageNumber);
+            loadedPages = Math.max(loadedPages, pageNumber);
+        }
+        
+        // Update current page tracker
+        currentPage = pageNumber;
+        
+        // Update progress steps
+        updateProgressSteps(currentPage);
+    }
+    function clearAllFormFields() {
+        const allFormElements = document.querySelectorAll('input, select, textarea');
+        allFormElements.forEach(element => {
+            if (element.type === 'radio' || element.type === 'checkbox') {
+                element.checked = false;
+            } else {
+                element.value = '';
+            }
+        });
+    }
+
+    // Helper function to clear media-specific fields (pages 3-6)
+    function clearMediaSpecificFields() {
+        const mediaPages = document.querySelectorAll('#form-page3, #form-page4, #form-page5, #form-page6');
+        mediaPages.forEach(page => {
+            const formElements = page.querySelectorAll('input, select, textarea');
+            formElements.forEach(element => {
+                if (element.type === 'radio' || element.type === 'checkbox') {
+                    element.checked = false;
+                } else {
+                    element.value = '';
+                }
+            });
+        });
+    }
+
+    // Helper function to clear sample-specific fields (pages 4-6)
+    function clearSampleSpecificFields() {
+        const samplePages = document.querySelectorAll('#form-page4, #form-page5, #form-page6');
+        samplePages.forEach(page => {
+            const formElements = page.querySelectorAll('input, select, textarea');
+            formElements.forEach(element => {
+                if (element.type === 'radio' || element.type === 'checkbox') {
+                    element.checked = false;
+                } else {
+                    element.value = '';
+                }
+            });
+        });
+    }
+
+    // Helper function to show temporary success messages
+    function showTemporaryMessage(message, type = 'success') {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `alert alert-${type}`;
+        messageDiv.style.position = 'fixed';
+        messageDiv.style.top = '20px';
+        messageDiv.style.right = '20px';
+        messageDiv.style.zIndex = '9999';
+        messageDiv.style.padding = '15px';
+        messageDiv.style.backgroundColor = type === 'success' ? '#d4edda' : '#f8d7da';
+        messageDiv.style.color = type === 'success' ? '#155724' : '#721c24';
+        messageDiv.style.border = `1px solid ${type === 'success' ? '#c3e6cb' : '#f5c6cb'}`;
+        messageDiv.style.borderRadius = '5px';
+        messageDiv.style.maxWidth = '300px';
+        messageDiv.textContent = message;
+
+        document.body.appendChild(messageDiv);
+
+        // Remove message after 4 seconds
+        setTimeout(() => {
+            if (document.body.contains(messageDiv)) {
+                document.body.removeChild(messageDiv);
+            }
+        }, 4000);
+    }
+
+    // Make generateSummary available globally for debugging
+    window.generateSummary = generateSummary;
+
+    // Function to update existing page content based on current form data
+    function updateExistingPageContent(pageElement, pageNumber) {
+        if (!pageElement) return;
+
+        // Fill form fields with current data
+        fillFormFieldsInPage(pageElement);
+
+        // Apply page-specific updates based on previous page data
+        if (pageNumber === 2) {
+            updatePage2Content();
+        } else if (pageNumber === 3) {
+            updatePage3Content();
+        } else if (pageNumber === 4) {
+            updatePage4Content();
+        } else if (pageNumber === 5) {
+            generateSummary();
+        }
+    }
+
+    // Function to update page 2 content based on page 1 data
+    function updatePage2Content() {
+        // Update any dynamic content based on location selection
+        if (formData.location_id) {
+            console.log('Updating page 2 based on location:', formData.location_id);
+        }
+    }
+
+    // Function to update page 3 content based on page 2 data
+    function updatePage3Content() {
+        // Show/hide media-specific sections based on selected media type
+        if (formData.media_type) {
+            updateFormPage3MediaSections(formData.media_type);
+        }
+
+        // Show/hide additional info sections based on toggle
+        if (formData.additional_info === 'yes') {
+            const additionalInfoSections = document.getElementById('additional-info-sections');
+            if (additionalInfoSections) {
+                additionalInfoSections.style.display = 'block';
+                // Update visible sections based on media type
+                if (formData.media_type) {
+                    updateFormPage3MediaSections(formData.media_type);
+                }
+            }
+        }
+    }
+
+    // Function to update page 4 content based on previous pages data
+    function updatePage4Content() {
+        // Update particle details sections based on sample and media type
+        updateFormPage4Sections();
+
+        // Show/hide quantitative data sections
+        if (formData.has_quantitative_data === 'yes') {
+            const quantitativeContainer = document.getElementById('quantitative-counts-container');
+            if (quantitativeContainer) {
+                quantitativeContainer.style.display = 'block';
+            }
+        }
+        
+        // Handle additional info sections
+        if (formData.additional_info === 'yes') {
+            const additionalInfoSections = document.getElementById('additional-info-sections');
+            if (additionalInfoSections) {
+                additionalInfoSections.style.display = 'block';
+                // Update media sections for page 4
+                updateFormPage4MediaSections();
+            }
+        }
+    }
+
+    // Function to update page 4 sections based on count values
+    function updateFormPage4Sections() {
+        console.log('updateFormPage4Sections called');
+        
+        // Get current form data from session storage
+        const currentFormData = JSON.parse(sessionStorage.getItem('microplastics_form_data') || '{}');
+        
+        // Update microplastics details section and sample amount
+        const microplasticsCount = parseInt(currentFormData['microplastics_count']) || 0;
+        const microplasticsDetails = document.getElementById('microplastics-details');
+        const microplasticsAmountContainer = document.getElementById('microplastics-amount-container');
+        if (microplasticsDetails) {
+            microplasticsDetails.style.display = microplasticsCount > 0 ? 'block' : 'none';
+            console.log('Microplastics details section:', microplasticsCount > 0 ? 'shown' : 'hidden');
+        }
+        if (microplasticsAmountContainer) {
+            microplasticsAmountContainer.style.display = microplasticsCount > 0 ? 'block' : 'none';
+        }
+        
+        // Update fragments details section and sample amount
+        const fragmentsCount = parseInt(currentFormData['fragments_count']) || 0;
+        const fragmentsDetails = document.getElementById('fragments-details');
+        const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
+        if (fragmentsDetails) {
+            fragmentsDetails.style.display = fragmentsCount > 0 ? 'block' : 'none';
+            console.log('Fragments details section:', fragmentsCount > 0 ? 'shown' : 'hidden');
+        }
+        if (fragmentsAmountContainer) {
+            fragmentsAmountContainer.style.display = fragmentsCount > 0 ? 'block' : 'none';
+        }
+        
+        // Update packaging details section and sample amount
+        const packagingCount = parseInt(currentFormData['packaging_count']) || 0;
+        const packagingDetails = document.getElementById('packaging-details');
+        const packagingAmountContainer = document.getElementById('packaging-amount-container');
+        if (packagingDetails) {
+            packagingDetails.style.display = packagingCount > 0 ? 'block' : 'none';
+            
+            // If packaging count > 0, update the packaging items
+            if (packagingCount > 0) {
+                updatePackagingItems(packagingCount);
+            }
+            console.log('Packaging details section:', packagingCount > 0 ? 'shown' : 'hidden');
+        }
+        if (packagingAmountContainer) {
+            packagingAmountContainer.style.display = packagingCount > 0 ? 'block' : 'none';
+        }
+        
+        // Update unit options based on selected media type
+        updateSampleAmountUnits(currentFormData['media_type']);
+        
+        // Update quantitative data container visibility
+        const hasQuantitativeData = currentFormData['has_quantitative_data'];
+        const quantitativeContainer = document.getElementById('quantitative-counts-container');
+        if (quantitativeContainer) {
+            quantitativeContainer.style.display = hasQuantitativeData === 'yes' ? 'block' : 'none';
+            console.log('Quantitative container:', hasQuantitativeData === 'yes' ? 'shown' : 'hidden');
+        }
+    }
+
+    // Function to load and append the next page to the container
+    function loadAndAppendNextPage(pageNumber) {
+        // Show loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'loading-indicator';
+        loadingIndicator.innerHTML = '<div class="spinner"></div><span>Loading next section...</span>';
+        document.querySelector('.form-pages-container').appendChild(loadingIndicator);
+
+        // Get the form page container
+        const formPagesContainer = document.querySelector('.form-pages-container');
+
+        try {
+            // Get template for the next page from the template container
+            const templateId = `template-form-page${pageNumber}`;
+            const template = document.getElementById(templateId);
+
+            if (!template) {
+                throw new Error(`Template not found: ${templateId}`);
+            }
+
+            // Clone the template content
+            const pageContent = template.content.cloneNode(true);
+
+            // Remove loading indicator
+            loadingIndicator.remove();
+
+            // Append the new page to the container
+            formPagesContainer.appendChild(pageContent);
+
+            // Get the newly added form page
+            const newPage = document.getElementById(`form-page${pageNumber}`);
+
+            // Add fade-in class for animation
+            if (newPage) {
+                newPage.classList.add('fade-in');
+
+                // Scroll to the newly added page
+                newPage.scrollIntoView({ behavior: 'smooth' });
+
+                // Fill in form fields from session data if available, but only if this is not initial page load
+                if (isPageInitialLoad) {
+                    // Clear form fields on initial load/refresh to ensure clean state
+                    clearFormFieldsInPage(newPage);
+                    // Set flag to false after first dynamic page load
+                    isPageInitialLoad = false;
+                } else {
+                    // Fill with cached data for subsequent navigations
+                    fillFormFieldsInPage(newPage);
+                }
+
+                // If loading page 4, update the particle details sections
+                if (pageNumber === 4) {
+                    updateFormPage4Sections();
+                }
+            }
+        } catch (error) {
+            console.error('Error loading next form page:', error);
+            loadingIndicator.remove();
+
+            // Show error message
+            const errorMessage = document.createElement('div');
+            errorMessage.className = 'error-message';
+            errorMessage.textContent = 'Failed to load the next section. Please try again.';
+            formPagesContainer.appendChild(errorMessage);
+
+            // Add a retry button
+            const retryButton = document.createElement('button');
+            retryButton.textContent = 'Retry';
+            retryButton.className = 'retry-button';
+            retryButton.onclick = () => {
+                errorMessage.remove();
+                loadAndAppendNextPage(pageNumber);
+            };
+            errorMessage.appendChild(retryButton);
+        }
+    }
+
+    // Function to update progress indicator steps    // Function to track changes to form fields and save to session
+    function setupFormFieldTracking() {
+        // Use event delegation to handle changes on all form fields
+        document.querySelector('.form-pages-container').addEventListener('change', function(event) {
+            const element = event.target;
+
+            if (element.name && element.name.trim() !== '') {
+                if (element.type === 'radio' || element.type === 'checkbox') {
+                    if (element.checked) {
+                        formData[element.name] = element.value;
+                    }
+                } else {
+                    formData[element.name] = element.value;
+                }
+
+                sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            }
+        });
+    }
+
+    // Function to fill form fields from session storage
+    function fillFormFieldsFromSession() {
+        if (Object.keys(formData).length > 0) {
+            // For each saved form field, set the value
+            Object.keys(formData).forEach(fieldName => {
+                const elements = document.querySelectorAll(`[name="${fieldName}"]`);
+                elements.forEach(element => {
+                    if (element.tagName === 'SELECT' || element.tagName === 'TEXTAREA' ||
+                        (element.tagName === 'INPUT' &&
+                            element.type !== 'radio' &&
+                            element.type !== 'checkbox')) {
+                        element.value = formData[fieldName];
+                    } else if (element.tagName === 'INPUT' && element.type === 'radio') {
+                        if (element.value === formData[fieldName]) {
+                            element.checked = true;
+                        }
+                    } else if (element.tagName === 'INPUT' && element.type === 'checkbox') {
+                        element.checked = formData[fieldName] === 'on' || formData[fieldName] === true;
+                    }
+                });
+            });
+        }
+    }    // Function to set up summary generation
+    function setupSummaryGeneration() {
+        console.log('=== Setting up summary generation ===');
+        
+        // Check if we're already on page 5 and generate summary if needed
+        setTimeout(() => {
+            const summaryContainer = document.getElementById('summary-container');
+            if (summaryContainer) {
+                console.log('Summary container found, generating summary immediately');
+                generateSummary();
+            } else {
+                console.log('Summary container not found');
+            }
+        }, 100);
+
+        // Set up observer to watch for summary container being loaded
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        // Check if the node itself or any of its children contains the summary container
+                        const summaryContainer = node.querySelector ? node.querySelector('#summary-container') : null;
+                        if (summaryContainer || node.id === 'summary-container') {
+                            console.log('Summary container detected via mutation observer');
+                            setTimeout(() => generateSummary(), 50);
+                        }
+                        
+                        // Also check for page 5
+                        if (node.id === 'form-page5') {
+                            console.log('Page 5 detected via mutation observer');
+                            setTimeout(() => generateSummary(), 100);
+                        }
+                    }
+                });
+            });
+        });
+
+        // Observe the whole document body for changes
+        observer.observe(document.body, { childList: true, subtree: true });
+        
+        // Also set up interval check as fallback
+        const intervalCheck = setInterval(() => {
+            const summaryContainer = document.getElementById('summary-container');
+            if (summaryContainer && summaryContainer.innerHTML.trim() === '') {
+                console.log('Summary container found empty, generating summary via interval check');
+                generateSummary();
+                clearInterval(intervalCheck);
+            }
+        }, 1000);
+        
+        // Clear interval after 30 seconds to avoid indefinite checking
+        setTimeout(() => clearInterval(intervalCheck), 30000);
+    }// Function to generate summary for the final page
+    function generateSummary() {
+        console.log('=== generateSummary called ===');
+        const summaryContainer = document.getElementById('summary-container');
+        if (!summaryContainer) {
+            console.log('Summary container not found');
+            return;
+        }
+
+        // Get current form data from session storage
+        const currentFormData = JSON.parse(sessionStorage.getItem(formStorageKey) || '{}');
+        console.log('Current form data for summary:', currentFormData);
+
+        // Merge with global formData
+        formData = { ...formData, ...currentFormData };
+        console.log('Merged form data:', formData);
+
+        // Clear previous summary
+        summaryContainer.innerHTML = '';
+
+        // Check if we have any data to display
+        if (Object.keys(formData).length === 0) {
+            summaryContainer.innerHTML = '<p style="color: #666; font-style: italic;">No data available to display. Please fill out the previous pages.</p>';
+            return;
+        }        // Define field groups for better organization
+        const fieldGroups = {
+            'Location Information': [
+                'location_id', 'location_name', 'location_shortcode', 'location_description', 'latitude', 'longitude', 'acres',
+                'streetaddress', 'city', 'state', 'country', 'zip_code'
+            ],
+            'Sampling Event Information': [
+                'device_installation_period', 'sample_date', 'device_start_date', 'device_end_date',
+                'sample_time', 'sample_description'
+            ],
+            'Media Information': [
+                'media_type', 'water_type', 'sediment_type', 'soil_landscape_type', 'surface_landscape_type', 
+                'mixed_media_description'
+            ],
+            'Environmental Conditions': [
+                'air_temp', 'current_conditions', 'rainfall', 'environment_type'
+            ],
+            'Additional Water Information': [
+                'volume_sampled', 'water_depth', 'flow_velocity', 'suspended_solids', 'conductivity'
+            ],
+            'Additional Soil Information': [
+                'soil_dry_weight', 'soil_organic_matter', 'soil_moisture', 'soil_sand', 'soil_silt', 'soil_clay'
+            ],
+            'Quantitative Data': [
+                'has_quantitative_data', 'replicates_count', 'microplastics_count', 'fragments_count', 'packaging_count'
+            ],
+            'Sample Amounts': [
+                'microplastics_sample_amount', 'microplastics_sample_unit', 
+                'fragments_sample_amount', 'fragments_sample_unit',
+                'packaging_sample_amount', 'packaging_sample_unit'
+            ],
+            'Microplastics Size Distribution': [
+                'mp_size_lt_1um', 'mp_size_1_20um', 'mp_size_20_100um', 'mp_size_100um_1mm', 'mp_size_1_5mm'
+            ],
+            'Microplastics Color Distribution': [
+                'fragment_color_clear', 'fragment_color_opaque_light', 'fragment_color_opaque_dark', 'fragment_color_mixed'
+            ],
+            'Microplastics Form Distribution': [
+                'mp_form_fiber', 'mp_form_pellet', 'mp_form_fragment', 'mp_form_film', 'mp_form_foam'
+            ],
+            'Microplastics Polymer Types': [
+                'mp_polymer_pet', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe', 'mp_polymer_pp', 'mp_polymer_ps',
+                'mp_polymer_pc', 'mp_polymer_pan', 'mp_polymer_pmma', 'mp_polymer_pa', 'mp_polymer_abs',
+                'mp_polymer_polyester_fiber', 'mp_polymer_acrylic_fiber', 'mp_polymer_pe_fiber', 'mp_polymer_pp_fiber',
+                'mp_polymer_tire_rubber', 'mp_polymer_natural_rubber', 'mp_polymer_synthetic_rubber',
+                'mp_polymer_mixed', 'mp_polymer_unknown', 'mp_polymer_other'
+            ],
+            'Microplastics Estimation Method': [
+                'mp_estimate_method'
+            ],
+            'Fragments Form Distribution': [
+                'fragment_form_fiber', 'fragment_form_pellet', 'fragment_form_film', 'fragment_form_foam', 'fragment_form_hardplastic'
+            ],
+            'Fragments Polymer Types': [
+                'fragment_polymer_pet', 'fragment_polymer_hdpe', 'fragment_polymer_pvc', 'fragment_polymer_ldpe', 'fragment_polymer_pp', 'fragment_polymer_ps',
+                'fragment_polymer_pc', 'fragment_polymer_pan', 'fragment_polymer_pmma', 'fragment_polymer_pa', 'fragment_polymer_abs',
+                'fragment_polymer_polyester_fiber', 'fragment_polymer_acrylic_fiber', 'fragment_polymer_pe_fiber', 'fragment_polymer_pp_fiber',
+                'fragment_polymer_tire_rubber', 'fragment_polymer_natural_rubber', 'fragment_polymer_synthetic_rubber',
+                'fragment_polymer_mixed', 'fragment_polymer_unknown', 'fragment_polymer_other'
+            ],
+            'Fragments Estimation Method': [
+                'fragment_estimate_method'
+            ]
+        };        // Field labels mapping for better display
+        const fieldLabels = {
+            // Location Information
+            'location_id': 'Selected Location',
+            'location_name': 'Location Name',
+            'location_shortcode': 'Location Short Code',
+            'location_description': 'Location Description',
+            'latitude': 'Latitude',
+            'longitude': 'Longitude',
+            'acres': 'Area (km²)',
+            'streetaddress': 'Street Address',
+            'city': 'City',
+            'state': 'State',
+            'country': 'Country',
+            'zip_code': 'Zip Code',
+
+            // Sampling Event Information
+            'device_installation_period': 'Device Installation Period',
+            'sample_date': 'Sample Date',
+            'device_start_date': 'Device Start Date',
+            'device_end_date': 'Device End Date',
+            'sample_time': 'Collection Time',
+            'sample_description': 'Sample Description',
+
+            // Media Information
+            'media_type': 'Media Type',
+            'water_type': 'Water Type',
+            'sediment_type': 'Sediment Type',
+            'soil_landscape_type': 'Soil Landscape Type',
+            'surface_landscape_type': 'Surface Landscape Type',
+            'mixed_media_description': 'Mixed Media Description',
+
+            // Environmental Conditions
+            'air_temp': 'Air Temperature (°C)',
+            'current_conditions': 'Current Weather Conditions',
+            'rainfall': 'Rainfall (mm)',
+            'environment_type': 'Environment Type',
+
+            // Additional Water Information
+            'volume_sampled': 'Volume Sampled (L)',
+            'water_depth': 'Water Depth (m)',
+            'flow_velocity': 'Flow Velocity (m/s)',
+            'suspended_solids': 'Total Suspended Solids (mg/L)',
+            'conductivity': 'Conductivity (μS/cm)',
+
+            // Additional Soil Information
+            'soil_dry_weight': 'Soil Dry Weight (g)',
+            'soil_organic_matter': 'Soil Organic Matter (%)',
+            'soil_moisture': 'Soil Moisture Content (%)',
+            'soil_sand': 'Sand Content (%)',
+            'soil_silt': 'Silt Content (%)',
+            'soil_clay': 'Clay Content (%)',
+
+            // Quantitative Data
+            'has_quantitative_data': 'Quantitative Data Available',
+            'replicates_count': 'Number of Replicates',
+            'microplastics_count': 'Microplastics Count',
+            'fragments_count': 'Fragments Count',
+            'packaging_count': 'Packaging Items Count',
+
+            // Sample Amounts
+            'microplastics_sample_amount': 'Microplastics Sample Amount',
+            'microplastics_sample_unit': 'Microplastics Sample Unit',
+            'fragments_sample_amount': 'Fragments Sample Amount',
+            'fragments_sample_unit': 'Fragments Sample Unit',
+            'packaging_sample_amount': 'Packaging Sample Amount',
+            'packaging_sample_unit': 'Packaging Sample Unit',
+
+            // Microplastics Size Distribution
+            'mp_size_lt_1um': '< 1 μm (%)',
+            'mp_size_1_20um': '1-20 μm (%)',
+            'mp_size_20_100um': '20-100 μm (%)',
+            'mp_size_100um_1mm': '100 μm - 1 mm (%)',
+            'mp_size_1_5mm': '1-5 mm (%)',
+
+            // Microplastics Color Distribution
+            'fragment_color_clear': 'Clear (%)',
+            'fragment_color_opaque_light': 'Opaque Light (%)',
+            'fragment_color_opaque_dark': 'Opaque Dark (%)',
+            'fragment_color_mixed': 'Mixed Colors (%)',
+
+            // Microplastics Form Distribution
+            'mp_form_fiber': 'Fiber (%)',
+            'mp_form_pellet': 'Pellet (%)',
+            'mp_form_fragment': 'Fragment (%)',
+            'mp_form_film': 'Film (%)',
+            'mp_form_foam': 'Foam (%)',
+
+            // Microplastics Polymer Types
+            'mp_polymer_pet': 'PET - Polyethylene Terephthalate #1 (%)',
+            'mp_polymer_hdpe': 'HDPE - High-Density Polyethylene #2 (%)',
+            'mp_polymer_pvc': 'PVC - Polyvinyl Chloride #3 (%)',
+            'mp_polymer_ldpe': 'LDPE - Low-Density Polyethylene #4 (%)',
+            'mp_polymer_pp': 'PP - Polypropylene #5 (%)',
+            'mp_polymer_ps': 'PS - Polystyrene #6 (%)',
+            'mp_polymer_pc': 'PC - Polycarbonate (%)',
+            'mp_polymer_pan': 'PAN - Polyacrylonitrile (%)',
+            'mp_polymer_pmma': 'PMMA - Polymethyl Methacrylate (%)',
+            'mp_polymer_pa': 'PA - Polyamide/Nylon (%)',
+            'mp_polymer_abs': 'ABS - Acrylonitrile Butadiene Styrene (%)',
+            'mp_polymer_polyester_fiber': 'Polyester Fiber (%)',
+            'mp_polymer_acrylic_fiber': 'Acrylic Fiber (%)',
+            'mp_polymer_pe_fiber': 'Polyethylene Fiber (%)',
+            'mp_polymer_pp_fiber': 'Polypropylene Fiber (%)',
+            'mp_polymer_tire_rubber': 'Tire Rubber (SBR) (%)',
+            'mp_polymer_natural_rubber': 'Natural Rubber (%)',
+            'mp_polymer_synthetic_rubber': 'Synthetic Rubber (%)',
+            'mp_polymer_mixed': 'Mixed/Composite Polymers (%)',
+            'mp_polymer_unknown': 'Unknown Polymer Type (%)',
+            'mp_polymer_other': 'Other Polymer Type (%)',
+
+            // Microplastics Estimation Method
+            'mp_estimate_method': 'Microplastics Estimation Method',
+
+            // Fragments Form Distribution
+            'fragment_form_fiber': 'Fiber (%)',
+            'fragment_form_pellet': 'Pellet (%)',
+            'fragment_form_film': 'Film (%)',
+            'fragment_form_foam': 'Foam (%)',
+            'fragment_form_hardplastic': 'Hard Plastic (%)',
+
+            // Fragments Polymer Types
+            'fragment_polymer_pet': 'PET - Polyethylene Terephthalate #1 (%)',
+            'fragment_polymer_hdpe': 'HDPE - High-Density Polyethylene #2 (%)',
+            'fragment_polymer_pvc': 'PVC - Polyvinyl Chloride #3 (%)',
+            'fragment_polymer_ldpe': 'LDPE - Low-Density Polyethylene #4 (%)',
+            'fragment_polymer_pp': 'PP - Polypropylene #5 (%)',
+            'fragment_polymer_ps': 'PS - Polystyrene #6 (%)',
+            'fragment_polymer_pc': 'PC - Polycarbonate (%)',
+            'fragment_polymer_pan': 'PAN - Polyacrylonitrile (%)',
+            'fragment_polymer_pmma': 'PMMA - Polymethyl Methacrylate (%)',
+            'fragment_polymer_pa': 'PA - Polyamide/Nylon (%)',
+            'fragment_polymer_abs': 'ABS - Acrylonitrile Butadiene Styrene (%)',
+            'fragment_polymer_polyester_fiber': 'Polyester Fiber (%)',
+            'fragment_polymer_acrylic_fiber': 'Acrylic Fiber (%)',
+            'fragment_polymer_pe_fiber': 'Polyethylene Fiber (%)',
+            'fragment_polymer_pp_fiber': 'Polypropylene Fiber (%)',
+            'fragment_polymer_tire_rubber': 'Tire Rubber (SBR) (%)',
+            'fragment_polymer_natural_rubber': 'Natural Rubber (%)',
+            'fragment_polymer_synthetic_rubber': 'Synthetic Rubber (%)',
+            'fragment_polymer_mixed': 'Mixed/Composite Polymers (%)',
+            'fragment_polymer_unknown': 'Unknown Polymer Type (%)',
+            'fragment_polymer_other': 'Other Polymer Type (%)',
+
+            // Fragments Estimation Method
+            'fragment_estimate_method': 'Fragments Estimation Method'
+        };        // Check if packaging items exist and add them to a separate section
+        const packagingItems = [];
+        Object.keys(formData).forEach(key => {
+            if (key.startsWith('packaging_') && key !== 'packaging_count') {
+                packagingItems.push(key);
+            }
+        });
+
+        if (packagingItems.length > 0) {
+            fieldGroups['Packaging Items'] = packagingItems;
+        }
+
+        // Create summary sections by field groups
+        for (const [groupTitle, fields] of Object.entries(fieldGroups)) {
+            // Skip certain groups based on conditions
+            if (groupTitle === 'Additional Water Information' && formData['media_type'] !== 'water') {
+                continue;
+            }
+            if (groupTitle === 'Additional Soil Information' && !['soil_sediment', 'in_soil', 'soil_litter'].includes(formData['media_type'])) {
+                continue;
+            }
+            if (groupTitle === 'Sample Amounts' && formData['has_quantitative_data'] !== 'yes') {
+                continue;
+            }
+            if (groupTitle.includes('Microplastics') && (!formData['microplastics_count'] || parseInt(formData['microplastics_count']) === 0)) {
+                continue;
+            }
+            if (groupTitle.includes('Fragments') && (!formData['fragments_count'] || parseInt(formData['fragments_count']) === 0)) {
+                continue;
+            }
+
+            // Create group header
+            const groupHeader = document.createElement('h4');
+            groupHeader.textContent = groupTitle;
+            groupHeader.style.marginBottom = '10px';
+            groupHeader.style.marginTop = '15px';
+            groupHeader.style.paddingBottom = '5px';
+            groupHeader.style.borderBottom = '1px solid #ddd';
+            summaryContainer.appendChild(groupHeader);
+
+            // Add fields from this group that have values
+            let hasValues = false;
+            fields.forEach(field => {
+                if (formData[field] && formData[field].toString().trim() !== '') {
+                    hasValues = true;
+
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'summary-item';
+                    itemDiv.style.display = 'flex';
+                    itemDiv.style.marginBottom = '8px';
+
+                    const labelDiv = document.createElement('div');
+                    labelDiv.className = 'summary-label';
+                    labelDiv.style.width = '40%';
+                    labelDiv.style.fontWeight = 'bold';
+                    labelDiv.textContent = fieldLabels[field] || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                    const valueDiv = document.createElement('div');
+                    valueDiv.className = 'summary-value';
+                    valueDiv.style.width = '60%';
+                    
+                    // Special handling for certain fields
+                    if (field.includes('_sample_amount') && formData[field.replace('_amount', '_unit')]) {
+                        valueDiv.textContent = `${formData[field]} ${formData[field.replace('_amount', '_unit')]}`;
+                    } else if (field === 'device_installation_period') {
+                        valueDiv.textContent = formData[field] === 'yes' ? 'Yes (Device installed for a period)' : 'No (Single collection event)';
+                    } else if (field === 'has_quantitative_data') {
+                        valueDiv.textContent = formData[field] === 'yes' ? 'Yes' : formData[field] === 'no' ? 'No' : 'Not specified';
+                    } else {
+                        valueDiv.textContent = formData[field];
+                    }
+
+                    itemDiv.appendChild(labelDiv);
+                    itemDiv.appendChild(valueDiv);
+                    summaryContainer.appendChild(itemDiv);
+                }
+            });
+
+            // If no values in this group, show message or remove header
+            if (!hasValues) {
+                summaryContainer.removeChild(groupHeader);
+            }
+        }
+
+        // Add a section for packaging details if needed
+        if (parseInt(formData['packaging_count']) > 0) {
+            // Create a header for packaging items
+            const packagingHeader = document.createElement('h4');
+            packagingHeader.textContent = `Packaging Items (${formData['packaging_count']})`;
+            packagingHeader.style.marginBottom = '10px';
+            packagingHeader.style.marginTop = '15px';
+            packagingHeader.style.paddingBottom = '5px';
+            packagingHeader.style.borderBottom = '1px solid #ddd';
+            summaryContainer.appendChild(packagingHeader);
+
+            // Group by item number
+            const itemCount = parseInt(formData['packaging_count']);
+            for (let i = 1; i <= itemCount; i++) {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'packaging-item-summary';
+                itemDiv.style.margin = '10px 0';
+                itemDiv.style.padding = '10px';
+                itemDiv.style.border = '1px solid #ddd';
+                itemDiv.style.borderRadius = '4px';
+
+                const itemHeader = document.createElement('h5');
+                itemHeader.textContent = `Packaging Item #${i}`;
+                itemHeader.style.marginTop = '0';
+                itemDiv.appendChild(itemHeader);
+
+                // Add each field for this item
+                const packagingFields = [
+                    { key: `packaging_id_${i}`, label: 'User Piece ID' },
+                    { key: `packaging_purpose_${i}`, label: 'Purpose' },
+                    { key: `packaging_recycle_code_${i}`, label: 'Recycle Code' },
+                    { key: `packaging_color_opacity_${i}`, label: 'Opacity Type' },
+                    { key: `packaging_color_${i}`, label: 'Color' }
+                ];
+
+                let hasItemData = false;
+                packagingFields.forEach(fieldInfo => {
+                    if (formData[fieldInfo.key]) {
+                        hasItemData = true;
+                        const fieldDiv = document.createElement('div');
+                        fieldDiv.style.display = 'flex';
+                        fieldDiv.style.marginBottom = '5px';
+
+                        const fieldLabel = document.createElement('div');
+                        fieldLabel.style.width = '40%';
+                        fieldLabel.style.fontWeight = 'bold';
+                        fieldLabel.textContent = fieldInfo.label + ':';
+
+                        const fieldValue = document.createElement('div');
+                        fieldValue.style.width = '60%';
+                        fieldValue.textContent = formData[fieldInfo.key];
+
+                        fieldDiv.appendChild(fieldLabel);
+                        fieldDiv.appendChild(fieldValue);
+                        itemDiv.appendChild(fieldDiv);
+                    }
+                });
+
+                if (hasItemData) {
+                    summaryContainer.appendChild(itemDiv);
+                }
+            }
+        }
+
+        // Add edit buttons for each section for better usability
+        const sectionHeaders = summaryContainer.querySelectorAll('h4');
+        sectionHeaders.forEach((header, index) => {
+            const sectionTitle = header.textContent;
+            let pageNumber = 1; // Default
+
+            // Determine which page this section belongs to
+            if (sectionTitle === 'Location Information') {
+                pageNumber = 1;
+            } else if (sectionTitle === 'Sample Details') {
+                pageNumber = 2;
+            } else if (sectionTitle === 'Media Information' || sectionTitle === 'Additional Information') {
+                pageNumber = 3;
+            } else {
+                pageNumber = 4;
+            }
+
+            const editButton = document.createElement('button');
+            editButton.type = 'button';
+            editButton.className = 'btn-edit-section';
+            editButton.textContent = 'Edit';
+            editButton.style.marginLeft = '10px';
+            editButton.style.fontSize = '12px';
+            editButton.style.padding = '2px 8px';
+            editButton.style.backgroundColor = '#f0f0f0';
+            editButton.style.border = '1px solid #ccc';
+            editButton.style.borderRadius = '3px';
+            editButton.style.cursor = 'pointer';
+
+            editButton.addEventListener('click', function() {
+                scrollToPage(pageNumber);
+            });
+
+            header.appendChild(editButton);
+        });
+
+        // Add "Other Fields" section to show any fields not covered in the defined groups
+        const allDefinedFields = new Set();
+        Object.values(fieldGroups).forEach(fields => {
+            fields.forEach(field => allDefinedFields.add(field));
+        });
+
+        const otherFields = Object.keys(formData).filter(field => 
+            !allDefinedFields.has(field) && 
+            formData[field] && 
+            formData[field].toString().trim() !== '' &&
+            !field.startsWith('packaging_') // These are handled separately
+        );
+
+        if (otherFields.length > 0) {
+            const otherHeader = document.createElement('h4');
+            otherHeader.textContent = 'Other Information';
+            otherHeader.style.marginBottom = '10px';
+            otherHeader.style.marginTop = '15px';
+            otherHeader.style.paddingBottom = '5px';
+            otherHeader.style.borderBottom = '1px solid #ddd';
+            summaryContainer.appendChild(otherHeader);
+
+            otherFields.forEach(field => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'summary-item';
+                itemDiv.style.display = 'flex';
+                itemDiv.style.marginBottom = '8px';
+
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'summary-label';
+                labelDiv.style.width = '40%';
+                labelDiv.style.fontWeight = 'bold';
+                labelDiv.textContent = fieldLabels[field] || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                const valueDiv = document.createElement('div');
+                valueDiv.className = 'summary-value';
+                valueDiv.style.width = '60%';
+                valueDiv.textContent = formData[field];
+
+                itemDiv.appendChild(labelDiv);
+                itemDiv.appendChild(valueDiv);
+                summaryContainer.appendChild(itemDiv);
+            });
+        }
+
+        console.log('Summary generation completed');
+    }
+
+    // Function to submit form data and continue iterating
+    function submitFormDataAndIterate() {
+        // Show loading state
+        const saveButton = document.getElementById('save-button');
+        const originalText = saveButton.textContent;
+        saveButton.textContent = 'Saving...';
+        saveButton.disabled = true;
+
+        // Add an iteration flag to indicate this is part of an iteration
+        const dataToSubmit = { ...formData, is_iteration: 'true' };
+
+        // Use fetch API to submit data
+        fetch('/api/save-form-data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(dataToSubmit)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    // Show success message
+                    alert('Data saved successfully! You can now enter another sample for the same location.');
+
+                    // Preserve location information for next iteration
+                    const locationData = {};
+                    const locationFields = [
+                        'location_id', 'location_name', 'latitude', 'longitude',
+                        'acres', 'address', 'zip_code', 'sample_date'
+                    ];
+
+                    // Save location data
+                    locationFields.foreach(field => {
+                        if (formData[field]) {
+                            locationData[field] = formData[field];
+                        }
+                    });
+
+                    // Clear the form data
+                    formData = {};
+
+                    // Restore location information
+                    Object.keys(locationData).forEach(key => {
+                        formData[key] = locationData[key];
+                    });
+
+                    // Save the updated form data to session storage
+                    sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+
+                    // Reset to page 2 (Sample Details)
+                    currentPage = 1;
+
+                    // Remove all pages except page 1
+                    for (let i = 2; i <= loadedPages; i++) {
+                        const pageElement = document.getElementById(`form-page${i}`);
+                        if (pageElement) {
+                            pageElement.remove();
+                        }
+                    }
+
+                    loadedPages = 1;
+
+                    // Re-fill form fields for page 1
+                    fillFormFieldsFromSession();
+
+                    // Load page 2 (Sample Details) and navigate to it
+                    loadAndAppendNextPage(2);
+                    loadedPages = 2;
+                    currentPage = 2;
+                    updateProgressSteps(currentPage);
+
+                    // Reset save button
+                    saveButton.textContent = originalText;
+                    saveButton.disabled = false;
+                } else {
+                    // Show error message
+                    alert('Error: ' + (data.message || 'Failed to save data'));
+                    saveButton.textContent = originalText;
+                    saveButton.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while saving the data. Please try again.');
+                saveButton.textContent = originalText;
+                saveButton.disabled = false;
+            });
+    }
+
+    // Function to submit form data silently without alert (returns Promise)
+    function saveFormDataSilently() {
+        console.log('=== FRONTEND SILENT SAVE ATTEMPT ===');
+        console.log('Form data to submit:', formData);
+        console.log('Form data JSON:', JSON.stringify(formData, null, 2));
+        
+        // Submit data directly to save endpoint
+        return fetch('/api/save-form-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => {
+            console.log('Silent save response status:', response.status);
+            if (!response.ok) {
+                throw new Error('Save network response was not ok: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Silent save success:', data);
+            if (data.success) {
+                return data; // Return success data
+            } else {
+                throw new Error(data.message || 'Save failed');
+            }
+        });
+    }
+
+    // Function to submit form data to the server (renamed to avoid conflicts)
+    function submitFormDataOnly() {
+        // Show loading state
+        const saveButton = document.getElementById('save-button');
+        const originalText = saveButton ? saveButton.textContent : 'Save';
+        if (saveButton) {
+            saveButton.textContent = 'Saving...';
+            saveButton.disabled = true;
+        }
+
+        // Create FormData object for AJAX submission
+        const formDataToSubmit = new FormData();
+
+        // Add all form data to FormData object
+        Object.keys(formData).forEach(key => {
+            formDataToSubmit.append(key, formData[key]);
+        });
+
+        console.log('=== FRONTEND SAVE ATTEMPT ===');
+        console.log('Form data to submit:', formData);
+        console.log('Form data JSON:', JSON.stringify(formData, null, 2));
+        
+        // Submit data directly to save endpoint
+        fetch('/api/save-form-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => {
+            console.log('Save response status:', response.status);
+            console.log('Save response headers:', response.headers);
+            if (!response.ok) {
+                throw new Error('Save network response was not ok: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Save endpoint success:', data);
+            if (data.success) {
+                // Show success message without redirect
+                alert('Data saved successfully!');
+                
+                // Re-enable save button for potential future saves
+                if (saveButton) {
+                    saveButton.textContent = originalText;
+                    saveButton.disabled = false;
+                }
+            } else {
+                // Show error message
+                alert('Error: ' + data.message);
+                if (saveButton) {
+                    saveButton.textContent = originalText;
+                    saveButton.disabled = false;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while saving the data. Please try again. Error: ' + error.message);
+            if (saveButton) {
+                saveButton.textContent = originalText;
+                saveButton.disabled = false;
+            }
+        });
+    }
+
+    // Handle packaging grid selection interface
+document.addEventListener('click', function(event) {
+    if (event.target.classList.contains('option-item')) {
+        const field = event.target.dataset.field;
+        const value = event.target.dataset.value;
+        const column = event.target.closest('.selection-column');
+        
+        // Remove selected class from all options in this column
+        const allOptions = column.querySelectorAll('.option-item');
+        allOptions.forEach(option => option.classList.remove('selected'));
+        
+        // Add selected class to clicked option
+        event.target.classList.add('selected');
+        
+        // Find the corresponding hidden input and update its value
+        const packagingItem = event.target.closest('.packaging-item');
+        let hiddenInput;
+        
+        if (field === 'packaging_purpose') {
+            hiddenInput = packagingItem.querySelector('.packaging-purpose-value');
+        } else if (field === 'packaging_recycle_code') {
+            hiddenInput = packagingItem.querySelector('.packaging-recycle-code-value');
+        } else if (field === 'packaging_color_opacity') {
+            hiddenInput = packagingItem.querySelector('.packaging-color-opacity-value');
+        } else if (field === 'packaging_color') {
+            hiddenInput = packagingItem.querySelector('.packaging-color-value');
+        }
+        
+        if (hiddenInput) {
+            hiddenInput.value = value;
+            
+            // Update formData and save to session
+            const itemNumber = packagingItem.querySelector('.item-number').textContent;
+            const fieldKey = `${field}_${itemNumber}`;
+            formData[fieldKey] = value;
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            
+            console.log(`Updated ${fieldKey} to: ${value}`);
+        }
+    }
+});
+
+// Function to restore selection state from form data
+function restorePackagingSelections() {
+    Object.keys(formData).forEach(key => {
+        if (key.startsWith('packaging_') && key !== 'packaging_count') {
+            const parts = key.split('_');
+            if (parts.length >= 3) {
+                const field = parts.slice(0, -1).join('_');
+                const itemNumber = parts[parts.length - 1];
+                const value = formData[key];
+                
+                // Find the corresponding option button and hidden input
+                const packagingItems = document.querySelectorAll('.packaging-item');
+                packagingItems.forEach(item => {
+                    const itemNumberSpan = item.querySelector('.item-number');
+                    if (itemNumberSpan && itemNumberSpan.textContent === itemNumber) {
+                        // Find the option button with matching field and value
+                        const optionButton = item.querySelector(`[data-field="${field}"][data-value="${value}"]`);
+                        if (optionButton) {
+                            // Remove selected from all options in this column
+                            const column = optionButton.closest('.selection-column');
+                            const allOptions = column.querySelectorAll('.option-item');
+                            allOptions.forEach(option => option.classList.remove('selected'));
+                            
+                            // Add selected to this option
+                            optionButton.classList.add('selected');
+                        }
+                        
+                        // Update the hidden input
+                        let hiddenInput;
+                        if (field === 'packaging_purpose') {
+                            hiddenInput = item.querySelector('.packaging-purpose-value');
+                        } else if (field === 'packaging_recycle_code') {
+                            hiddenInput = item.querySelector('.packaging-recycle-code-value');
+                        } else if (field === 'packaging_color_opacity') {
+                            hiddenInput = item.querySelector('.packaging-color-opacity-value');
+                        } else if (field === 'packaging_color') {
+                            hiddenInput = item.querySelector('.packaging-color-value');
+                        }
+                        
+                        if (hiddenInput) {
+                            hiddenInput.value = value;
+                        }
+                    }
+                });
+            }
+        }
+    });
+}
+});
+
+// Function to validate page 2 (sampling event information)
+function validatePage2() {
+    const devicePeriodRadio = document.querySelector('input[name="device_installation_period"]:checked');
+      if (!devicePeriodRadio) {
+        displayErrorMessage('Please select whether this sample came from a device installed for a period of time.');
+        return false;
+    }
+    
+    if (devicePeriodRadio.value === 'yes') {
+        // Validate device installation period dates
+        const startDate = document.getElementById('device-start-date')?.value;
+        const endDate = document.getElementById('device-end-date')?.value;
+          if (!startDate) {
+            displayErrorMessage('Please provide the device installation start date.');
+            return false;
+        }
+          if (!endDate) {
+            displayErrorMessage('Please provide the device removal/end date.');
+            return false;        }
+        
+        // Validate that end date is after start date
+        if (new Date(endDate) <= new Date(startDate)) {
+            displayErrorMessage('Device removal/end date must be after the installation start date.');
+            return false;
+        }
+    } else {
+        // Validate single collection date
+        const sampleDate = document.getElementById('sample-date')?.value;
+        
+        if (!sampleDate) {
+            displayErrorMessage('Please provide the plastic collection date.');
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// Helper function to show error messages
+async function displayErrorMessage(message) {
+    try {
+        if (window.showErrorMessage && typeof window.showErrorMessage === 'function') {
+            await window.showErrorMessage(message, 'Validation Error');
+        } else {
+            alert(message);
+        }
+    } catch (error) {
+        console.error('Error showing error message:', error);
+        alert(message);
+    }
+}
+
+// Function to initialize device installation period radio button
+function initializeDeviceInstallationPeriod() {
+    console.log('Initializing device installation period radio button');
+    
+    // Check if we're on the correct page (page 2)
+    const devicePeriodRadios = document.querySelectorAll('input[name="device_installation_period"]');
+    if (devicePeriodRadios.length === 0) {
+        console.log('Device installation period radios not found on this page');
+        return;
+    }
+    
+    // Check if any radio is already selected
+    const checkedRadio = document.querySelector('input[name="device_installation_period"]:checked');
+    
+    if (!checkedRadio) {
+        console.log('No device installation period radio selected, setting default to "no"');
+        // Set default to "no" (single collection event)
+        const noRadio = document.getElementById('device-period-no');
+        if (noRadio) {
+            noRadio.checked = true;
+            console.log('Default radio button set to "no"');
+            
+            // Trigger change event to ensure UI is updated correctly
+            const changeEvent = new Event('change', { bubbles: true });
+            noRadio.dispatchEvent(changeEvent);
+        }
+    } else {
+        console.log('Device installation period radio already selected:', checkedRadio.value);
+    }
+}
+
+// Debug function to check session storage
+window.debugFormData = function() {
+    const data = JSON.parse(sessionStorage.getItem(formStorageKey) || '{}');
+    console.log('Current form data in session storage:', data);
+    console.log('formStorageKey:', formStorageKey);
+    return data;
+};
+
+// Debug function to manually populate some test data
+window.addTestData = function() {
+    const testData = {
+        'location_name': 'Test Location',
+        'latitude': '42.3601',
+        'longitude': '-71.0589',
+        'sample_date': '2025-06-18',
+        'media_type': 'water',
+        'sample_description': 'Test sample description'
+    };
+    
+    const existingData = JSON.parse(sessionStorage.getItem(formStorageKey) || '{}');
+    const mergedData = { ...existingData, ...testData };
+    sessionStorage.setItem(formStorageKey, JSON.stringify(mergedData));
+    console.log('Test data added:', mergedData);
+    
+    // Trigger summary generation
+    if (window.generateSummary) {
+        window.generateSummary();
+    }
+};
+
+// Function to update sample amount unit options based on media type
+function updateSampleAmountUnits(mediaType) {
+    const unitSelects = document.querySelectorAll('.unit-select');
+    
+    unitSelects.forEach(select => {
+        // Remove existing classes
+        select.classList.remove('hide-water', 'hide-soil');
+        
+        // Reset visibility of all options
+        const options = select.querySelectorAll('option');
+        options.forEach(option => {
+            option.style.display = '';
+        });
+        
+        if (mediaType === 'water') {
+            // For water samples, hide soil units
+            select.classList.add('hide-soil');
+            const soilOptions = select.querySelectorAll('.soil-unit:not(.area-unit)');
+            soilOptions.forEach(option => {
+                option.style.display = 'none';
+            });
+        } else if (mediaType === 'soil_sediment' || mediaType === 'in_soil' || mediaType === 'soil_litter') {
+            // For soil/sediment samples, hide water units (except area)
+            select.classList.add('hide-water');
+            const waterOptions = select.querySelectorAll('.water-unit:not(.area-unit)');
+            waterOptions.forEach(option => {
+                option.style.display = 'none';
+            });
+        } else if (mediaType === 'mixed_composite') {
+            // For mixed media, show all options
+            // No hiding needed
+        }
+    });
+}
+
+// Add event listeners for count inputs to show/hide sample amount containers
+document.addEventListener('input', function(event) {
+    if (event.target.id === 'microplastics-count') {
+        const count = parseInt(event.target.value) || 0;
+        const container = document.getElementById('microplastics-amount-container');
+        if (container) {
+            container.style.display = count > 0 ? 'block' : 'none';
+        }
+    } else if (event.target.id === 'fragments-count') {
+        const count = parseInt(event.target.value) || 0;
+        const container = document.getElementById('fragments-amount-container');
+        if (container) {
+            container.style.display = count > 0 ? 'block' : 'none';
+        }
+    } else if (event.target.id === 'packaging-count') {
+        const count = parseInt(event.target.value) || 0;
+        const container = document.getElementById('packaging-amount-container');
+        if (container) {
+            container.style.display = count > 0 ? 'block' : 'none';
+        }
+    }        // Save sample amount data and polymer type data to session storage
+        if (event.target.name && (
+            event.target.name.includes('sample_amount') || 
+            event.target.name.includes('sample_unit') ||
+            event.target.name.includes('mp_polymer_') ||
+            event.target.name.includes('fragment_polymer_') ||
+            event.target.name.includes('mp_estimate_method') ||
+            event.target.name.includes('fragment_estimate_method')
+        )) {
+            const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+            formData[event.target.name] = event.target.value;
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+        }
+});
+
+// Add validation for polymer type percentages
+document.addEventListener('input', function(event) {
+    if (event.target.name && event.target.name.includes('mp_polymer_')) {
+        validatePolymerPercentages('mp');
+    } else if (event.target.name && event.target.name.includes('fragment_polymer_')) {
+        validatePolymerPercentages('fragment');
+    }
+});
+
+// Function to validate polymer type percentages
+function validatePolymerPercentages(type = 'mp') {
+    const prefix = type === 'mp' ? 'mp_polymer_' : 'fragment_polymer_';
+    const polymerInputs = document.querySelectorAll(`input[name^="${prefix}"]`);
+    let total = 0;
+    
+    polymerInputs.forEach(input => {
+        const value = parseFloat(input.value) || 0;
+        total += value;
+    });
+    
+    // Find or create warning element
+    const warningId = `${type}-polymer-percentage-warning`;
+    let warningElement = document.getElementById(warningId);
+    if (!warningElement) {
+        warningElement = document.createElement('div');
+        warningElement.id = warningId;
+        warningElement.className = 'percentage-warning';
+        warningElement.style.cssText = `
+            color: #dc3545;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-size: 14px;
+            display: none;
+        `;
+        
+        // Insert after the last polymer category in the appropriate section
+        const sectionId = type === 'mp' ? 'microplastics-details' : 'fragments-details';
+        const section = document.getElementById(sectionId);
+        if (section) {
+            const lastPolymerCategory = section.querySelector('.polymer-category:last-of-type');
+            if (lastPolymerCategory) {
+                lastPolymerCategory.parentNode.insertBefore(warningElement, lastPolymerCategory.nextSibling);
+            }
+        }
+    }
+    
+    if (total > 100) {
+        warningElement.textContent = `Warning: Total ${type === 'mp' ? 'microplastics' : 'fragments'} polymer percentages (${total.toFixed(1)}%) exceed 100%. Please adjust the values.`;
+        warningElement.style.display = 'block';
+    } else if (total > 0) {
+        warningElement.textContent = `Total ${type === 'mp' ? 'microplastics' : 'fragments'} polymer percentages: ${total.toFixed(1)}%`;
+        warningElement.style.display = 'block';
+        warningElement.style.color = '#155724';
+        warningElement.style.backgroundColor = '#d4edda';
+        warningElement.style.borderColor = '#c3e6cb';
+    } else {
+        warningElement.style.display = 'none';
+    }
+}

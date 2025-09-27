@@ -1,0 +1,171 @@
+<!-- Page 4: Additional Information -->
+<template id="template-form-page4">
+    <div class="form-page" id="form-page4" data-page="4">
+        <h2 class="form-section-title">Additional Sampling Information</h2>
+        <div class="form-section">
+            <div class="option-question">
+                <p>Do you want to enter more information about your sampling method, weather or environmental chemistry?</p>
+                <div class="radio-options">
+                    <label class="radio-option" style="display: none;">
+                        <input type="radio" name="additional_info" value="null" checked>
+                        <span class="radio-label">Null</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="additional_info" value="yes" class="toggle-additional-info">
+                        <span class="radio-label">Yes</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="additional_info" value="no" class="toggle-additional-info">
+                        <span class="radio-label">No</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Additional information sections - initially hidden -->
+            <div id="additional-info-sections" style="display: none;">
+                
+                
+                <!-- In Water section - Only shown when media type is water -->
+                <div class="info-section media-specific-section" id="water-section" data-media-type="water" style="display: none;">
+                    <h3 class="section-subtitle">In Water</h3>
+                    <div class="form-row">
+                        <label class="form-label">Total water depth at the sampling site (m):</label>
+                        <input type="number" step="0.01" name="total_water_depth" class="form-input" placeholder="Enter total depth in meters">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Water depth where the sample is collected (m):</label>
+                        <input type="number" step="0.01" name="sample_water_depth" class="form-input" placeholder="Enter sample depth in meters">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Water flow velocity (m/s):</label>
+                        <input type="number" step="0.01" name="water_flow_velocity" class="form-input" placeholder="Enter velocity in m/s">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Turbidity (NTU):</label>
+                        <input type="number" step="0.01" name="turbidity" class="form-input" placeholder="Enter turbidity in NTU">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Total suspended solids (mg/L):</label>
+                        <input type="number" step="0.01" name="total_suspended_solids" class="form-input" placeholder="Enter TSS in mg/L">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Dissolved oxygen (mg/L):</label>
+                        <input type="number" step="0.01" name="dissolved_oxygen" class="form-input" placeholder="Enter DO in mg/L">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Conductivity (S/m):</label>
+                        <input type="number" step="0.001" name="conductivity" class="form-input" placeholder="Enter conductivity in S/m">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Additional Notes:</label>
+                        <textarea name="water_additional_notes" class="form-textarea" rows="3" placeholder="Enter any additional information that could help interpret the data..."></textarea>
+                    </div>
+                </div>
+                
+                <!-- In Aquatic Sediment section - Only shown when media type is soil_sediment -->
+                <div class="info-section media-specific-section" id="sediment-section" data-media-type="soil_sediment" style="display: none;">
+                    <h3 class="section-subtitle">In Aquatic Sediment</h3>
+                    <div class="form-row">
+                        <label class="form-label">Sediment sample dry weight (g):</label>
+                        <input type="number" step="0.01" name="sediment_dry_weight" class="form-input" placeholder="Enter dry weight">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Sediment sample organic matter (%):</label>
+                        <input type="number" step="0.01" name="sediment_organic_matter" class="form-input" placeholder="Enter organic matter">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Sediment sample moisture content (%):</label>
+                        <input type="number" step="0.01" name="sediment_moisture" class="form-input" placeholder="Enter moisture content">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Sediment texture % sand:</label>
+                        <input type="number" step="0.01" name="sediment_sand" class="form-input" placeholder="Enter % sand">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Sediment texture % silt:</label>
+                        <input type="number" step="0.01" name="sediment_silt" class="form-input" placeholder="Enter % silt">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Sediment texture % clay:</label>
+                        <input type="number" step="0.01" name="sediment_clay" class="form-input" placeholder="Enter % clay">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Additional Notes:</label>
+                        <textarea name="sediment_additional_notes" class="form-textarea" rows="3" placeholder="Enter any additional information that could help interpret the data..."></textarea>
+                    </div>
+                </div>
+                
+                <!-- In Terrestrial Soil section - Only shown when media type is in_soil -->
+                <div class="info-section media-specific-section" id="terrestrial-soil-section" data-media-type="in_soil" style="display: none;">
+                    <h3 class="section-subtitle">In Terrestrial Soil</h3>
+                    <div class="form-row">
+                        <label class="form-label">Soil depth (meters):</label>
+                        <input type="number" step="0.01" name="soil_depth" class="form-input" placeholder="Enter soil depth">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Soil sample dry weight (g):</label>
+                        <input type="number" step="0.01" name="soil_sample_dry_weight" class="form-input" placeholder="Enter dry weight">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Soil sample organic matter (%):</label>
+                        <input type="number" step="0.01" name="soil_organic_matter" class="form-input" placeholder="Enter organic matter">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Soil sample moisture content (%):</label>
+                        <input type="number" step="0.01" name="soil_moisture" class="form-input" placeholder="Enter moisture content">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Soil texture % sand:</label>
+                        <input type="number" step="0.01" name="soil_sand" class="form-input" placeholder="Enter % sand">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Soil texture % silt:</label>
+                        <input type="number" step="0.01" name="soil_silt" class="form-input" placeholder="Enter % silt">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Soil texture % clay:</label>
+                        <input type="number" step="0.01" name="soil_clay" class="form-input" placeholder="Enter % clay">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Additional Notes:</label>
+                        <textarea name="soil_additional_notes" class="form-textarea" rows="3" placeholder="Enter any additional information that could help interpret the data..."></textarea>
+                    </div>
+                </div>
+                
+                <!-- On Soil or Land Surface section - Only shown when media type is soil_litter -->
+                <div class="info-section media-specific-section" id="surface-section" data-media-type="soil_litter" style="display: none;">
+                    <h3 class="section-subtitle">On Soil or Land Surface</h3>
+                    <div class="form-row">
+                        <label class="form-label">Area sampled (km²):</label>
+                        <input type="number" step="0.0001" name="surface_area_sampled" class="form-input" placeholder="Enter area in km²">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Permeable surfaces (%):</label>
+                        <input type="number" step="0.01" name="permeable_surfaces" class="form-input" placeholder="Enter percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Impermeable surfaces (%):</label>
+                        <input type="number" step="0.01" name="impermeable_surfaces" class="form-input" placeholder="Enter percentage" min="0" max="100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Additional Notes:</label>
+                        <textarea name="surface_additional_notes" class="form-textarea" rows="3" placeholder="Enter any additional information that could help interpret the data..."></textarea>
+                    </div>
+                </div>
+                
+                <!-- Mixed Media section - Only shown when media type is mixed_composite -->
+                <div class="info-section media-specific-section" id="mixed-section" data-media-type="mixed_composite" style="display: none;">
+                    <h3 class="section-subtitle">Mixed Media</h3>
+                    <div class="form-row">
+                        <label class="form-label">Additional Notes:</label>
+                        <textarea name="mixed_additional_notes" class="form-textarea" rows="3" placeholder="Enter any additional information that could help interpret the data..."></textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-navigation">
+                <button type="button" id="page4-continue" class="btn-continue" data-next="5">Continue</button>
+            </div>
+        </div>
+    </div>
+</template>
