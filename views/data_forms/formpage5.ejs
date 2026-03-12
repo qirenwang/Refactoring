@@ -8,15 +8,14 @@
         /* Compact grid for purpose-category details */
         #form-page5 .category-grid-compact {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 16px;
             align-items: flex-start;
         }
-        #form-page5 .category-grid-compact .left-stack,
-        #form-page5 .category-grid-compact .right-stack {
+        #form-page5 .category-section {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 8px;
         }
 
         /* Make inputs short in recycle/opacity/color grids */
@@ -28,6 +27,26 @@
         }
         #form-page5 .compact-grid input[type="number"] { width: 80px; }
         #form-page5 .compact-grid .form-label { white-space: nowrap; }
+
+        /* Inline loading indicator for polymer options */
+        .polymer-loading-indicator {
+            color: #666;
+            font-style: italic;
+            padding: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .polymer-loading-indicator::before {
+            content: "";
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ccc;
+            border-top-color: #333;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
     </style>
     <div class="form-page" id="form-page5" data-page="5">
         <h2 class="form-section-title">Sample Details</h2>
@@ -154,19 +173,19 @@
                     <div class="form-section-title">2. Color type: Percentage of particles estimated to be in each color type</div>
                     <div class="form-row">
                         <label class="form-label">Clear:</label>
-                        <input type="number" name="fragment_color_clear" class="form-input" placeholder="percentage" min="0" max="100">
+                        <input type="number" name="mp_color_clear" class="form-input" placeholder="percentage" min="0" max="100">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Opaque - Light:</label>
-                        <input type="number" name="fragment_color_opaque_light" class="form-input" placeholder="percentage" min="0" max="100">
+                        <input type="number" name="mp_color_opaque_light" class="form-input" placeholder="percentage" min="0" max="100">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Opaque - Dark:</label>
-                        <input type="number" name="fragment_color_opaque_dark" class="form-input" placeholder="percentage" min="0" max="100">
+                        <input type="number" name="mp_color_opaque_dark" class="form-input" placeholder="percentage" min="0" max="100">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Mixed:</label>
-                        <input type="number" name="fragment_color_mixed" class="form-input" placeholder="percentage" min="0" max="100">
+                        <input type="number" name="mp_color_mixed" class="form-input" placeholder="percentage" min="0" max="100">
                     </div>
 
                     <div class="form-section-title">3. Form: Percentage of particles estimated to be each form</div>
@@ -185,100 +204,12 @@
 
                     <div class="form-section-title">4. Polymer type: Percentage of particles estimated to be each polymer type</div>
                     
-                        <div class="polymer-category">
-                        <h4 class="polymer-category-title">Synthetic Plastics</h4>
-                        <div class="form-row">
-                            <label class="form-label">PETE (Polyethylene Terephthalate) - #1:</label>
-                            <input type="number" name="mp_polymer_pete" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">HDPE (High-Density Polyethylene) - #2:</label>
-                            <input type="number" name="mp_polymer_hdpe" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PVC (Polyvinyl Chloride) - #3:</label>
-                            <input type="number" name="mp_polymer_pvc" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">LDPE (Low-Density Polyethylene) - #4:</label>
-                            <input type="number" name="mp_polymer_ldpe" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PP (Polypropylene) - #5:</label>
-                            <input type="number" name="mp_polymer_pp" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PS (Polystyrene) - #6:</label>
-                            <input type="number" name="mp_polymer_ps" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PA (Polyamide) / Nylon:</label>
-                            <input type="number" name="mp_polymer_pa" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PC (Polycarbonate):</label>
-                            <input type="number" name="mp_polymer_pc" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PLA (Polylactic Acid):</label>
-                            <input type="number" name="mp_polymer_pla" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">ABS (Acrylonitrile Butadiene Styrene):</label>
-                            <input type="number" name="mp_polymer_abs" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">EVA (Ethylene-vinyl Acetate):</label>
-                            <input type="number" name="mp_polymer_eva" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PB (Polybutylene):</label>
-                            <input type="number" name="mp_polymer_pb" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PE UHMW (Ultra-high-molecular-weight Polyethylene):</label>
-                            <input type="number" name="mp_polymer_pe_uhmw" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PMMA (Polymethyl Methacrylate/Acrylic/Plexiglass):</label>
-                            <input type="number" name="mp_polymer_pmma" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">HIPS (High Impact Polystyrene):</label>
-                            <input type="number" name="mp_polymer_hips" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">EPS (Expanded Polystyrene):</label>
-                            <input type="number" name="mp_polymer_eps" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PAN (Polyacrylonitrile):</label>
-                            <input type="number" name="mp_polymer_pan" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
+                        <div id="mp-polymer-dynamic-container">
+                        <div class="polymer-loading-indicator">Loading polymer options...</div>
                     </div>
 
-                    <div class="polymer-category">
-                        <h4 class="polymer-category-title">Rubber/Bituminous</h4>
-                        <div class="form-row">
-                            <label class="form-label">Synthetic Rubber:</label>
-                            <input type="number" name="mp_polymer_rubber" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">Bitumen/Asphalt:</label>
-                            <input type="number" name="mp_polymer_bitumen" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                    </div>
-
-                    <div class="polymer-category">
-                        <h4 class="polymer-category-title">Other</h4>
-                        <div class="form-row">
-                            <label class="form-label">Other (specify in method description):</label>
-                            <input type="number" name="mp_polymer_other" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                    </div>
-
+                    <div class="form-section-title">5. Describe Method you used to estimate percentage:</div>
                     <div class="form-row">
-                        <label class="form-label">5. Describe Method you used to estimate percentage:</label>
                         <textarea name="mp_estimate_method" class="form-textarea" rows="3"></textarea>
                     </div>
                 </div>
@@ -336,100 +267,12 @@
 
                     <div class="form-section-title">3. Polymer type: Percentage of particles estimated to be each polymer type</div>
                     
-                        <div class="polymer-category">
-                        <h4 class="polymer-category-title">Synthetic Plastics</h4>
-                        <div class="form-row">
-                            <label class="form-label">PETE (Polyethylene Terephthalate) - #1:</label>
-                            <input type="number" name="fragment_polymer_pete" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">HDPE (High-Density Polyethylene) - #2:</label>
-                            <input type="number" name="fragment_polymer_hdpe" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PVC (Polyvinyl Chloride) - #3:</label>
-                            <input type="number" name="fragment_polymer_pvc" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">LDPE (Low-Density Polyethylene) - #4:</label>
-                            <input type="number" name="fragment_polymer_ldpe" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PP (Polypropylene) - #5:</label>
-                            <input type="number" name="fragment_polymer_pp" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PS (Polystyrene) - #6:</label>
-                            <input type="number" name="fragment_polymer_ps" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PA (Polyamide) / Nylon:</label>
-                            <input type="number" name="fragment_polymer_pa" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PC (Polycarbonate):</label>
-                            <input type="number" name="fragment_polymer_pc" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PLA (Polylactic Acid):</label>
-                            <input type="number" name="fragment_polymer_pla" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">ABS (Acrylonitrile Butadiene Styrene):</label>
-                            <input type="number" name="fragment_polymer_abs" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">EVA (Ethylene-vinyl Acetate):</label>
-                            <input type="number" name="fragment_polymer_eva" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PB (Polybutylene):</label>
-                            <input type="number" name="fragment_polymer_pb" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PE UHMW (Ultra-high-molecular-weight Polyethylene):</label>
-                            <input type="number" name="fragment_polymer_pe_uhmw" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PMMA (Polymethyl Methacrylate/Acrylic/Plexiglass):</label>
-                            <input type="number" name="fragment_polymer_pmma" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">HIPS (High Impact Polystyrene):</label>
-                            <input type="number" name="fragment_polymer_hips" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">EPS (Expanded Polystyrene):</label>
-                            <input type="number" name="fragment_polymer_eps" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">PAN (Polyacrylonitrile):</label>
-                            <input type="number" name="fragment_polymer_pan" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
+                    <div id="fragment-polymer-dynamic-container">
+                        <div class="polymer-loading-indicator">Loading polymer options...</div>
                     </div>
 
-                    <div class="polymer-category">
-                        <h4 class="polymer-category-title">Rubber/Bituminous</h4>
-                        <div class="form-row">
-                            <label class="form-label">Synthetic Rubber:</label>
-                            <input type="number" name="fragment_polymer_rubber" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">Bitumen/Asphalt:</label>
-                            <input type="number" name="fragment_polymer_bitumen" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                    </div>
-
-                    <div class="polymer-category">
-                        <h4 class="polymer-category-title">Other</h4>
-                        <div class="form-row">
-                            <label class="form-label">Other (specify in method description):</label>
-                            <input type="number" name="fragment_polymer_other" class="form-input" placeholder="percentage" min="0" max="100">
-                        </div>
-                    </div>
-
+                    <div class="form-section-title">4. Describe Method you used to estimate percentage:</div>
                     <div class="form-row">
-                        <label class="form-label">4. Describe Method you used to estimate percentage:</label>
                         <textarea name="fragment_estimate_method" class="form-textarea" rows="3"></textarea>
                     </div>
                 </div>
@@ -438,529 +281,384 @@
             <!-- Whole Packaging Details Section -->
             <div id="packaging-details" class="form-section details-section" style="display:none;">
                 <h3>Whole Packaging Details</h3>
-                <p>First provide the number of items in each category, then provide details for each category as needed:</p>
+                <p class="instruction">Note: First provide the number of items in each category, then provide details for each category as needed, making sure each column total matches the number you enter.</p>
                 
-                <!-- Purpose Categories Overview -->
+                <!-- Purpose Categories with Inline Details -->
                 <div class="purpose-overview">
                     <h4>Number of Items by Purpose Category</h4>
-                    <div class="form-row">
-                        <label class="form-label">Single-Use Food/Beverage Container:</label>
-                        <input type="number" name="packaging_count_single_use" class="form-input" min="0" placeholder="0">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Multi-Use Food/Beverage Container:</label>
-                        <input type="number" name="packaging_count_multi_use" class="form-input" min="0" placeholder="0">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Other Container:</label>
-                        <input type="number" name="packaging_count_other_container" class="form-input" min="0" placeholder="0">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Bag:</label>
-                        <input type="number" name="packaging_count_bag" class="form-input" min="0" placeholder="0">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Packing Materials:</label>
-                        <input type="number" name="packaging_count_packing" class="form-input" min="0" placeholder="0">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Other:</label>
-                        <input type="number" name="packaging_count_other" class="form-input" min="0" placeholder="0">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Unknown:</label>
-                        <input type="number" name="packaging_count_unknown" class="form-input" min="0" placeholder="0">
-                    </div>
-                </div>
 
-                <!-- Container Single-Use Food/Beverage Details -->
-                <div class="purpose-category-details">
-                    <h4>Container Single-Use Food/Beverage Details (Optional)</h4>
-
-                    <div class="category-grid-compact">
-                        <div class="left-stack">
-                            <div class="category-section">
-                                <h5>Recycle Code</h5>
-                                <div class="recycle-codes-grid compact-grid">
-                                    <div class="form-row">
-                                        <label class="form-label">1 (PET):</label>
-                                        <input type="number" name="single_use_recycle_1" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">2 (HDPE):</label>
-                                        <input type="number" name="single_use_recycle_2" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">3 (PVC):</label>
-                                        <input type="number" name="single_use_recycle_3" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">4 (LDPE):</label>
-                                        <input type="number" name="single_use_recycle_4" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">5 (PP):</label>
-                                        <input type="number" name="single_use_recycle_5" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">6 (PS):</label>
-                                        <input type="number" name="single_use_recycle_6" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">7 (Other):</label>
-                                        <input type="number" name="single_use_recycle_7" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">0 (Unknown):</label>
-                                        <input type="number" name="single_use_recycle_0" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="category-section">
-                                <h5>Color</h5>
-                                <div class="color-grid compact-grid">
-                                    <div class="form-row">
-                                        <label class="form-label">Clear:</label>
-                                        <input type="number" name="single_use_color_clear" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Black:</label>
-                                        <input type="number" name="single_use_color_black" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Blue:</label>
-                                        <input type="number" name="single_use_color_blue" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Green:</label>
-                                        <input type="number" name="single_use_color_green" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Pink:</label>
-                                        <input type="number" name="single_use_color_pink" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Purple:</label>
-                                        <input type="number" name="single_use_color_purple" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Red:</label>
-                                        <input type="number" name="single_use_color_red" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">White:</label>
-                                        <input type="number" name="single_use_color_white" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Yellow:</label>
-                                        <input type="number" name="single_use_color_yellow" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Other:</label>
-                                        <input type="number" name="single_use_color_other" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                </div>
-                            </div>
+                    <!-- Single-Use Food/Beverage Container with inline details -->
+                    <div class="purpose-category-block">
+                        <div class="form-row">
+                            <label class="form-label">Single-Use Food/Beverage Container:</label>
+                            <input type="number" name="packaging_count_single_use" class="form-input" min="0" placeholder="0">
                         </div>
 
-                        <div class="right-stack">
-                            <div class="category-section">
-                                <h5>Opacity Type</h5>
-                                <div class="opacity-grid compact-grid">
-                                    <div class="form-row">
-                                        <label class="form-label">Clear:</label>
-                                        <input type="number" name="single_use_opacity_clear" class="form-input" min="0" placeholder="0">
+                        <!-- Single-Use Details (Optional) - Inline -->
+                        <div class="inline-category-details" data-category="single_use" style="display:none; margin-left: 20px; margin-top: 15px; padding: 15px; background-color: #f9f9f9; border-radius: 8px;">
+                            <h5 style="margin-bottom: 15px; color: #666;">Container Single-Use Food/Beverage Details (Optional)</h5>
+                            <div class="category-grid-compact">
+                                <div class="category-section">
+                                    <h5>Recycle Code</h5>
+                                    <div class="recycle-codes-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="single_use_recycle_1" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="single_use_recycle_2" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="single_use_recycle_3" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="single_use_recycle_4" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="single_use_recycle_5" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="single_use_recycle_6" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="single_use_recycle_7" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="single_use_recycle_0" class="form-input" min="0" placeholder="0"></div>
                                     </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Opaque-Light:</label>
-                                        <input type="number" name="single_use_opacity_light" class="form-input" min="0" placeholder="0">
+                                </div>
+                                <div class="category-section">
+                                    <h5>Color</h5>
+                                    <div class="color-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="single_use_color_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Black:</label><input type="number" name="single_use_color_black" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="single_use_color_blue" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Green:</label><input type="number" name="single_use_color_green" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="single_use_color_pink" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="single_use_color_purple" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Red:</label><input type="number" name="single_use_color_red" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">White:</label><input type="number" name="single_use_color_white" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="single_use_color_yellow" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Other:</label><input type="number" name="single_use_color_other" class="form-input" min="0" placeholder="0"></div>
                                     </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Opaque-Dark:</label>
-                                        <input type="number" name="single_use_opacity_dark" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Mixed:</label>
-                                        <input type="number" name="single_use_opacity_mixed" class="form-input" min="0" placeholder="0">
+                                </div>
+                                <div class="category-section">
+                                    <h5>Opacity Type</h5>
+                                    <div class="opacity-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="single_use_opacity_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="single_use_opacity_light" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="single_use_opacity_dark" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="single_use_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
                                     </div>
                                 </div>
                             </div>
+                            <div class="category-warning" data-category="single_use" style="display:none; margin-top: 10px; color: #dc3545; font-weight: 600;"></div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Container Multi-Use Food/Beverage Details -->
-                <div class="purpose-category-details">
-                    <h4>Container Multi-Use Food/Beverage Details (Optional)</h4>
-
-                    <div class="category-grid-compact">
-                        <div class="left-stack">
-                            <div class="category-section">
-                                <h5>Recycle Code</h5>
-                                <div class="recycle-codes-grid compact-grid">
-                                    <div class="form-row">
-                                        <label class="form-label">1 (PET):</label>
-                                        <input type="number" name="multi_use_recycle_1" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">2 (HDPE):</label>
-                                        <input type="number" name="multi_use_recycle_2" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">3 (PVC):</label>
-                                        <input type="number" name="multi_use_recycle_3" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">4 (LDPE):</label>
-                                        <input type="number" name="multi_use_recycle_4" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">5 (PP):</label>
-                                        <input type="number" name="multi_use_recycle_5" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">6 (PS):</label>
-                                        <input type="number" name="multi_use_recycle_6" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">7 (Other):</label>
-                                        <input type="number" name="multi_use_recycle_7" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">0 (Unknown):</label>
-                                        <input type="number" name="multi_use_recycle_0" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="category-section">
-                                <h5>Color</h5>
-                                <div class="color-grid compact-grid">
-                                    <div class="form-row">
-                                        <label class="form-label">Clear:</label>
-                                        <input type="number" name="multi_use_color_clear" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Black:</label>
-                                        <input type="number" name="multi_use_color_black" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Blue:</label>
-                                        <input type="number" name="multi_use_color_blue" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Green:</label>
-                                        <input type="number" name="multi_use_color_green" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Pink:</label>
-                                        <input type="number" name="multi_use_color_pink" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Purple:</label>
-                                        <input type="number" name="multi_use_color_purple" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Red:</label>
-                                        <input type="number" name="multi_use_color_red" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">White:</label>
-                                        <input type="number" name="multi_use_color_white" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Yellow:</label>
-                                        <input type="number" name="multi_use_color_yellow" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Other:</label>
-                                        <input type="number" name="multi_use_color_other" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                </div>
-                            </div>
+                    <!-- Multi-Use Food/Beverage Container with inline details -->
+                    <div class="purpose-category-block">
+                        <div class="form-row">
+                            <label class="form-label">Multi-Use Food/Beverage Container:</label>
+                            <input type="number" name="packaging_count_multi_use" class="form-input" min="0" placeholder="0">
                         </div>
 
-                        <div class="right-stack">
-                            <div class="category-section">
-                                <h5>Opacity Type</h5>
-                                <div class="opacity-grid compact-grid">
-                                    <div class="form-row">
-                                        <label class="form-label">Clear:</label>
-                                        <input type="number" name="multi_use_opacity_clear" class="form-input" min="0" placeholder="0">
+                        <!-- Multi-Use Details (Optional) - Inline -->
+                        <div class="inline-category-details" data-category="multi_use" style="display:none; margin-left: 20px; margin-top: 15px; padding: 15px; background-color: #f9f9f9; border-radius: 8px;">
+                            <h5 style="margin-bottom: 15px; color: #666;">Container Multi-Use Food/Beverage Details (Optional)</h5>
+                            <div class="category-grid-compact">
+                                <div class="category-section">
+                                    <h5>Recycle Code</h5>
+                                    <div class="recycle-codes-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="multi_use_recycle_1" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="multi_use_recycle_2" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="multi_use_recycle_3" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="multi_use_recycle_4" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="multi_use_recycle_5" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="multi_use_recycle_6" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="multi_use_recycle_7" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="multi_use_recycle_0" class="form-input" min="0" placeholder="0"></div>
                                     </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Opaque-Light:</label>
-                                        <input type="number" name="multi_use_opacity_light" class="form-input" min="0" placeholder="0">
+                                </div>
+                                <div class="category-section">
+                                    <h5>Color</h5>
+                                    <div class="color-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="multi_use_color_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Black:</label><input type="number" name="multi_use_color_black" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="multi_use_color_blue" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Green:</label><input type="number" name="multi_use_color_green" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="multi_use_color_pink" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="multi_use_color_purple" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Red:</label><input type="number" name="multi_use_color_red" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">White:</label><input type="number" name="multi_use_color_white" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="multi_use_color_yellow" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Other:</label><input type="number" name="multi_use_color_other" class="form-input" min="0" placeholder="0"></div>
                                     </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Opaque-Dark:</label>
-                                        <input type="number" name="multi_use_opacity_dark" class="form-input" min="0" placeholder="0">
-                                    </div>
-                                    <div class="form-row">
-                                        <label class="form-label">Mixed:</label>
-                                        <input type="number" name="multi_use_opacity_mixed" class="form-input" min="0" placeholder="0">
+                                </div>
+                                <div class="category-section">
+                                    <h5>Opacity Type</h5>
+                                    <div class="opacity-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="multi_use_opacity_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="multi_use_opacity_light" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="multi_use_opacity_dark" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="multi_use_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
                                     </div>
                                 </div>
                             </div>
+                            <div class="category-warning" data-category="multi_use" style="display:none; margin-top: 10px; color: #dc3545; font-weight: 600;"></div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Container Other Details -->
-                <div class="purpose-category-details">
-                    <h4>Container Other Details (Optional)</h4>
-
-                    <div class="category-grid-compact">
-                        <div class="left-stack">
-                            <div class="category-section">
-                                <h5>Recycle Code</h5>
-                                <div class="recycle-codes-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="other_container_recycle_1" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="other_container_recycle_2" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="other_container_recycle_3" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="other_container_recycle_4" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="other_container_recycle_5" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="other_container_recycle_6" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="other_container_recycle_7" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="other_container_recycle_0" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
-
-                            <div class="category-section">
-                                <h5>Color</h5>
-                                <div class="color-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="other_container_color_clear" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Black:</label><input type="number" name="other_container_color_black" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="other_container_color_blue" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Green:</label><input type="number" name="other_container_color_green" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="other_container_color_pink" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="other_container_color_purple" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Red:</label><input type="number" name="other_container_color_red" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">White:</label><input type="number" name="other_container_color_white" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="other_container_color_yellow" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Other:</label><input type="number" name="other_container_color_other" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
+                    <!-- Other Container with inline details -->
+                    <div class="purpose-category-block">
+                        <div class="form-row">
+                            <label class="form-label">Other Container:</label>
+                            <input type="number" name="packaging_count_other_container" class="form-input" min="0" placeholder="0">
                         </div>
 
-                        <div class="right-stack">
-                            <div class="category-section">
-                                <h5>Opacity Type</h5>
-                                <div class="opacity-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="other_container_opacity_clear" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="other_container_opacity_light" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="other_container_opacity_dark" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="other_container_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
+                        <!-- Other Container Details (Optional) - Inline -->
+                        <div class="inline-category-details" data-category="other_container" style="display:none; margin-left: 20px; margin-top: 15px; padding: 15px; background-color: #f9f9f9; border-radius: 8px;">
+                            <h5 style="margin-bottom: 15px; color: #666;">Container Other Details (Optional)</h5>
+                            <div class="category-grid-compact">
+                                <div class="category-section">
+                                    <h5>Recycle Code</h5>
+                                    <div class="recycle-codes-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="other_container_recycle_1" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="other_container_recycle_2" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="other_container_recycle_3" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="other_container_recycle_4" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="other_container_recycle_5" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="other_container_recycle_6" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="other_container_recycle_7" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="other_container_recycle_0" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                                <div class="category-section">
+                                    <h5>Color</h5>
+                                    <div class="color-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="other_container_color_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Black:</label><input type="number" name="other_container_color_black" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="other_container_color_blue" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Green:</label><input type="number" name="other_container_color_green" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="other_container_color_pink" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="other_container_color_purple" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Red:</label><input type="number" name="other_container_color_red" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">White:</label><input type="number" name="other_container_color_white" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="other_container_color_yellow" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Other:</label><input type="number" name="other_container_color_other" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                                <div class="category-section">
+                                    <h5>Opacity Type</h5>
+                                    <div class="opacity-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="other_container_opacity_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="other_container_opacity_light" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="other_container_opacity_dark" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="other_container_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Bag Details -->
-                <div class="purpose-category-details">
-                    <h4>Bag Details (Optional)</h4>
-
-                    <div class="category-grid-compact">
-                        <div class="left-stack">
-                            <div class="category-section">
-                                <h5>Recycle Code</h5>
-                                <div class="recycle-codes-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="bag_recycle_1" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="bag_recycle_2" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="bag_recycle_3" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="bag_recycle_4" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="bag_recycle_5" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="bag_recycle_6" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="bag_recycle_7" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="bag_recycle_0" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
-
-                            <div class="category-section">
-                                <h5>Color</h5>
-                                <div class="color-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="bag_color_clear" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Black:</label><input type="number" name="bag_color_black" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="bag_color_blue" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Green:</label><input type="number" name="bag_color_green" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="bag_color_pink" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="bag_color_purple" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Red:</label><input type="number" name="bag_color_red" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">White:</label><input type="number" name="bag_color_white" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="bag_color_yellow" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Other:</label><input type="number" name="bag_color_other" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="right-stack">
-                            <div class="category-section">
-                                <h5>Opacity Type</h5>
-                                <div class="opacity-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="bag_opacity_clear" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="bag_opacity_light" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="bag_opacity_dark" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="bag_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
+                            <div class="category-warning" data-category="other_container" style="display:none; margin-top: 10px; color: #dc3545; font-weight: 600;"></div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Packing Materials Details -->
-                <div class="purpose-category-details">
-                    <h4>Packing Materials Details (Optional)</h4>
-
-                    <div class="category-grid-compact">
-                        <div class="left-stack">
-                            <div class="category-section">
-                                <h5>Recycle Code</h5>
-                                <div class="recycle-codes-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="packing_recycle_1" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="packing_recycle_2" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="packing_recycle_3" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="packing_recycle_4" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="packing_recycle_5" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="packing_recycle_6" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="packing_recycle_7" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="packing_recycle_0" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
-
-                            <div class="category-section">
-                                <h5>Color</h5>
-                                <div class="color-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="packing_color_clear" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Black:</label><input type="number" name="packing_color_black" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="packing_color_blue" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Green:</label><input type="number" name="packing_color_green" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="packing_color_pink" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="packing_color_purple" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Red:</label><input type="number" name="packing_color_red" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">White:</label><input type="number" name="packing_color_white" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="packing_color_yellow" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Other:</label><input type="number" name="packing_color_other" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
+                    <!-- Bag with inline details -->
+                    <div class="purpose-category-block">
+                        <div class="form-row">
+                            <label class="form-label">Bag:</label>
+                            <input type="number" name="packaging_count_bag" class="form-input" min="0" placeholder="0">
                         </div>
 
-                        <div class="right-stack">
-                            <div class="category-section">
-                                <h5>Opacity Type</h5>
-                                <div class="opacity-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="packing_opacity_clear" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="packing_opacity_light" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="packing_opacity_dark" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="packing_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
+                        <!-- Bag Details (Optional) - Inline -->
+                        <div class="inline-category-details" data-category="bag" style="display:none; margin-left: 20px; margin-top: 15px; padding: 15px; background-color: #f9f9f9; border-radius: 8px;">
+                            <h5 style="margin-bottom: 15px; color: #666;">Bag Details (Optional)</h5>
+                            <div class="category-grid-compact">
+                                <div class="category-section">
+                                    <h5>Recycle Code</h5>
+                                    <div class="recycle-codes-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="bag_recycle_1" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="bag_recycle_2" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="bag_recycle_3" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="bag_recycle_4" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="bag_recycle_5" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="bag_recycle_6" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="bag_recycle_7" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="bag_recycle_0" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                                <div class="category-section">
+                                    <h5>Color</h5>
+                                    <div class="color-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="bag_color_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Black:</label><input type="number" name="bag_color_black" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="bag_color_blue" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Green:</label><input type="number" name="bag_color_green" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="bag_color_pink" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="bag_color_purple" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Red:</label><input type="number" name="bag_color_red" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">White:</label><input type="number" name="bag_color_white" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="bag_color_yellow" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Other:</label><input type="number" name="bag_color_other" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                                <div class="category-section">
+                                    <h5>Opacity Type</h5>
+                                    <div class="opacity-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="bag_opacity_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="bag_opacity_light" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="bag_opacity_dark" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="bag_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
                                 </div>
                             </div>
+                            <div class="category-warning" data-category="bag" style="display:none; margin-top: 10px; color: #dc3545; font-weight: 600;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Packing Materials with inline details -->
+                    <div class="purpose-category-block">
+                        <div class="form-row">
+                            <label class="form-label">Packing Materials:</label>
+                            <input type="number" name="packaging_count_packing" class="form-input" min="0" placeholder="0">
+                        </div>
+
+                        <!-- Packing Materials Details (Optional) - Inline -->
+                        <div class="inline-category-details" data-category="packing" style="display:none; margin-left: 20px; margin-top: 15px; padding: 15px; background-color: #f9f9f9; border-radius: 8px;">
+                            <h5 style="margin-bottom: 15px; color: #666;">Packing Materials Details (Optional)</h5>
+                            <div class="category-grid-compact">
+                                <div class="category-section">
+                                    <h5>Recycle Code</h5>
+                                    <div class="recycle-codes-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="packing_recycle_1" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="packing_recycle_2" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="packing_recycle_3" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="packing_recycle_4" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="packing_recycle_5" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="packing_recycle_6" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="packing_recycle_7" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="packing_recycle_0" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                                <div class="category-section">
+                                    <h5>Color</h5>
+                                    <div class="color-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="packing_color_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Black:</label><input type="number" name="packing_color_black" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="packing_color_blue" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Green:</label><input type="number" name="packing_color_green" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="packing_color_pink" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="packing_color_purple" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Red:</label><input type="number" name="packing_color_red" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">White:</label><input type="number" name="packing_color_white" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="packing_color_yellow" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Other:</label><input type="number" name="packing_color_other" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                                <div class="category-section">
+                                    <h5>Opacity Type</h5>
+                                    <div class="opacity-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="packing_opacity_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="packing_opacity_light" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="packing_opacity_dark" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="packing_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="category-warning" data-category="packing" style="display:none; margin-top: 10px; color: #dc3545; font-weight: 600;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Other Purpose with inline details -->
+                    <div class="purpose-category-block">
+                        <div class="form-row">
+                            <label class="form-label">Other:</label>
+                            <input type="number" name="packaging_count_other" class="form-input" min="0" placeholder="0">
+                        </div>
+
+                        <!-- Other Purpose Details (Optional) - Inline -->
+                        <div class="inline-category-details" data-category="other_purpose" style="display:none; margin-left: 20px; margin-top: 15px; padding: 15px; background-color: #f9f9f9; border-radius: 8px;">
+                            <h5 style="margin-bottom: 15px; color: #666;">Other Purpose Details (Optional)</h5>
+                            <div class="category-grid-compact">
+                                <div class="category-section">
+                                    <h5>Recycle Code</h5>
+                                    <div class="recycle-codes-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="other_purpose_recycle_1" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="other_purpose_recycle_2" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="other_purpose_recycle_3" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="other_purpose_recycle_4" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="other_purpose_recycle_5" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="other_purpose_recycle_6" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="other_purpose_recycle_7" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="other_purpose_recycle_0" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                                <div class="category-section">
+                                    <h5>Color</h5>
+                                    <div class="color-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="other_purpose_color_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Black:</label><input type="number" name="other_purpose_color_black" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="other_purpose_color_blue" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Green:</label><input type="number" name="other_purpose_color_green" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="other_purpose_color_pink" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="other_purpose_color_purple" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Red:</label><input type="number" name="other_purpose_color_red" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">White:</label><input type="number" name="other_purpose_color_white" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="other_purpose_color_yellow" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Other:</label><input type="number" name="other_purpose_color_other" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                                <div class="category-section">
+                                    <h5>Opacity Type</h5>
+                                    <div class="opacity-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="other_purpose_opacity_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="other_purpose_opacity_light" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="other_purpose_opacity_dark" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="other_purpose_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="category-warning" data-category="other_purpose" style="display:none; margin-top: 10px; color: #dc3545; font-weight: 600;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Unknown Purpose with inline details -->
+                    <div class="purpose-category-block">
+                        <div class="form-row">
+                            <label class="form-label">Unknown:</label>
+                            <input type="number" name="packaging_count_unknown" class="form-input" min="0" placeholder="0">
+                        </div>
+
+                        <!-- Unknown Purpose Details (Optional) - Inline -->
+                        <div class="inline-category-details" data-category="unknown_purpose" style="display:none; margin-left: 20px; margin-top: 15px; padding: 15px; background-color: #f9f9f9; border-radius: 8px;">
+                            <h5 style="margin-bottom: 15px; color: #666;">Unknown Purpose Details (Optional)</h5>
+                            <div class="category-grid-compact">
+                                <div class="category-section">
+                                    <h5>Recycle Code</h5>
+                                    <div class="recycle-codes-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="unknown_purpose_recycle_1" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="unknown_purpose_recycle_2" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="unknown_purpose_recycle_3" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="unknown_purpose_recycle_4" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="unknown_purpose_recycle_5" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="unknown_purpose_recycle_6" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="unknown_purpose_recycle_7" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="unknown_purpose_recycle_0" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                                <div class="category-section">
+                                    <h5>Color</h5>
+                                    <div class="color-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="unknown_purpose_color_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Black:</label><input type="number" name="unknown_purpose_color_black" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="unknown_purpose_color_blue" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Green:</label><input type="number" name="unknown_purpose_color_green" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="unknown_purpose_color_pink" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="unknown_purpose_color_purple" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Red:</label><input type="number" name="unknown_purpose_color_red" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">White:</label><input type="number" name="unknown_purpose_color_white" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="unknown_purpose_color_yellow" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Other:</label><input type="number" name="unknown_purpose_color_other" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                                <div class="category-section">
+                                    <h5>Opacity Type</h5>
+                                    <div class="opacity-grid compact-grid">
+                                        <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="unknown_purpose_opacity_clear" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="unknown_purpose_opacity_light" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="unknown_purpose_opacity_dark" class="form-input" min="0" placeholder="0"></div>
+                                        <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="unknown_purpose_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="category-warning" data-category="unknown_purpose" style="display:none; margin-top: 10px; color: #dc3545; font-weight: 600;"></div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Other Purpose Details -->
-                <div class="purpose-category-details">
-                    <h4>Other Purpose Details (Optional)</h4>
-
-                    <div class="category-grid-compact">
-                        <div class="left-stack">
-                            <div class="category-section">
-                                <h5>Recycle Code</h5>
-                                <div class="recycle-codes-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="other_purpose_recycle_1" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="other_purpose_recycle_2" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="other_purpose_recycle_3" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="other_purpose_recycle_4" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="other_purpose_recycle_5" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="other_purpose_recycle_6" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="other_purpose_recycle_7" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="other_purpose_recycle_0" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
-
-                            <div class="category-section">
-                                <h5>Color</h5>
-                                <div class="color-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="other_purpose_color_clear" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Black:</label><input type="number" name="other_purpose_color_black" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="other_purpose_color_blue" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Green:</label><input type="number" name="other_purpose_color_green" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="other_purpose_color_pink" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="other_purpose_color_purple" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Red:</label><input type="number" name="other_purpose_color_red" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">White:</label><input type="number" name="other_purpose_color_white" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="other_purpose_color_yellow" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Other:</label><input type="number" name="other_purpose_color_other" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="right-stack">
-                            <div class="category-section">
-                                <h5>Opacity Type</h5>
-                                <div class="opacity-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="other_purpose_opacity_clear" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="other_purpose_opacity_light" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="other_purpose_opacity_dark" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="other_purpose_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Unknown Purpose Details -->
-                <div class="purpose-category-details">
-                    <h4>Unknown Purpose Details (Optional)</h4>
-
-                    <div class="category-grid-compact">
-                        <div class="left-stack">
-                            <div class="category-section">
-                                <h5>Recycle Code</h5>
-                                <div class="recycle-codes-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">1 (PET):</label><input type="number" name="unknown_purpose_recycle_1" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">2 (HDPE):</label><input type="number" name="unknown_purpose_recycle_2" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">3 (PVC):</label><input type="number" name="unknown_purpose_recycle_3" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">4 (LDPE):</label><input type="number" name="unknown_purpose_recycle_4" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">5 (PP):</label><input type="number" name="unknown_purpose_recycle_5" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">6 (PS):</label><input type="number" name="unknown_purpose_recycle_6" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">7 (Other):</label><input type="number" name="unknown_purpose_recycle_7" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">0 (Unknown):</label><input type="number" name="unknown_purpose_recycle_0" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
-
-                            <div class="category-section">
-                                <h5>Color</h5>
-                                <div class="color-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="unknown_purpose_color_clear" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Black:</label><input type="number" name="unknown_purpose_color_black" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Blue:</label><input type="number" name="unknown_purpose_color_blue" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Green:</label><input type="number" name="unknown_purpose_color_green" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Pink:</label><input type="number" name="unknown_purpose_color_pink" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Purple:</label><input type="number" name="unknown_purpose_color_purple" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Red:</label><input type="number" name="unknown_purpose_color_red" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">White:</label><input type="number" name="unknown_purpose_color_white" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Yellow:</label><input type="number" name="unknown_purpose_color_yellow" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Other:</label><input type="number" name="unknown_purpose_color_other" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="right-stack">
-                            <div class="category-section">
-                                <h5>Opacity Type</h5>
-                                <div class="opacity-grid compact-grid">
-                                    <div class="form-row"><label class="form-label">Clear:</label><input type="number" name="unknown_purpose_opacity_clear" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Opaque-Light:</label><input type="number" name="unknown_purpose_opacity_light" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Opaque-Dark:</label><input type="number" name="unknown_purpose_opacity_dark" class="form-input" min="0" placeholder="0"></div>
-                                    <div class="form-row"><label class="form-label">Mixed:</label><input type="number" name="unknown_purpose_opacity_mixed" class="form-input" min="0" placeholder="0"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <div class="form-navigation">
@@ -1011,7 +709,7 @@
         const configs = [
             // Microplastics
             { id: 'microplastics-details', label: 'Microplastics - Size', names: ['mp_size_lt_1um','mp_size_1_20um','mp_size_20_100um','mp_size_100um_1mm','mp_size_1_5mm'] },
-            { id: 'microplastics-details', label: 'Microplastics - Color type', names: ['fragment_color_clear','fragment_color_opaque_light','fragment_color_opaque_dark','fragment_color_mixed'] },
+            { id: 'microplastics-details', label: 'Microplastics - Color type', names: ['mp_color_clear','mp_color_opaque_light','mp_color_opaque_dark','mp_color_mixed'] },
             { id: 'microplastics-details', label: 'Microplastics - Form', names: ['mp_form_fiber','mp_form_pellet','mp_form_fragment'] },
             { id: 'microplastics-details', label: 'Microplastics - Polymer type', pattern: '^mp_polymer_' },
 
@@ -1049,5 +747,89 @@
             alert('Please review your percentage entries:\n\n' + errors.map((er, i) => `${i+1}. ${er}`).join('\n'));
         }
     }, true);
+})();
+</script>
+
+<script>
+// Dynamic Polymer Loading
+(function() {
+    async function loadPolymerOptions() {
+        try {
+            const response = await fetch('/api/references');
+            if (!response.ok) throw new Error('Network response was not ok');
+            const result = await response.json();
+            
+            if (result.success && result.data && result.data.polymers) {
+                const polymers = result.data.polymers;
+                renderPolymerInputs('mp', polymers);
+                renderPolymerInputs('fragment', polymers);
+            } else {
+                throw new Error('Invalid data format received');
+            }
+        } catch (error) {
+            console.error('Error loading polymer references:', error);
+            const errDivs = document.querySelectorAll('#mp-polymer-dynamic-container, #fragment-polymer-dynamic-container');
+            errDivs.forEach(d => d.innerHTML = '<div class="error-message" style="color:red; padding:10px;">Error loading options. Please refresh the page.</div>');
+        }
+    }
+
+    function renderPolymerInputs(prefix, polymers) {
+        const containerId = `${prefix}-polymer-dynamic-container`;
+        const container = document.getElementById(containerId);
+        if (!container) {
+            console.log(`Container ${containerId} not found in DOM yet`);
+            return; // Element might not be in DOM if template not stamped yet
+        }
+
+        container.innerHTML = '';
+
+        // Wrap in a category div to match styling
+        const wrapper = document.createElement('div');
+        wrapper.className = 'polymer-category';
+
+        const title = document.createElement('h4');
+        title.className = 'polymer-category-title';
+        title.textContent = 'Polymers';
+        wrapper.appendChild(title);
+
+        polymers.forEach(p => {
+            const row = document.createElement('div');
+            row.className = 'form-row';
+
+            const label = document.createElement('label');
+            label.className = 'form-label';
+            const polymerCode = (p.Polymer_Code || '').trim();
+            const polymerFullName = (p.Polymer_FullName || '').trim();
+            let polymerLabel = polymerCode;
+
+            if (polymerCode.toLowerCase() === 'other') {
+                polymerLabel = 'Other (specify in method)';
+            } else if (polymerFullName) {
+                polymerLabel = `${polymerCode} (${polymerFullName})`;
+            }
+
+            label.textContent = `${polymerLabel}:`;
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            // Name: prefix_polymer_code (lowercase)
+            // Handle special chars if any. Assuming simple codes for now.
+            const code = polymerCode.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            input.name = `${prefix}_polymer_${code}`;
+            input.className = 'form-input';
+            input.placeholder = 'percentage';
+            input.min = '0';
+            input.max = '100';
+
+            row.appendChild(label);
+            row.appendChild(input);
+            wrapper.appendChild(row);
+        });
+
+        container.appendChild(wrapper);
+    }
+
+    // Expose for external calls (will be called by updatePage5Content in form-handler.js)
+    window.loadPolymerOptions = loadPolymerOptions;
 })();
 </script>

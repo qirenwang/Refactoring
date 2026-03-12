@@ -26,36 +26,107 @@
         <%- include('partials/sidebar') %>
     
     <div class="main-content">
-        <div class="instruction">
-            <p style="font-size: 16px; line-height: 1.6; color: var(--text-color);">
-                Some introduction about the upload rules:
-            </p>
-            <ol style="margin-top: 15px; margin-left: 20px; line-height: 1.6; color: var(--text-color);">
-                <li>First rule about file format and requirements</li>
-                <li>Second rule about data organization</li>
-            </ol>
+        <div class="upload-instructions">
+            <h2 class="form-section-title">File Upload Instructions</h2>
+            <div class="instruction-content">
+                <p style="font-size: 16px; line-height: 1.6; color: var(--text-color); margin-bottom: 20px;">
+                    Upload your microplastics data using Excel (.xlsx) or CSV (.csv) files. Please follow these guidelines:
+                </p>
+                <ol style="margin-top: 15px; margin-left: 20px; line-height: 1.6; color: var(--text-color);">
+                    <li><strong>File Format:</strong> Excel (.xlsx) or CSV (.csv) files only</li>
+                    <li><strong>Data Structure:</strong> Use the provided template format for proper data organization</li>
+                    <li><strong>Required Fields:</strong> Location information, sample date, and media type are mandatory</li>
+                    <li><strong>Data Validation:</strong> All percentage fields must sum to 100% (or leave blank)</li>
+                    <li><strong>File Size:</strong> Maximum file size is 10MB</li>
+                    <li><strong>Encoding:</strong> Use UTF-8 encoding for special characters</li>
+                </ol>
+            </div>
         </div>
         
-        <div style="margin: 30px 0;">
-            <div style="display: flex; align-items: center; margin-bottom: 25px;">
-                <span style="font-size: 16px; margin-right: 15px; color: var(--text-color);">
-                    link for file template:
-                </span>
-                <a href="#" class="login-btn" style="text-decoration: none;">download</a>
+        <div class="template-download-section" style="margin: 30px 0;">
+            <h3 style="color: var(--accent-color); margin-bottom: 20px;">Download Templates</h3>
+            <p style="margin-bottom: 20px; color: var(--text-color);">
+                Choose the template format that best fits your needs:
+            </p>
+            <div class="template-options" style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 25px;">
+                <div class="template-option">
+                    <a href="/api/download-template?type=comprehensive" class="btn btn-outline-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-download"></i>
+                        Comprehensive Template (Excel)
+                    </a>
+                    <p style="font-size: 14px; color: #666; margin: 8px 0 0 0;">
+                        Single spreadsheet with all data fields
+                    </p>
+                </div>
+                <div class="template-option">
+                    <a href="/api/download-template?type=multi-sheet" class="btn btn-outline-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-download"></i>
+                        Multi-Sheet Template (Excel)
+                    </a>
+                    <p style="font-size: 14px; color: #666; margin: 8px 0 0 0;">
+                        Separate sheets for locations, samples, and measurements
+                    </p>
+                </div>
+                <div class="template-option">
+                    <a href="/api/download-template?type=csv" class="btn btn-outline-info" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-download"></i>
+                        CSV Template
+                    </a>
+                    <p style="font-size: 14px; color: #666; margin: 8px 0 0 0;">
+                        Simple CSV format for basic data entry
+                    </p>
+                </div>
             </div>
+        </div>
             
-            <div style="margin-top: 50px;">
+            <div class="file-upload-section" style="margin-top: 50px; padding: 25px; background-color: var(--secondary-color); border-radius: var(--border-radius); border: 1px solid var(--border-color);">
+                <h3 style="color: var(--accent-color); margin-bottom: 20px;">
+                    <i class="fas fa-cloud-upload-alt"></i> Upload Your Data File
+                </h3>
+                
                 <form action="/api/upload-file-data" method="post" enctype="multipart/form-data" id="upload-form">
-                    <label style="display: block; font-size: 16px; margin-bottom: 15px; color: var(--text-color);">
-                        submit the file:
-                    </label>
-                    <input type="file" name="dataFile" id="dataFile" style="padding: 10px; border: 1px solid var(--border-color); border-radius: var(--border-radius); width: 100%; max-width: 400px;" accept=".csv,.xlsx,.json">
-                    <div style="margin-top: 25px;">
-                        <button type="submit" class="login-btn" style="border: none; cursor: pointer;">
-                            Upload File
-                        </button>
+                    <div class="file-input-container" style="margin-bottom: 20px;">
+                        <label for="dataFile" style="display: block; font-size: 16px; margin-bottom: 10px; color: var(--text-color); font-weight: 600;">
+                            Choose File:
+                        </label>
+                        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                            <input type="file" name="dataFile" id="dataFile" 
+                                style="padding: 12px; border: 2px solid var(--border-color); border-radius: var(--border-radius); background-color: white; width: 100%; max-width: 400px; font-size: 14px;" 
+                                accept=".csv,.xlsx,.xls" required>
+                            <button type="submit" class="btn btn-primary" style="border: none; cursor: pointer; padding: 12px 24px; font-size: 16px;" id="upload-btn">
+                                <i class="fas fa-upload"></i> Upload File
+                            </button>
+                        </div>
+                        <p style="font-size: 13px; color: #666; margin-top: 8px;">
+                            Accepted formats: .xlsx, .xls, .csv (Max size: 10MB)
+                        </p>
                     </div>
-                </form>            </div>
+
+                    <!-- Progress bar -->
+                    <div id="upload-progress" style="display: none; margin-top: 15px;">
+                        <div style="background-color: #f8f9fa; border-radius: 10px; overflow: hidden; height: 20px; margin-bottom: 10px;">
+                            <div id="progress-bar" style="height: 100%; background-color: var(--primary-color); width: 0%; transition: width 0.3s ease;"></div>
+                        </div>
+                        <p id="upload-status" style="font-size: 14px; color: var(--text-color); margin: 0;">Preparing upload...</p>
+                    </div>
+
+                    <!-- Validation results -->
+                    <div id="validation-results" style="display: none; margin-top: 20px;">
+                        <h4 style="color: var(--accent-color); margin-bottom: 15px;">
+                            <i class="fas fa-check-circle"></i> Validation Results
+                        </h4>
+                        <div id="validation-content"></div>
+                    </div>
+
+                    <!-- Error display -->
+                    <div id="upload-errors" style="display: none; margin-top: 20px;">
+                        <h4 style="color: #dc3545; margin-bottom: 15px;">
+                            <i class="fas fa-exclamation-triangle"></i> Upload Errors
+                        </h4>
+                        <div id="error-content"></div>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -65,6 +136,15 @@
 <script src="/js/file-upload.js"></script>
 <script>
 $(document).ready(function() {
+    // File input change handler for validation
+    $('#dataFile').on('change', function() {
+        const file = this.files[0];
+        if (file) {
+            validateFileSelection(file);
+        }
+    });
+
+    // Form submission handler
     $('#upload-form').on('submit', function(e) {
         e.preventDefault();
         
@@ -72,38 +152,204 @@ $(document).ready(function() {
         const fileInput = $('#dataFile')[0];
         
         if (!fileInput.files[0]) {
-            showAlert('Please select a file to upload.', 'danger');
+            showError('Please select a file to upload.');
+            return;
+        }
+
+        // Validate file before upload
+        const file = fileInput.files[0];
+        if (!validateFile(file)) {
             return;
         }
         
-        // Show loading state
-        const submitBtn = $(this).find('button[type="submit"]');
-        const originalText = submitBtn.text();
-        submitBtn.text('Uploading...').prop('disabled', true);
-        
+        // Start upload process
+        startUpload(formData);
+    });
+
+    // Function to validate file selection
+    function validateFileSelection(file) {
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        const allowedTypes = [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+            'application/vnd.ms-excel', // .xls
+            'text/csv' // .csv
+        ];
+
+        // Clear previous errors
+        hideError();
+
+        // File size validation
+        if (file.size > maxSize) {
+            showError(`File size (${(file.size / 1024 / 1024).toFixed(1)}MB) exceeds the maximum limit of 10MB.`);
+            $('#dataFile').val('');
+            return false;
+        }
+
+        // File type validation
+        if (!allowedTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/i)) {
+            showError('Invalid file type. Please select an Excel (.xlsx, .xls) or CSV (.csv) file.');
+            $('#dataFile').val('');
+            return false;
+        }
+
+        return true;
+    }
+
+    // Function to validate file before upload
+    function validateFile(file) {
+        return validateFileSelection(file);
+    }
+
+    // Function to start upload process
+    function startUpload(formData) {
+        // Show progress
+        showProgress();
+        updateProgress(0, 'Uploading file...');
+
+        // Disable upload button
+        const uploadBtn = $('#upload-btn');
+        const originalHtml = uploadBtn.html();
+        uploadBtn.html('<i class="fas fa-spinner fa-spin"></i> Uploading...').prop('disabled', true);
+
+        // Perform upload with progress tracking
         $.ajax({
             url: '/api/upload-file-data',
             type: 'POST',
             data: formData,
             processData: false,
             contentType: false,
+            xhr: function() {
+                const xhr = new window.XMLHttpRequest();
+                
+                // Upload progress
+                xhr.upload.addEventListener('progress', function(evt) {
+                    if (evt.lengthComputable) {
+                        const percentComplete = Math.round((evt.loaded / evt.total) * 100);
+                        updateProgress(percentComplete, `Uploading... ${percentComplete}%`);
+                    }
+                }, false);
+                
+                return xhr;
+            },
             success: function(response) {
-                if (response.success) {
-                    showAlert('File uploaded successfully!', 'success');
-                    $('#upload-form')[0].reset();
-                } else {
-                    showAlert('Error: ' + response.message, 'danger');
-                }
+                updateProgress(100, 'Processing file...');
+                
+                setTimeout(() => {
+                    if (response.success) {
+                        hideProgress();
+                        showValidationResults(response);
+                        $('#upload-form')[0].reset();
+                        showSuccess('File uploaded and processed successfully!');
+                    } else {
+                        hideProgress();
+                        showError('Upload failed: ' + (response.message || 'Unknown error'));
+                        if (response.errors && response.errors.length > 0) {
+                            showUploadErrors(response.errors);
+                        }
+                    }
+                }, 1000); // Delay to show completion
+                
+                // Re-enable upload button
+                uploadBtn.html(originalHtml).prop('disabled', false);
             },
             error: function(xhr, status, error) {
-                showAlert('Upload failed. Please try again.', 'danger');
-                console.error('Upload error:', error);
-            },
-            complete: function() {
-                submitBtn.text(originalText).prop('disabled', false);
+                hideProgress();
+                uploadBtn.html(originalHtml).prop('disabled', false);
+                
+                let errorMessage = 'Upload failed. Please try again.';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMessage = xhr.responseJSON.message;
+                } else if (error) {
+                    errorMessage = error;
+                }
+                
+                showError(errorMessage);
             }
         });
-    });
+    }
+
+    // UI helper functions
+    function showProgress() {
+        $('#upload-progress').show();
+        hideError();
+        hideValidationResults();
+    }
+
+    function hideProgress() {
+        $('#upload-progress').hide();
+    }
+
+    function updateProgress(percent, status) {
+        $('#progress-bar').css('width', percent + '%');
+        $('#upload-status').text(status);
+    }
+
+    function showError(message) {
+        $('#upload-errors').show();
+        $('#error-content').html(`<div class="alert alert-danger">${message}</div>`);
+        hideValidationResults();
+    }
+
+    function hideError() {
+        $('#upload-errors').hide();
+        $('#error-content').empty();
+    }
+
+    function showUploadErrors(errors) {
+        let errorHtml = '<ul style="margin: 0; padding-left: 20px;">';
+        errors.forEach(error => {
+            errorHtml += `<li style="margin-bottom: 5px;">${error}</li>`;
+        });
+        errorHtml += '</ul>';
+        
+        $('#upload-errors').show();
+        $('#error-content').html(`<div class="alert alert-danger">${errorHtml}</div>`);
+    }
+
+    function showValidationResults(response) {
+        if (response.validationResults) {
+            let resultHtml = '<div class="validation-summary">';
+            
+            if (response.validationResults.totalRecords) {
+                resultHtml += `<p><strong>Total Records Processed:</strong> ${response.validationResults.totalRecords}</p>`;
+            }
+            
+            if (response.validationResults.validRecords !== undefined) {
+                resultHtml += `<p><strong>Valid Records:</strong> ${response.validationResults.validRecords}</p>`;
+            }
+            
+            if (response.validationResults.invalidRecords !== undefined) {
+                resultHtml += `<p><strong>Invalid Records:</strong> ${response.validationResults.invalidRecords}</p>`;
+            }
+            
+            if (response.validationResults.warnings && response.validationResults.warnings.length > 0) {
+                resultHtml += '<h5>Warnings:</h5><ul>';
+                response.validationResults.warnings.forEach(warning => {
+                    resultHtml += `<li>${warning}</li>`;
+                });
+                resultHtml += '</ul>';
+            }
+            
+            resultHtml += '</div>';
+            
+            $('#validation-results').show();
+            $('#validation-content').html(resultHtml);
+        }
+    }
+
+    function hideValidationResults() {
+        $('#validation-results').hide();
+        $('#validation-content').empty();
+    }
+
+    function showSuccess(message) {
+        // Use existing alert system
+        if (typeof showAlert === 'function') {
+            showAlert(message, 'success');
+        } else {
+            alert(message);
+        }
+    }
 });
 
 function showAlert(message, type) {

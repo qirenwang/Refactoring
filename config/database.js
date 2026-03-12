@@ -8,11 +8,11 @@ const dbConfig = {
     password: process.env.DB_PASS || 'mysql',
     database: process.env.DB_NAME || 'sweetl23_partner_demo',
     charset: 'utf8mb4',
-    connectionLimit: 10,
-    acquireTimeout: 60000,
-    timeout: 60000,
-    reconnect: true
-    // connectionLimit: 10
+    // connectionLimit: 10,
+    // acquireTimeout: 60000,
+    // timeout: 60000,
+    // reconnect: true
+    connectionLimit: 10
 };
 
 // Create connection pool

@@ -740,6 +740,43 @@ body {
     transform: translateY(-2px);
 }
 
+/* Outline button variants */
+.btn-outline-primary {
+    background: transparent;
+    color: var(--primary-color);
+    border: 2px solid var(--primary-color);
+}
+
+.btn-outline-primary:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: translateY(-2px);
+}
+
+.btn-outline-secondary {
+    background: transparent;
+    color: #6c757d;
+    border: 2px solid #6c757d;
+}
+
+.btn-outline-secondary:hover {
+    background: #6c757d;
+    color: white;
+    transform: translateY(-2px);
+}
+
+.btn-outline-info {
+    background: transparent;
+    color: #17a2b8;
+    border: 2px solid #17a2b8;
+}
+
+.btn-outline-info:hover {
+    background: #17a2b8;
+    color: white;
+    transform: translateY(-2px);
+}
+
 /* Text color utilities */
 .text-warning {
     color: #f39c12;
@@ -1854,6 +1891,15 @@ body {
 .form-textarea {
     min-height: 100px;
     resize: vertical;
+}
+
+.inline-category-details.validation-error {
+    border: 1px solid #dc3545 !important;
+    box-shadow: 0 0 0 1px rgba(220, 53, 69, 0.08);
+}
+
+.inline-category-details .category-warning {
+    font-size: 0.95rem;
 }
 
 /* Wider input styles for better UX */
@@ -3094,4 +3140,170 @@ select {
 .btn:disabled:hover {
     transform: none;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Percentage validation styles */
+.percentage-validation-container {
+    margin: 10px 0;
+    padding: 12px;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.percentage-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+}
+
+.percentage-total {
+    font-weight: 600;
+    color: #495057;
+}
+
+.percentage-status {
+    font-weight: 500;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.percentage-status.valid {
+    color: #155724;
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+}
+
+.percentage-status.invalid {
+    color: #721c24;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+}
+
+/* Disabled button styles for percentage validation */
+button:disabled[title*="百分比"] {
+    background-color: #f8f9fa !important;
+    color: #6c757d !important;
+    border-color: #dee2e6 !important;
+    cursor: not-allowed !important;
+}
+
+button:disabled[title*="百分比"]:hover {
+    background-color: #f8f9fa !important;
+    transform: none !important;
+}
+
+/* Whole Package validation styles */
+.whole-package-validation-container {
+    margin: 15px 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.package-validation-summary h5 {
+    margin: 0 0 15px 0;
+    color: #495057;
+    font-weight: 600;
+}
+
+.validation-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    padding: 5px 0;
+}
+
+.validation-label {
+    font-weight: 500;
+    color: #495057;
+    flex: 1;
+}
+
+.validation-value {
+    font-weight: 600;
+    color: #007bff;
+    min-width: 40px;
+    text-align: center;
+}
+
+.validation-details {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #dee2e6;
+}
+
+.validation-subgroup {
+    margin-bottom: 15px;
+    padding: 10px;
+    background-color: #ffffff;
+    border-radius: 4px;
+    border-left: 3px solid #007bff;
+}
+
+.validation-subgroup:last-child {
+    margin-bottom: 0;
+}
+
+/* Disabled button styles for package validation */
+button:disabled[title*="包装"] {
+    background-color: #f8f9fa !important;
+    color: #6c757d !important;
+    border-color: #dee2e6 !important;
+    cursor: not-allowed !important;
+}
+
+button:disabled[title*="包装"]:hover {
+    background-color: #f8f9fa !important;
+    transform: none !important;
+}
+
+/* Back to New Media button styles */
+.back-to-new-media-btn {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+    color: white !important;
+    padding: 8px 16px;
+    font-size: 14px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+}
+
+.back-to-new-media-btn:hover {
+    background-color: #5a6268 !important;
+    border-color: #545b62 !important;
+    color: white !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.back-to-new-media-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.back-to-new-media-btn i {
+    font-size: 13px;
+}
+
+/* Form navigation adjustments */
+.form-navigation {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+.form-navigation .btn {
+    margin: 0;
 }

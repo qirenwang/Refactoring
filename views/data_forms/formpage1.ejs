@@ -5,7 +5,7 @@
     To manage locations, click user name at upper right corner and select My Locations.
     </div>
     <div class="instruction">
-        <span class="bold">Choose ONE</span> of the two following ways to enter the location where you collected plastics or microplastics:
+        <span class="bold">Choose ONE</span> of the 2 ways below to enter the sampling location. Reuse a previous location for repeat sampling, or enter a new location and then provide location details using coordinates, a full indoor address, or a ZIP code for approximate area only.
     </div>
     <div class="location-options">
         <div class="option">
@@ -22,7 +22,7 @@
             <!-- # add a note here -->
             <span class="option-title">Enter new location</span>
             <div class="instruction-note" style="color: #e74c3c; background-color: #fdf2f2; padding: 8px; margin: 8px 0; border-left: 4px solid #e74c3c; font-size: 14px;">
-                <strong>Important:</strong> If you want to enter a new location, please make sure no location is selected in "Select previously sampled location" above. Otherwise, all data entered in this new location form will be ignored.
+                <strong>Important:</strong> To create a brand new location, clear "Select previously sampled location" first. If an existing location is selected, only location description and coordinates are treated as event-level overrides.
             </div>
             <div class="location-form">                            <div class="form-row">
                     <label class="form-label">Location Name (<span style="color: red;">*</span>):</label>
@@ -63,7 +63,7 @@
                 
 
                 <div class="instruction">
-                    <span class="bold">Choose ONE</span> of the three options to enter location details: latitude/longitude, zip code, and address (for indoor sample collection only).
+                    For new locations, use <span class="bold">latitude/longitude</span> for precise outdoor sampling points, <span class="bold">full address + Find Address on Map</span> for indoor samples, or <span class="bold">ZIP code</span> when you can only share an approximate area.
                 </div>
 
                 
@@ -80,12 +80,13 @@
                     </div>
                 </div>
                 
-                <div class="coordinate-hint">Click on the map to select coordinates or click on an existing location marker</div>
+                <div class="coordinate-hint">Click the map to set coordinates, drag the marker to refine them, or type latitude and longitude manually.</div>
                 
                 <!-- Map container -->
                 <div id="map"></div>
 
-                <span class="form-label">Or Zip code</span> (for confidential data, or samples collected over a wide area):
+                <span class="form-label">Or ZIP code</span> (for confidential data or samples collected over a wide area):
+                <div class="coordinate-hint" style="margin-top: 6px;">ZIP code is kept for approximate area reporting only. It will not place a precise point on the map.</div>
                 <input type="text" name="zip_code" class="input-field" placeholder="zip code">
                 
                 <div class="form-row">
@@ -94,15 +95,20 @@
                 </div>
 
 
-                <span class="form-label"><span class="bold">For indoor:</span></span>
+                <span class="form-label"><span class="bold">For indoor:</span> Full address</span>
                 <div class="instruction-note" style="color: #e74c3c; background-color: #fdf2f2; padding: 8px; margin: 8px 0; border-left: 4px solid #e74c3c; font-size: 14px;">
-                <strong>Important:</strong> ONLY enter address if the sample was collected indoors.  All environmental samples should have either a latitude-longitude or zip code.  We will assume that the sample came from indoors if you provide an address.
-            </div>
+                <strong>Important:</strong> ONLY enter address if the sample was collected indoors. All environmental samples should have either latitude/longitude or ZIP code. We will assume the sample came from indoors if you provide an address.
+                </div>
+                <div class="coordinate-hint" style="margin-top: 6px;">Enter the full address, then select <span class="bold">Find Address on Map</span> to place the marker. Review the point and drag it if needed.</div>
                 <input type="text" name="streetaddress" class="input-field" placeholder="StreetAddress">
                 <div style="display: flex; gap: 8px; margin-top: 8px;">
                     <input type="text" name="city" class="input-field" placeholder="City" style="flex:1;">
                     <input type="text" name="state" class="input-field" placeholder="State" style="flex:1;">
                     <input type="text" name="country" class="input-field" placeholder="Country" style="flex:1;">
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px;">
+                    <button type="button" id="find-address-on-map" class="btn-continue" style="width: auto; padding: 8px 14px;">Find Address on Map</button>
+                    <div id="address-geocode-status" style="font-size: 13px; line-height: 1.4;"></div>
                 </div>
                 
 

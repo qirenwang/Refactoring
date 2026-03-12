@@ -5,8 +5,11 @@
  */
 
 (function() {
-    'use strict';    // Check if we're in development mode    const isDevelopment = window.location.hostname === 'localhost' || 
-                         window.location.hostname === '127.0.0.1' || 
+    'use strict';
+
+    // Check if we're in development mode
+    const isDevelopment = window.location.hostname === 'localhost' ||
+                         window.location.hostname === '127.0.0.1' ||
                          window.location.hostname.includes('dev') ||
                          window.location.port === '3000' ||
                          window.location.port === '3001';

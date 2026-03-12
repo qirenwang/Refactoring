@@ -9,163 +9,20 @@ let formData = {};
 const formStorageKey = 'microplastics_form_data';
 let isPageInitialLoad = true; // Flag to track if this is initial page load/refresh
 
-const PACKAGING_DETAIL_GROUPS = {
-    recycle: ['1', '2', '3', '4', '5', '6', '7', '0'],
-    color: ['clear', 'black', 'blue', 'green', 'pink', 'purple', 'red', 'white', 'yellow', 'other'],
-    opacity: ['clear', 'light', 'dark', 'mixed']
-};
-
-const PACKAGING_DETAIL_LABELS = {
-    recycle: 'Recycle codes total',
-    color: 'Color total',
-    opacity: 'Opacity total'
-};
-
-const PACKAGING_CATEGORY_CONFIG = [
-    { prefix: 'single_use', countField: 'packaging_count_single_use', label: 'Single-Use Food/Beverage Container' },
-    { prefix: 'multi_use', countField: 'packaging_count_multi_use', label: 'Multi-Use Food/Beverage Container' },
-    { prefix: 'other_container', countField: 'packaging_count_other_container', label: 'Other Container' },
-    { prefix: 'bag', countField: 'packaging_count_bag', label: 'Bag' },
-    { prefix: 'packing', countField: 'packaging_count_packing', label: 'Packing Materials' },
-    { prefix: 'other_purpose', countField: 'packaging_count_other', label: 'Other Purpose' },
-    { prefix: 'unknown_purpose', countField: 'packaging_count_unknown', label: 'Unknown Purpose' }
-];
-
-let runWholePackageValidation = () => {};
-
-// Build a user-friendly save error message for non-technical users
-function buildFriendlySaveError(status, data, currentFormState = {}) {
-    // Prefer server-provided details when present
-    const serverMsg = data && (data.message || data.error);
-    const serverErrors = Array.isArray(data && data.errors) ? data.errors : [];
-
-    // Special cases with actionable guidance
-    if (status === 400) {
-        // Missing location
-        if (serverMsg && serverMsg.toLowerCase().includes('location')) {
-            const hasNewLocationInputs = !!(
-                currentFormState.location_name ||
-                currentFormState.location_shortcode ||
-                currentFormState.location_description ||
-                currentFormState.latitude ||
-                currentFormState.longitude ||
-                currentFormState.streetaddress ||
-                currentFormState.city ||
-                currentFormState.state ||
-                currentFormState.country ||
-                currentFormState.zip_code
-            );
-            if (hasNewLocationInputs) {
-                return 'Could not save: You entered a new location but it has not been saved yet. Please go to Page 1 and click "Continue" to save the new location, or select a previous location from the dropdown.';
-            }
-            return 'Could not save: Please select a location on Page 1 (either choose a previous location or enter and save a new one).';
-        }
-
-        // Missing sample date or media type
-        if (serverMsg && (serverMsg.toLowerCase().includes('sample date') || serverMsg.toLowerCase().includes('media type'))) {
-            return 'Could not save: Please fill required fields on Page 2 — Sample Date and Media Type.';
-        }
-
-        // Percentage or package validation failures
-        if (serverMsg && serverMsg.toLowerCase().includes('percentage validation failed')) {
-            return 'Could not save: One or more percentage groups must total 100%. Please review the percentages shown and adjust them to sum to 100%.';
-        }
-        if (serverMsg && serverMsg.toLowerCase().includes('package validation failed')) {
-            return 'Could not save: Package counts are inconsistent. Ensure all purpose-category counts equal the Whole Packages total, and any filled detail group sums match the category total.';
-        }
-
-        // Generic 400 with server field errors
-        if (serverErrors.length > 0) {
-            const details = serverErrors.map(e => e.msg || e.message).filter(Boolean).slice(0, 3);
-            return 'Could not save: Some fields need attention. ' + details.join('; ');
-        }
-
-        // Fallback for 400
-        return 'Could not save: Some required information is missing or invalid. Please review the form and try again.';
-    }
-
-    // Other status codes
-    if (status >= 500) {
-        return 'Server error while saving. Please try again shortly. If this continues, contact support.';
-    }
-    return serverMsg || 'An error occurred while saving. Please try again.';
-}
-
-// Developer-facing structured log for failed saves
-function devLogSaveError(context, status, data, requestBody) {
-    try {
-        const payload = {
-            context,
-            status,
-            server: {
-                message: data && (data.message || data.error),
-                errors: data && data.errors,
-                code: data && data.code,
-                success: data && data.success
-            },
-            requestBody
-        };
-        // Always log warnings for failed saves; if mp_debug=1, log as a table + full object
-        if (typeof localStorage !== 'undefined' && localStorage.getItem('mp_debug') === '1') {
-            // Pretty console for dev
-            console.groupCollapsed(`Save failed [${context}] status=${status}`);
-            try { console.table(payload.server && payload.server.errors || []); } catch (_) {}
-            console.log('Details:', payload);
-            console.groupEnd();
-        } else {
-            console.warn('Save failed:', payload);
-        }
-    } catch (e) {
-        console.warn('Save failed (logging error):', status, data);
-    }
-}
-
-// Lightweight pre-submit validation to catch common issues before calling the API
-function preValidateBeforeSubmit(state) {
-    const issues = [];
-
-    // Location must exist (either selected or saved new location)
-    if (!state.location_id) {
-        const newLocationEntered = !!(
-            state.location_name || state.location_shortcode || state.location_description ||
-            state.latitude || state.longitude || state.streetaddress || state.city ||
-            state.state || state.country || state.zip_code
-        );
-        if (newLocationEntered) {
-            issues.push('Please go to Page 1 and click "Continue" to save the new location, or clear those fields and select a previous location.');
-        } else {
-            issues.push('Please select a location on Page 1.');
-        }
-    }
-
-    // Page 2 required fields
-    if (!state.sample_date) {
-        issues.push('Please enter Sample Date on Page 2.');
-    }
-    if (!state.media_type) {
-        issues.push('Please select Media Type on Page 2.');
-    }
-
-    return { ok: issues.length === 0, issues };
-}
-
 // Location validation and priority system functions - GLOBAL SCOPE
 async function validateAndProceedFromPage1() {
     console.log('=== validateAndProceedFromPage1 called ===');
-
+    
     try {
         const locationData = validateLocationInput();
         console.log('Location validation result:', locationData);
-
+        
         if (!locationData.isValid) {
             console.log('Validation failed, showing error:', locationData.message);
             await showValidationError(locationData.message);
             return;
         }
-
-        // Clear any existing validation error messages when validation succeeds
-        clearValidationError();
-
+        
         // Show confirmation dialog based on whether it's existing or new location
         if (locationData.isExistingLocation) {
             console.log('Showing existing location confirmation');
@@ -183,12 +40,7 @@ async function validateAndProceedFromPage1() {
 function validateLocationInput() {
     // Option 1: Previously sampled location (has priority)
     const locationSelect = document.getElementById('location-select');
-    const selectedLocationId = locationSelect ? locationSelect.value : '';
-
-    console.log('validateLocationInput - selectedLocationId:', selectedLocationId);
-    console.log('validateLocationInput - locationSelect.value:', locationSelect?.value);
-
-    // Option 2: New location fields
+    const selectedLocationId = locationSelect ? locationSelect.value : '';      // Option 2: New location fields
     const locationName = document.getElementById('location-name')?.value?.trim() || '';
     const locationShortCode = document.getElementById('location-shortcode')?.value?.trim() || '';
     const locationDescription = document.getElementById('location-description')?.value?.trim() || '';
@@ -199,83 +51,16 @@ function validateLocationInput() {
     const state = document.querySelector('input[name="state"]')?.value?.trim() || '';
     const country = document.querySelector('input[name="country"]')?.value?.trim() || '';
     const zipCode = document.querySelector('input[name="zip_code"]')?.value?.trim() || '';
-    const landUseCover = document.getElementById('land-use-cover')?.value?.trim() || '';
-    const acres = document.getElementById('acres')?.value?.trim() || '';
-
+    
     // Priority system: Option 1 overrides Option 2
-    // but allows sample-specific overrides for description/coordinates.
     if (selectedLocationId) {
-        const selectedOption = locationSelect.options[locationSelect.selectedIndex];
-        const selectedDescription = selectedOption?.getAttribute('data-description')?.trim() || '';
-        const selectedLatitude = selectedOption?.getAttribute('data-latitude')?.trim() || '';
-        const selectedLongitude = selectedOption?.getAttribute('data-longitude')?.trim() || '';
-
-        const hasCoordinateInput = latitude !== '' || longitude !== '';
-        if (hasCoordinateInput && (!latitude || !longitude)) {
-            return {
-                isValid: false,
-                message: 'Please provide both latitude and longitude when editing coordinates for an existing location.'
-            };
-        }
-
-        if (hasCoordinateInput) {
-            const lat = parseFloat(latitude);
-            const lng = parseFloat(longitude);
-
-            if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-                return {
-                    isValid: false,
-                    message: 'Please provide valid coordinates (latitude: -90 to 90, longitude: -180 to 180).'
-                };
-            }
-        }
-
-        const normalizeCoordinate = (value) => {
-            if (value === null || value === undefined || value === '') {
-                return '';
-            }
-            const parsed = parseFloat(value);
-            if (isNaN(parsed)) {
-                return String(value).trim();
-            }
-            return parsed.toFixed(6);
-        };
-
-        const normalizedCurrentLat = normalizeCoordinate(latitude);
-        const normalizedCurrentLng = normalizeCoordinate(longitude);
-        const normalizedSelectedLat = normalizeCoordinate(selectedLatitude);
-        const normalizedSelectedLng = normalizeCoordinate(selectedLongitude);
-
-        const latitudeChanged = hasCoordinateInput && normalizedCurrentLat !== normalizedSelectedLat;
-        const longitudeChanged = hasCoordinateInput && normalizedCurrentLng !== normalizedSelectedLng;
-
-        if (latitudeChanged !== longitudeChanged) {
-            return {
-                isValid: false,
-                message: 'Please update both latitude and longitude together for an existing location override.'
-            };
-        }
-
-        const locationOverrides = {};
-        if (locationDescription && locationDescription !== selectedDescription) {
-            locationOverrides.description = locationDescription;
-        }
-        if (latitudeChanged && longitudeChanged) {
-            locationOverrides.latitude = latitude;
-            locationOverrides.longitude = longitude;
-        }
-
-        console.log('Location select has value, returning valid with existing location');
         return {
             isValid: true,
             isExistingLocation: true,
             locationId: selectedLocationId,
-            locationName: selectedOption?.getAttribute('data-name') || selectedOption?.textContent || '',
-            locationOverrides: Object.keys(locationOverrides).length > 0 ? locationOverrides : null
+            locationName: locationSelect.options[locationSelect.selectedIndex].text
         };
-    }
-
-    // If Option 1 is not selected, validate Option 2
+    }      // If Option 1 is not selected, validate Option 2
     if (!locationName) {
         return {
             isValid: false,
@@ -320,9 +105,7 @@ function validateLocationInput() {
                 message: 'Please provide valid coordinates (latitude: -90 to 90, longitude: -180 to 180).'
             };
         }
-    }
-
-    return {
+    }      return {
         isValid: true,
         isExistingLocation: false,
         locationData: {
@@ -335,30 +118,15 @@ function validateLocationInput() {
             city: city || null,
             state: state || null,
             country: country || null,
-            zipCode: zipCode || null,
-            land_use_cover: landUseCover || null,
-            acres: acres || null
+            zipCode: zipCode || null
         }
     };
-}
-
-function clearValidationError() {
-    const errorElement = document.getElementById('location-validation-error');
-    if (errorElement) {
-        errorElement.remove();
-    }
-}
-
-function syncLocationMapFromInputs(options = {}) {
-    if (typeof window !== 'undefined' && typeof window.syncDataEntryMapFromInputs === 'function') {
-        window.syncDataEntryMapFromInputs(options);
-    }
 }
 
 async function showValidationError(message) {
     // Also show fancy modal for immediate attention
     await window.showErrorMessage(message, 'Validation Error');
-
+    
     // Keep the existing inline error display for reference
     let errorElement = document.getElementById('location-validation-error');
     if (!errorElement) {
@@ -374,12 +142,12 @@ async function showValidationError(message) {
             margin: 10px 0;
             font-weight: bold;
         `;
-
+        
         // Insert before the continue button
         const continueButton = document.getElementById('page1-continue');
         continueButton.parentNode.insertBefore(errorElement, continueButton);
     }
-
+    
     errorElement.textContent = message;
     errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -392,28 +160,6 @@ async function showExistingLocationConfirmation(locationData) {
             // Save the selection to form data
             formData['location_id'] = locationData.locationId;
             formData['location_type'] = 'existing';
-
-            const overrides = locationData.locationOverrides;
-            if (overrides) {
-                if (overrides.description) {
-                    formData['event_location_description'] = overrides.description;
-                } else {
-                    delete formData['event_location_description'];
-                }
-
-                if (overrides.latitude && overrides.longitude) {
-                    formData['event_latitude'] = overrides.latitude;
-                    formData['event_longitude'] = overrides.longitude;
-                } else {
-                    delete formData['event_latitude'];
-                    delete formData['event_longitude'];
-                }
-            } else {
-                delete formData['event_location_description'];
-                delete formData['event_latitude'];
-                delete formData['event_longitude'];
-            }
-
             sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
             
             // Clear any validation errors
@@ -559,30 +305,14 @@ function saveCurrentPageData() {
 
     // Save each element's value
     formElements.forEach(element => {
-        if (!element.name || element.name.trim() === '') {
-            return;
-        }
-
-        // Special handling for location select - don't overwrite the stored
-        // location ID when the user added a new location (option 2).
-        if (element.name === 'location_id') {
-            const value = element.value?.trim() || '';
-            if (value) {
-                formData[element.name] = value;
-            } else if (formData.location_type !== 'new') {
-                delete formData[element.name];
-            }
-            return;
-        }
-
-        if (element.type === 'radio' || element.type === 'checkbox') {
-            if (element.checked) {
+        if (element.name && element.name.trim() !== '') {
+            if (element.type === 'radio' || element.type === 'checkbox') {
+                if (element.checked) {
+                    formData[element.name] = element.value;
+                }
+            } else {
                 formData[element.name] = element.value;
-            } else if (element.type === 'checkbox') {
-                delete formData[element.name];
             }
-        } else {
-            formData[element.name] = element.value;
         }
     });
 
@@ -708,16 +438,11 @@ function updatePage5Content() {
             quantitativeContainer.style.display = 'block';
         }
     }
-
-    // Load polymer options dynamically
-    if (typeof window.loadPolymerOptions === 'function') {
-        window.loadPolymerOptions();
-    }
 }
 
 // Function to update page 5 sections (Particle Details) based on count values
 function updateFormPage5Sections() {
-    console.log('updateFormPage5Sections called');
+    console.log('updateFormPage4Sections called');
     
     // Get current form data from session storage
     const currentFormData = JSON.parse(sessionStorage.getItem('microplastics_form_data') || '{}');
@@ -762,10 +487,7 @@ function updateFormPage5Sections() {
     if (packagingAmountContainer) {
         packagingAmountContainer.style.display = packagingCount > 0 ? 'block' : 'none';
     }
-    if (typeof window.updateAllPackagingDetailsVisibility === 'function') {
-        window.updateAllPackagingDetailsVisibility();
-    }
-
+    
     // Update unit options based on selected media type
     updateSampleAmountUnits(currentFormData['media_type']);
     
@@ -869,14 +591,9 @@ function loadAndAppendNextPage(pageNumber) {
                 fillFormFieldsInPage(newPage);
             }
 
-            // If loading page 4, update additional info sections
+            // If loading page 4, update the particle details sections and auto-select additional info
             if (pageNumber === 4) {
-                updatePage4Content();
-            }
-
-            // If loading page 5, update the particle details sections and load polymer options
-            if (pageNumber === 5) {
-                updatePage5Content();
+                updateFormPage4Sections();
             }
         }
     } catch (error) {
@@ -955,9 +672,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Set up packaging count handler - call only once
     setupPackagingCountHandler();
-
-    // Set up packaging category detail toggles
-    setupPackagingCategoryDetailsToggle();
 
     // Set up percentage validation - call only once
     setupPercentageValidation();
@@ -1147,19 +861,14 @@ document.addEventListener('DOMContentLoaded', function() {
         // Get elements
         const locationSelect = document.getElementById('location-select');
         const newLocationForm = document.querySelector('.location-form');
-        const locationNameInput = document.getElementById('location-name');
-        const locationShortCodeInput = document.getElementById('location-shortcode');
-        const locationDescriptionInput = document.getElementById('location-description');
-        const latitudeInput = document.getElementById('latitude');
-        const longitudeInput = document.getElementById('longitude');
-        const cityInput = document.querySelector('input[name="city"]');
-        const stateInput = document.querySelector('input[name="state"]');
-        const zipInput = document.querySelector('input[name="zip_code"]');
-        const existingHintClass = 'existing-location-hint';
+        // Find the option 2 div by traversing up from the form
+        const newLocationOption = newLocationForm ? newLocationForm.closest('.option') : null;
+        const newLocationInputs = document.querySelectorAll('.location-form input, .location-form select, .location-form textarea');
 
         console.log('Location elements found:', {
             locationSelect: !!locationSelect,
-            newLocationForm: !!newLocationForm
+            newLocationForm: !!newLocationForm,
+            newLocationOption: !!newLocationOption
         });
 
         if (!locationSelect || !newLocationForm) {
@@ -1167,218 +876,130 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        function setInputReadonly(input, isReadonly) {
-            if (!input) return;
-            input.readOnly = isReadonly;
-            input.style.backgroundColor = isReadonly ? '#f5f5f5' : '';
-            input.style.cursor = isReadonly ? 'not-allowed' : '';
-        }
-
-        function addExistingLocationHint() {
-            if (!newLocationForm || newLocationForm.querySelector(`.${existingHintClass}`)) {
-                return;
-            }
-
-            const hint = document.createElement('div');
-            hint.className = existingHintClass;
-            hint.style.cssText = 'background-color: #e8f4fd; border: 1px solid #b6dcfe; color: #0c5460; padding: 10px; border-radius: 6px; margin: 10px 0;';
-            hint.innerHTML = `
-                <i class="fas fa-info-circle" style="margin-right: 8px;"></i>
-                Selected existing location. Name and short code are locked. You may edit description/coordinates for this sampling event.
-            `;
-            newLocationForm.insertBefore(hint, newLocationForm.firstChild);
-        }
-
-        function removeExistingLocationHint() {
-            if (!newLocationForm) return;
-            const hint = newLocationForm.querySelector(`.${existingHintClass}`);
-            if (hint) {
-                hint.remove();
-            }
-        }
-
-        function populateFieldsFromSelectedLocation() {
-            const selectedOption = locationSelect.options[locationSelect.selectedIndex];
-            if (!selectedOption || !selectedOption.value) return;
-
-            const selectedName = (selectedOption.getAttribute('data-name') || selectedOption.textContent || '').trim();
-            const selectedShortCode = (selectedOption.getAttribute('data-user-loc-id') || '').trim();
-            const selectedDescription = (selectedOption.getAttribute('data-description') || '').trim();
-            const selectedLatitude = (selectedOption.getAttribute('data-latitude') || '').trim();
-            const selectedLongitude = (selectedOption.getAttribute('data-longitude') || '').trim();
-            const selectedCity = (selectedOption.getAttribute('data-city') || '').trim();
-            const selectedState = (selectedOption.getAttribute('data-state') || '').trim();
-            const selectedZip = (selectedOption.getAttribute('data-zipcode') || '').trim();
-
-            if (locationNameInput) locationNameInput.value = selectedName;
-            if (locationShortCodeInput) locationShortCodeInput.value = selectedShortCode;
-            if (locationDescriptionInput) locationDescriptionInput.value = selectedDescription;
-            if (latitudeInput) latitudeInput.value = selectedLatitude;
-            if (longitudeInput) longitudeInput.value = selectedLongitude;
-            if (cityInput) cityInput.value = selectedCity;
-            if (stateInput) stateInput.value = selectedState;
-            if (zipInput) zipInput.value = selectedZip;
-
-            syncLocationMapFromInputs({ zoom: 13 });
-
-            formData['location_name'] = selectedName;
-            formData['location_shortcode'] = selectedShortCode;
-            formData['location_description'] = selectedDescription;
-            formData['latitude'] = selectedLatitude;
-            formData['longitude'] = selectedLongitude;
-            formData['existing_location_description'] = selectedDescription;
-            formData['existing_location_latitude'] = selectedLatitude;
-            formData['existing_location_longitude'] = selectedLongitude;
-            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
-        }
-
-        function setExistingLocationMode() {
-            setInputReadonly(locationNameInput, true);
-            setInputReadonly(locationShortCodeInput, true);
-            setInputReadonly(locationDescriptionInput, false);
-            setInputReadonly(latitudeInput, false);
-            setInputReadonly(longitudeInput, false);
-            addExistingLocationHint();
-        }
-
-        function setNewLocationMode() {
-            setInputReadonly(locationNameInput, false);
-            setInputReadonly(locationShortCodeInput, false);
-            setInputReadonly(locationDescriptionInput, false);
-            setInputReadonly(latitudeInput, false);
-            setInputReadonly(longitudeInput, false);
-            removeExistingLocationHint();
-
-            delete formData['existing_location_description'];
-            delete formData['existing_location_latitude'];
-            delete formData['existing_location_longitude'];
-            delete formData['event_location_description'];
-            delete formData['event_latitude'];
-            delete formData['event_longitude'];
-            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
-        }
-
+        // Function to handle location selection change
         function handleLocationSelectionChange() {
             const selectedLocationId = locationSelect.value;
 
             if (selectedLocationId && selectedLocationId !== '') {
+                // Option 1: Previous location is selected
                 console.log('Previous location selected:', selectedLocationId);
-                clearValidationError();
-                populateFieldsFromSelectedLocation();
-                setExistingLocationMode();
+
+                // Method 2: Hide new location form
+                hideNewLocationForm();
             } else {
+                // Option 1: No previous location selected
                 console.log('No previous location selected');
-                setNewLocationMode();
+
+                // Enable new location inputs
+                enableNewLocationInputs();
+
+                // Show new location form if it was hidden
+                showNewLocationForm();
             }
+        }
+
+        // Method 1: Disable new location inputs
+        function disableNewLocationInputs() {
+            newLocationInputs.forEach(input => {
+                input.disabled = true;
+                input.style.opacity = '0.5';
+                input.style.backgroundColor = '#f5f5f5';
+                input.style.cursor = 'not-allowed';
+            });
+
+            // Add visual indicator
+            const existingIndicator = newLocationForm.querySelector('.disabled-indicator');
+            if (!existingIndicator) {
+                const indicator = document.createElement('div');
+                indicator.className = 'disabled-indicator';
+                indicator.innerHTML = `
+                    <div style="background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 12px; border-radius: 6px; margin: 10px 0; display: flex; align-items: center; font-size: 14px;">
+                        <i class="fas fa-info-circle" style="margin-right: 8px;"></i>
+                        <span>New location form is disabled because you have selected a previous location above. To enter a new location, please clear the previous location selection first.</span>
+                    </div>
+                `;
+                newLocationForm.insertBefore(indicator, newLocationForm.firstChild);
+            }
+        }
+
+        // Method 2: Hide new location form (alternative approach)
+        function hideNewLocationForm() {
+            console.log('Hiding new location form, option element:', newLocationOption);
+            // Hide the entire option 2 div instead of just the form
+            if (newLocationOption) {
+                newLocationOption.style.display = 'none';
+                console.log('Option 2 hidden successfully');
+            } else {
+                // Fallback: hide just the form if option div not found
+                newLocationForm.style.display = 'none';
+                console.log('Form hidden as fallback');
+            }
+        }
+
+        // Enable new location inputs
+        function enableNewLocationInputs() {
+            newLocationInputs.forEach(input => {
+                input.disabled = false;
+                input.style.opacity = '1';
+                input.style.backgroundColor = '';
+                input.style.cursor = '';
+            });
+
+            // Remove visual indicator
+            const indicator = newLocationForm.querySelector('.disabled-indicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        // Show new location form
+        function showNewLocationForm() {
+            console.log('Showing new location form, option element:', newLocationOption);
+            // Show the entire option 2 div
+            if (newLocationOption) {
+                newLocationOption.style.display = 'block';
+                console.log('Option 2 shown successfully');
+            } else {
+                // Fallback: show just the form if option div not found
+                newLocationForm.style.display = 'block';
+                console.log('Form shown as fallback');
+            }
+        }
+
+        // Clear new location form when previous location is selected
+        function clearNewLocationForm() {
+            newLocationInputs.forEach(input => {
+                if (input.type === 'checkbox' || input.type === 'radio') {
+                    input.checked = false;
+                } else {
+                    input.value = '';
+                }
+            });
+
+            // Clear from formData as well
+            const fieldsToClean = [
+                'location_name', 'location_shortcode', 'location_description',
+                'latitude', 'longitude', 'streetaddress', 'city', 'state', 
+                'country', 'zip_code', 'lulc_developed', 'lulc_forest', 
+                'lulc_agriculture', 'lulc_water', 'lulc_other'
+            ];
+
+            fieldsToClean.forEach(field => {
+                delete formData[field];
+            });
+
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
         }
 
         // Set up event listener
         locationSelect.addEventListener('change', function() {
             handleLocationSelectionChange();
-
-            // Clear all form data from pages 2-6 when location changes
-            clearDataFromPages2to6();
-        });
-
-        // Function to clear all data from pages 2-6 when location changes
-        function clearDataFromPages2to6() {
-            console.log('Clearing all data from pages 2-6 due to location change');
-
-            // Define all fields from pages 2-6 to clear
-            const fieldsToClean = [
-                // Existing location override info
-                'event_location_description', 'event_latitude', 'event_longitude',
-                'existing_location_description', 'existing_location_latitude', 'existing_location_longitude',
-
-                // Page 2: Sampling Event Information
-                'device_installation_period', 'sample_date', 'device_start_date', 'device_end_date',
-                'sample_time', 'sample_description',
-
-                // Page 3: Media Information
-                'media_type', 'water_type', 'water_type_other_description',
-                'sediment_type', 'sediment_type_other_description',
-                'soil_landscape_type', 'surface_landscape_type', 'mixed_media_description',
-
-                // Page 4: Additional Sampling Information
-                'additional_info', 'air_temp', 'current_conditions', 'rainfall', 'environment_type',
-                'volume_sampled', 'total_water_depth', 'sample_water_depth',
-                'water_flow_velocity', 'turbidity', 'total_suspended_solids',
-                'dissolved_oxygen',
-                'soil_depth', 'soil_sample_dry_weight', 'soil_organic_matter', 'soil_moisture',
-                'soil_sand', 'soil_silt', 'soil_clay', 'soil_additional_notes',
-                'sediment_depth', 'sediment_dry_weight', 'sediment_organic_matter', 'sediment_moisture',
-                'sediment_sand', 'sediment_silt', 'sediment_clay', 'sediment_additional_notes',
-                'surface_area_sampled', 'permeable_surfaces', 'impermeable_surfaces', 'surface_additional_notes',
-                'mixed_additional_notes',
-
-                // Page 5: Sample Details
-                'has_quantitative_data', 'replicates_count',
-                'microplastics_count', 'fragments_count', 'packaging_count',
-                'microplastics_sample_amount', 'microplastics_sample_unit',
-                'fragments_sample_amount', 'fragments_sample_unit',
-                'packaging_sample_amount', 'packaging_sample_unit',
-
-                // Microplastics size distribution
-                'mp_size_lt_1um', 'mp_size_1_20um', 'mp_size_20_100um', 'mp_size_100um_1mm', 'mp_size_1_5mm',
-                // Microplastics color distribution
-                'mp_color_clear', 'mp_color_opaque_light', 'mp_color_opaque_dark', 'mp_color_mixed',
-                // Microplastics form distribution
-                'mp_form_fiber', 'mp_form_pellet', 'mp_form_fragment', 'mp_form_film', 'mp_form_foam',
-                // Microplastics polymer types
-                'mp_polymer_pet', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe', 'mp_polymer_pp', 'mp_polymer_ps',
-                'mp_polymer_pc', 'mp_polymer_pan', 'mp_polymer_pmma', 'mp_polymer_pa', 'mp_polymer_abs',
-                'mp_polymer_polyester_fiber', 'mp_polymer_acrylic_fiber', 'mp_polymer_pe_fiber', 'mp_polymer_pp_fiber',
-                'mp_polymer_tire_rubber', 'mp_polymer_natural_rubber', 'mp_polymer_synthetic_rubber',
-
-                // Fragments color distribution
-                'fragment_color_clear', 'fragment_color_opaque_light', 'fragment_color_opaque_dark', 'fragment_color_mixed',
-                // Legacy fragment color keys
-                'frag_color_clear', 'frag_color_opaque_light', 'frag_color_opaque_dark', 'frag_color_mixed',
-                // Fragments form distribution
-                'fragment_form_fiber', 'fragment_form_pellet', 'fragment_form_film', 'fragment_form_foam', 'fragment_form_hardplastic', 'fragment_form_other',
-                // Legacy fragment form keys
-                'frag_form_fiber', 'frag_form_pellet', 'frag_form_fragment', 'frag_form_film', 'frag_form_foam',
-                // Fragments polymer types
-                'fragment_polymer_pet', 'fragment_polymer_hdpe', 'fragment_polymer_pvc', 'fragment_polymer_ldpe', 'fragment_polymer_pp', 'fragment_polymer_ps',
-                'fragment_polymer_pc', 'fragment_polymer_pan', 'fragment_polymer_pmma', 'fragment_polymer_pa', 'fragment_polymer_abs',
-                'fragment_polymer_polyester_fiber', 'fragment_polymer_acrylic_fiber', 'fragment_polymer_pe_fiber', 'fragment_polymer_pp_fiber',
-                'fragment_polymer_tire_rubber', 'fragment_polymer_natural_rubber', 'fragment_polymer_synthetic_rubber',
-                // Legacy fragment polymer keys
-                'frag_polymer_pet', 'frag_polymer_hdpe', 'frag_polymer_pvc', 'frag_polymer_ldpe', 'frag_polymer_pp', 'frag_polymer_ps',
-                'frag_polymer_pc', 'frag_polymer_pan', 'frag_polymer_pmma', 'frag_polymer_pa', 'frag_polymer_abs',
-                'frag_polymer_polyester_fiber', 'frag_polymer_acrylic_fiber', 'frag_polymer_pe_fiber', 'frag_polymer_pp_fiber',
-                'frag_polymer_tire_rubber', 'frag_polymer_natural_rubber', 'frag_polymer_synthetic_rubber',
-
-                // Packaging items
-                'packaging_item_1', 'packaging_item_2', 'packaging_item_3', 'packaging_item_4', 'packaging_item_5',
-                'packaging_item_6', 'packaging_item_7', 'packaging_item_8', 'packaging_item_9', 'packaging_item_10'
-            ];
-
-            // Clear from formData
-            fieldsToClean.forEach(field => {
-                delete formData[field];
-            });
-
-            // Save to sessionStorage
-            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
-
-            // Clear visual form fields in pages 2-6
-            for (let pageNum = 2; pageNum <= 6; pageNum++) {
-                const page = document.getElementById(`form-page${pageNum}`);
-                if (page) {
-                    const fields = page.querySelectorAll('input, select, textarea');
-                    fields.forEach(field => {
-                        if (field.type === 'radio' || field.type === 'checkbox') {
-                            field.checked = false;
-                        } else {
-                            field.value = '';
-                        }
-                    });
-                }
+            
+            // Clear new location form when switching to previous location
+            if (this.value && this.value !== '') {
+                clearNewLocationForm();
             }
-
-            console.log('All data from pages 2-6 cleared');
-        }
+        });
 
         // Initialize on page load
         setTimeout(() => {
@@ -1404,17 +1025,11 @@ document.addEventListener('DOMContentLoaded', function() {
     function setupWholePackageValidation() {
         console.log('Setting up whole package validation');
 
-        // Ensure validation display exists when page 5 is rendered dynamically.
-        ensureWholePackageValidationDisplay();
-
-        const formPagesContainer = document.querySelector('.form-pages-container') || document.body;
-        const packageValidationObserver = new MutationObserver(() => {
-            if (!document.getElementById('whole-package-validation') && ensureWholePackageValidationDisplay()) {
-                validateWholePackageHierarchy();
-            }
-        });
-
-        packageValidationObserver.observe(formPagesContainer, { childList: true, subtree: true });
+        // Create validation display container
+        const packageCountField = document.querySelector('[name="packaging_count"]');
+        if (packageCountField) {
+            createWholePackageValidationDisplay();
+        }
 
         // Add input event listeners for real-time validation
         document.addEventListener('input', function(event) {
@@ -1428,31 +1043,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Function to check if a field belongs to whole package validation
         function isWholePackageField(fieldName) {
-            if (!fieldName) return false;
-
-            if (fieldName === 'packaging_count') {
-                return true;
-            }
-
-            return PACKAGING_CATEGORY_CONFIG.some(cfg => {
-                if (fieldName === cfg.countField) return true;
-                return fieldName.startsWith(`${cfg.prefix}_`);
-            });
-        }
-
-        function ensureWholePackageValidationDisplay() {
-            const packageCountField = document.querySelector('[name="packaging_count"]');
-            if (!packageCountField) return false;
-            createWholePackageValidationDisplay();
-            return true;
+            return fieldName === 'packaging_count' ||
+                   fieldName === 'packaging_count_single_use' ||
+                   fieldName === 'packaging_count_multi_use' ||
+                   fieldName.startsWith('single_use_recycle_') ||
+                   fieldName.startsWith('multi_use_recycle_');
         }
 
         // Function to create validation display
         function createWholePackageValidationDisplay() {
-            if (document.getElementById('whole-package-validation')) {
-                return;
-            }
-
             const packageCountField = document.querySelector('[name="packaging_count"]');
             if (!packageCountField) return;
 
@@ -1471,7 +1070,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <span class="validation-value" id="whole-packages-total">0</span>
                     </div>
                     <div class="validation-row">
-                        <span class="validation-label">All Purpose Categories Total:</span>
+                        <span class="validation-label">Single-use + Multi-use:</span>
                         <span class="validation-value" id="single-multi-total">0</span>
                         <span class="validation-status" id="main-total-status"></span>
                     </div>
@@ -1508,67 +1107,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Function to validate the whole package hierarchy
         function validateWholePackageHierarchy() {
-            ensureWholePackageValidationDisplay();
-
+            // Get values
             const wholePackagesTotal = parseInt(document.querySelector('[name="packaging_count"]')?.value || 0);
+            const singleUseTotal = parseInt(document.querySelector('[name="packaging_count_single_use"]')?.value || 0);
+            const multiUseTotal = parseInt(document.querySelector('[name="packaging_count_multi_use"]')?.value || 0);
 
-            const categoryResults = PACKAGING_CATEGORY_CONFIG.map(cfg => {
-                const countValue = parseInt(document.querySelector(`[name="${cfg.countField}"]`)?.value || 0);
-                const groupSums = {};
-                const groupStates = {};
-                const errorMessages = [];
+            // Calculate recycle code sums
+            const singleUseRecycleSum = calculateRecycleCodeSum('single_use');
+            const multiUseRecycleSum = calculateRecycleCodeSum('multi_use');
 
-                Object.keys(PACKAGING_DETAIL_GROUPS).forEach(groupKey => {
-                    const groupData = calculateGroupSum(cfg.prefix, groupKey);
-                    groupSums[groupKey] = groupData;
-
-                    const validation = evaluateGroupAgainstCount(countValue, groupKey, groupData);
-                    groupStates[groupKey] = {
-                        key: groupKey,
-                        label: PACKAGING_DETAIL_LABELS[groupKey] || groupKey,
-                        sum: groupData.sum,
-                        hasValues: groupData.hasValues,
-                        hasAnyField: groupData.hasAnyField,
-                        isValid: validation.isValid
-                    };
-
-                    if (!validation.isValid) {
-                        errorMessages.push(validation.message);
-                    }
-                });
-
-                setCategoryValidationState(cfg.prefix, countValue, groupStates, errorMessages);
-
-                return {
-                    prefix: cfg.prefix,
-                    label: cfg.label,
-                    count: countValue,
-                    groupSums,
-                    groupStates,
-                    errorMessages,
-                    isValid: errorMessages.length === 0
-                };
-            });
-
-            const singleResult = categoryResults.find(res => res.prefix === 'single_use') || { count: 0, groupSums: {}, errorMessages: [], isValid: true };
-            const multiResult = categoryResults.find(res => res.prefix === 'multi_use') || { count: 0, groupSums: {}, errorMessages: [], isValid: true };
-
-            const singleUseRecycleSum = singleResult.groupSums?.recycle?.sum || 0;
-            const multiUseRecycleSum = multiResult.groupSums?.recycle?.sum || 0;
-
+            // Update display values
             const wholePackagesTotalEl = document.getElementById('whole-packages-total');
             if (wholePackagesTotalEl) wholePackagesTotalEl.textContent = wholePackagesTotal;
 
-            const allCategoriesTotal = categoryResults.reduce((sum, result) => sum + result.count, 0);
-
             const singleMultiTotalEl = document.getElementById('single-multi-total');
-            if (singleMultiTotalEl) singleMultiTotalEl.textContent = allCategoriesTotal;
+            if (singleMultiTotalEl) singleMultiTotalEl.textContent = singleUseTotal + multiUseTotal;
 
             const singleUseTotalEl = document.getElementById('single-use-total');
-            if (singleUseTotalEl) singleUseTotalEl.textContent = singleResult.count;
+            if (singleUseTotalEl) singleUseTotalEl.textContent = singleUseTotal;
 
             const multiUseTotalEl = document.getElementById('multi-use-total');
-            if (multiUseTotalEl) multiUseTotalEl.textContent = multiResult.count;
+            if (multiUseTotalEl) multiUseTotalEl.textContent = multiUseTotal;
 
             const singleUseRecycleSumEl = document.getElementById('single-use-recycle-sum');
             if (singleUseRecycleSumEl) singleUseRecycleSumEl.textContent = singleUseRecycleSum;
@@ -1576,152 +1135,35 @@ document.addEventListener('DOMContentLoaded', function() {
             const multiUseRecycleSumEl = document.getElementById('multi-use-recycle-sum');
             if (multiUseRecycleSumEl) multiUseRecycleSumEl.textContent = multiUseRecycleSum;
 
-            const mainTotalValid = allCategoriesTotal === wholePackagesTotal;
-            updateValidationStatus(
-                'main-total-status',
-                mainTotalValid,
-                mainTotalValid ? '✓ Totals match' : '✗ Sum of all purpose categories must equal Whole Packages total'
-            );
+            // Validate and show status
+            const mainTotalValid = (singleUseTotal + multiUseTotal) === wholePackagesTotal;
+            const singleUseValid = singleUseRecycleSum === singleUseTotal;
+            const multiUseValid = multiUseRecycleSum === multiUseTotal;
 
-            const singleUseMessage = buildCategorySummaryMessage(singleResult, '(No Single-Use items)');
-            updateValidationStatus('single-use-status', singleResult.isValid, singleUseMessage);
+            updateValidationStatus('main-total-status', mainTotalValid, 
+                mainTotalValid ? '✓ Totals match' : '✗ Single-use + Multi-use must equal Whole Packages total');
+            
+            updateValidationStatus('single-use-status', singleUseValid, 
+                singleUseValid ? '✓ Codes match total' : '✗ Recycle codes sum must equal Single-use total');
+            
+            updateValidationStatus('multi-use-status', multiUseValid, 
+                multiUseValid ? '✓ Codes match total' : '✗ Recycle codes sum must equal Multi-use total');
 
-            const multiUseMessage = buildCategorySummaryMessage(multiResult, '(No Multi-Use items)');
-            updateValidationStatus('multi-use-status', multiResult.isValid, multiUseMessage);
-
-            const categoryTotalsValid = categoryResults.every(result => result.isValid || result.count === 0);
-            const allValid = mainTotalValid && categoryTotalsValid;
-            updateSubmitButtonForPackageValidation(allValid);
+            // Update submit button state
+            updateSubmitButtonForPackageValidation(mainTotalValid && singleUseValid && multiUseValid);
         }
 
-        function calculateGroupSum(prefix, groupKey) {
-            const suffixes = PACKAGING_DETAIL_GROUPS[groupKey] || [];
+        // Helper function to calculate recycle code sum for a type
+        function calculateRecycleCodeSum(type) {
             let sum = 0;
-            let hasValues = false;
-            let hasAnyField = false;
-
-            suffixes.forEach(suffix => {
-                const field = document.querySelector(`[name="${prefix}_${groupKey}_${suffix}"]`);
-                if (!field) return;
-                hasAnyField = true;
-                const rawValue = field.value != null ? field.value.trim() : '';
-                if (rawValue !== '') {
-                    hasValues = true;
-                    const parsed = parseInt(rawValue, 10);
-                    if (!isNaN(parsed)) {
-                        sum += parsed;
-                    }
+            for (let i = 1; i <= 7; i++) {
+                const field = document.querySelector(`[name="${type}_recycle_${i}"]`);
+                if (field && field.value) {
+                    sum += parseInt(field.value) || 0;
                 }
-            });
-
-            return { sum, hasValues, hasAnyField };
-        }
-
-        function evaluateGroupAgainstCount(count, groupKey, groupData) {
-            if (!groupData.hasAnyField) {
-                return { isValid: true };
             }
-
-            const label = PACKAGING_DETAIL_LABELS[groupKey] || groupKey;
-            const sum = groupData.sum;
-
-        if (count === 0) {
-            if (groupData.hasValues && sum !== 0) {
-                return { isValid: false, message: `${label}: ${sum}, but category count is 0` };
-            }
-            return { isValid: true };
+            return sum;
         }
-
-        // Detail groups are optional; only validate groups where user entered values.
-        if (!groupData.hasValues) {
-            return { isValid: true };
-        }
-
-        if (sum !== count) {
-            return { isValid: false, message: `${label}: ${sum}, expected ${count}` };
-        }
-
-            return { isValid: true };
-        }
-
-        function setCategoryValidationState(prefix, count, groupStates, errorMessages) {
-            const detailSection = document.querySelector(`.inline-category-details[data-category="${prefix}"]`);
-            if (!detailSection) return;
-
-            const warningEl = detailSection.querySelector('.category-warning');
-            if (!warningEl) return;
-
-            const allGroupStates = Object.values(groupStates || {}).filter(group => group.hasAnyField);
-            const filledGroupStates = allGroupStates.filter(group => group.hasValues);
-
-            const setBannerStyle = (state) => {
-                warningEl.style.display = 'block';
-                warningEl.style.marginTop = '10px';
-                warningEl.style.padding = '10px 12px';
-                warningEl.style.borderRadius = '6px';
-                warningEl.style.fontWeight = '600';
-                warningEl.style.whiteSpace = 'pre-line';
-
-                if (state === 'valid') {
-                    warningEl.style.color = '#155724';
-                    warningEl.style.backgroundColor = '#d4edda';
-                    warningEl.style.border = '1px solid #c3e6cb';
-                } else if (state === 'invalid') {
-                    warningEl.style.color = '#721c24';
-                    warningEl.style.backgroundColor = '#f8d7da';
-                    warningEl.style.border = '1px solid #f5c6cb';
-                } else {
-                    warningEl.style.color = '#856404';
-                    warningEl.style.backgroundColor = '#fff3cd';
-                    warningEl.style.border = '1px solid #ffeaa7';
-                }
-            };
-
-            if (count <= 0) {
-                warningEl.textContent = '';
-                warningEl.style.display = 'none';
-                detailSection.classList.remove('validation-error');
-                return;
-            }
-
-            if (filledGroupStates.length === 0) {
-                warningEl.textContent = `Reminder: enter detail counts by Recycle Code / Color / Opacity.
-For each group you fill, Current Total should equal ${count}.`;
-                setBannerStyle('info');
-                detailSection.classList.remove('validation-error');
-                return;
-            }
-
-            const currentTotalLines = filledGroupStates.map(group => {
-                const marker = group.isValid ? '✓' : '✗';
-                return `${group.label}: Current Total ${group.sum} / Expected ${count} ${marker}`;
-            });
-
-            if (errorMessages.length > 0) {
-                warningEl.textContent = ['Validation issue(s):', ...currentTotalLines].join('\n');
-                setBannerStyle('invalid');
-                detailSection.classList.add('validation-error');
-                return;
-            }
-
-            warningEl.textContent = ['✓ Total is correct for all entered groups', ...currentTotalLines].join('\n');
-            setBannerStyle('valid');
-            detailSection.classList.remove('validation-error');
-        }
-
-        function buildCategorySummaryMessage(result, emptyMessage) {
-            if (!result) return emptyMessage || '';
-            if (result.count === 0) {
-                return emptyMessage || '(No items)';
-            }
-            if (result.errorMessages.length === 0) {
-                return '✓ All details match total';
-            }
-            return '✗ ' + result.errorMessages.join('；');
-        }
-
-        runWholePackageValidation = validateWholePackageHierarchy;
-        validateWholePackageHierarchy();
 
         // Helper function to update validation status display
         function updateValidationStatus(elementId, isValid, message) {
@@ -1730,35 +1172,11 @@ For each group you fill, Current Total should equal ${count}.`;
 
             statusElement.textContent = message;
             statusElement.className = `validation-status ${isValid ? 'valid' : 'invalid'}`;
-
-            if (!message) {
-                statusElement.style.color = '';
-                statusElement.style.backgroundColor = '';
-                statusElement.style.border = '';
-                statusElement.style.padding = '';
-                statusElement.style.borderRadius = '';
-                statusElement.style.fontWeight = '';
-                return;
-            }
-
-            statusElement.style.padding = '4px 8px';
-            statusElement.style.borderRadius = '4px';
-            statusElement.style.fontWeight = '600';
-
-            if (isValid) {
-                statusElement.style.color = '#155724';
-                statusElement.style.backgroundColor = '#d4edda';
-                statusElement.style.border = '1px solid #c3e6cb';
-            } else {
-                statusElement.style.color = '#721c24';
-                statusElement.style.backgroundColor = '#f8d7da';
-                statusElement.style.border = '1px solid #f5c6cb';
-            }
         }
 
         // Helper function to update submit button for package validation
         function updateSubmitButtonForPackageValidation(isValid) {
-            const submitButtons = document.querySelectorAll('#form-page5 .btn-continue[data-next="6"], #save-button, .btn-submit');
+            const submitButtons = document.querySelectorAll('.btn-continue, #save-button, .btn-submit');
             
             submitButtons.forEach(button => {
                 if (!isValid) {
@@ -1784,23 +1202,23 @@ For each group you fill, Current Total should equal ${count}.`;
         const percentageGroups = {
             // Microplastics size percentages
             mp_size: [
-                'mp_size_lt_1um',
-                'mp_size_1_20um',
-                'mp_size_20_100um',
-                'mp_size_100um_1mm',
+                'mp_size_lt_1um', 
+                'mp_size_1_20um', 
+                'mp_size_20_100um', 
+                'mp_size_100um_1mm', 
                 'mp_size_1_5mm'
             ],
             // Microplastics color percentages
             mp_color: [
-                'mp_color_clear',
-                'mp_color_opaque_light',
-                'mp_color_opaque_dark',
-                'mp_color_mixed'
+                'fragment_color_clear',
+                'fragment_color_opaque_light', 
+                'fragment_color_opaque_dark',
+                'fragment_color_mixed'
             ],
             // Microplastics form percentages
             mp_form: [
                 'mp_form_fiber',
-                'mp_form_pellet',
+                'mp_form_pellet', 
                 'mp_form_fragment'
             ],
             // Microplastics polymer percentages
@@ -1815,7 +1233,7 @@ For each group you fill, Current Total should equal ${count}.`;
             fragment_color: [
                 'fragment_color_clear',
                 'fragment_color_opaque_light',
-                'fragment_color_opaque_dark',
+                'fragment_color_opaque_dark', 
                 'fragment_color_mixed'
             ],
             // Fragments form percentages
@@ -1837,53 +1255,15 @@ For each group you fill, Current Total should equal ${count}.`;
             ]
         };
 
-        // Scope each percentage group to the correct details section.
-        const groupScopes = {
-            'mp_size': '#microplastics-details',
-            'mp_color': '#microplastics-details',
-            'mp_form': '#microplastics-details',
-            'mp_polymer': '#microplastics-details',
-            'fragment_color': '#fragments-details',
-            'fragment_form': '#fragments-details',
-            'fragment_polymer': '#fragments-details'
-        };
-
-        // Function to initialize validation containers when page 5 is loaded
-        function initializeValidationContainers() {
-            console.log('Initializing percentage validation containers');
-            Object.keys(percentageGroups).forEach(groupKey => {
-                createValidationContainer(groupKey, percentageGroups[groupKey]);
-            });
-        }
-
-        // Try to initialize immediately if page 5 exists
-        if (document.getElementById('form-page5')) {
-            initializeValidationContainers();
-        }
-
-        // Also watch for when page 5 is loaded dynamically
-        const observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                mutation.addedNodes.forEach(function(node) {
-                    if (node.id === 'form-page5') {
-                        console.log('Page 5 detected, initializing validation containers');
-                        // Wait a bit for the page to fully render
-                        setTimeout(initializeValidationContainers, 100);
-                    }
-                });
-            });
+        // Create validation containers for each group
+        Object.keys(percentageGroups).forEach(groupKey => {
+            createValidationContainer(groupKey, percentageGroups[groupKey]);
         });
-
-        // Observe the form pages container for new pages
-        const formPagesContainer = document.querySelector('.form-pages-container');
-        if (formPagesContainer) {
-            observer.observe(formPagesContainer, { childList: true, subtree: true });
-        }
 
         // Add input event listeners for real-time validation
         document.addEventListener('input', function(event) {
             const fieldName = event.target.name;
-
+            
             // Check if this field belongs to any percentage group
             for (const [groupKey, fields] of Object.entries(percentageGroups)) {
                 if (fields.includes(fieldName)) {
@@ -1895,93 +1275,34 @@ For each group you fill, Current Total should equal ${count}.`;
 
         // Function to create validation display container for a percentage group
         function createValidationContainer(groupKey, fields) {
-            console.log(`Creating validation container for ${groupKey}`);
-
-            // Check if container already exists
-            if (document.getElementById(`${groupKey}-validation`)) {
-                console.log(`Validation container for ${groupKey} already exists`);
-                return;
-            }
-
-            const scopeRoot = document.querySelector(groupScopes[groupKey]) || document;
-
             // Find the first field in the group to determine where to insert validation
-            const firstField = scopeRoot.querySelector(`[name="${fields[0]}"]`);
-            if (!firstField) {
-                console.log(`First field not found for ${groupKey}: ${fields[0]}`);
-                return;
-            }
+            const firstField = document.querySelector(`[name="${fields[0]}"]`);
+            if (!firstField) return;
 
             // Find the parent section
-            let parentSection = scopeRoot.querySelector('.details-form');
-            if (!parentSection) {
-                parentSection = firstField.closest('.details-form');
-            }
+            let parentSection = firstField.closest('.details-form');
             if (!parentSection) {
                 parentSection = firstField.closest('#microplastics-details, #fragments-details');
             }
-            if (!parentSection) {
-                console.log(`Parent section not found for ${groupKey}`);
-                return;
-            }
+            if (!parentSection) return;
 
-            // Create validation container with improved styling
+            // Create validation container
             const validationContainer = document.createElement('div');
             validationContainer.className = 'percentage-validation-container';
             validationContainer.id = `${groupKey}-validation`;
-            validationContainer.style.cssText = 'margin: 10px 0; padding: 10px; border-radius: 4px; display: none;';
             validationContainer.innerHTML = `
-                <div class="percentage-summary" style="display: flex; align-items: center; gap: 10px;">
-                    <span class="percentage-total" id="${groupKey}-total" style="font-weight: bold;"></span>
+                <div class="percentage-summary">
+                    <span class="percentage-total" id="${groupKey}-total">当前总和: 0%</span>
                     <span class="percentage-status" id="${groupKey}-status"></span>
                 </div>
             `;
 
-            // Find the specific section title for this group and insert right after it
-            const allSectionTitles = parentSection.querySelectorAll('.form-section-title');
-            let targetTitle = null;
-
-            // Map group keys to their title keywords - need exact match for proper identification
-            const titleKeywords = {
-                'mp_size': '1. Size',
-                'mp_color': '2. Color type',
-                'mp_form': '3. Form',
-                'mp_polymer': '4. Polymer type',
-                'fragment_color': '1. Color type',
-                'fragment_form': '2. Form',
-                'fragment_polymer': '3. Polymer type'
-            };
-
-            // Find the matching title
-            allSectionTitles.forEach(title => {
-                const keyword = titleKeywords[groupKey];
-                if (keyword && title.textContent.includes(keyword)) {
-                    // For fragments, make sure we're in the right section
-                    if (groupKey.startsWith('fragment_')) {
-                        if (title.closest('#fragments-details')) {
-                            targetTitle = title;
-                        }
-                    } else if (groupKey.startsWith('mp_')) {
-                        if (title.closest('#microplastics-details')) {
-                            targetTitle = title;
-                        }
-                    }
-                }
-            });
-
-            // Insert validation container after the specific section title
-            if (targetTitle) {
-                // Insert after the title, before the first form-row
-                targetTitle.insertAdjacentElement('afterend', validationContainer);
-                console.log(`Validation container for ${groupKey} inserted after title`);
+            // Insert validation container after the group's section title
+            const sectionTitle = parentSection.querySelector('.form-section-title');
+            if (sectionTitle) {
+                sectionTitle.parentNode.insertBefore(validationContainer, sectionTitle.nextSibling);
             } else {
-                console.log(`Target title not found for ${groupKey}, trying fallback`);
-                // Fallback: insert before the first field's form-row
-                const firstFormRow = firstField.closest('.form-row');
-                if (firstFormRow) {
-                    firstFormRow.insertAdjacentElement('beforebegin', validationContainer);
-                    console.log(`Validation container for ${groupKey} inserted before first field`);
-                }
+                parentSection.insertBefore(validationContainer, parentSection.firstChild);
             }
         }
 
@@ -1989,11 +1310,10 @@ For each group you fill, Current Total should equal ${count}.`;
         function validatePercentageGroup(groupKey, fields) {
             let total = 0;
             let hasAnyValue = false;
-            const scopeRoot = document.querySelector(groupScopes[groupKey]) || document;
 
             // Calculate total percentage
             fields.forEach(fieldName => {
-                const field = scopeRoot.querySelector(`[name="${fieldName}"]`);
+                const field = document.querySelector(`[name="${fieldName}"]`);
                 if (field && field.value !== '') {
                     const value = parseFloat(field.value) || 0;
                     total += value;
@@ -2002,56 +1322,32 @@ For each group you fill, Current Total should equal ${count}.`;
             });
 
             // Update validation display
-            const validationContainer = document.getElementById(`${groupKey}-validation`);
             const totalElement = document.getElementById(`${groupKey}-total`);
             const statusElement = document.getElementById(`${groupKey}-status`);
-
-            if (!totalElement || !statusElement || !validationContainer) return;
+            
+            if (!totalElement || !statusElement) return;
 
             // Only show validation if user has entered some values
             if (!hasAnyValue) {
-                validationContainer.style.display = 'none';
+                totalElement.textContent = '当前总和: 0%';
                 statusElement.textContent = '';
                 statusElement.className = 'percentage-status';
-                updateSubmitButtonState();
                 return;
             }
 
-            // Show validation container
-            validationContainer.style.display = 'block';
-            totalElement.textContent = `Current Total: ${total.toFixed(1)}%`;
+            totalElement.textContent = `当前总和: ${total.toFixed(1)}%`;
 
-            const TOLERANCE = 0.5; // Same tolerance as formpage5.ejs validation
-
-            if (Math.abs(total - 100) <= TOLERANCE) {
-                // Valid - equals 100% (within tolerance)
-                validationContainer.style.backgroundColor = '#d4edda';
-                validationContainer.style.border = '1px solid #c3e6cb';
-                totalElement.style.color = '#155724';
-                statusElement.innerHTML = '<i class="fas fa-check-circle"></i> ✓ Total is correct';
-                statusElement.style.color = '#155724';
-                statusElement.style.fontWeight = 'bold';
+            if (Math.abs(total - 100) < 0.1) {
+                // Valid - equals 100%
+                statusElement.textContent = '✓ 总和正确';
                 statusElement.className = 'percentage-status valid';
-                updateSubmitButtonState();
-            } else if (total > 100) {
-                // Invalid - exceeds 100% - RED ERROR
-                validationContainer.style.backgroundColor = '#f8d7da';
-                validationContainer.style.border = '1px solid #f5c6cb';
-                totalElement.style.color = '#721c24';
-                statusElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> ✗ Error: Total exceeds 100%! Please adjust your values.';
-                statusElement.style.color = '#721c24';
-                statusElement.style.fontWeight = 'bold';
-                statusElement.className = 'percentage-status invalid';
+                // Enable submit if this was the blocking group
                 updateSubmitButtonState();
             } else {
-                // Invalid - less than 100% - YELLOW WARNING
-                validationContainer.style.backgroundColor = '#fff3cd';
-                validationContainer.style.border = '1px solid #ffeaa7';
-                totalElement.style.color = '#856404';
-                statusElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ⚠ Warning: Total must equal 100% (or leave all blank)';
-                statusElement.style.color = '#856404';
-                statusElement.style.fontWeight = 'bold';
+                // Invalid - doesn't equal 100%
+                statusElement.textContent = '✗ 百分比总和必须等于100%';
                 statusElement.className = 'percentage-status invalid';
+                // Disable submit
                 updateSubmitButtonState();
             }
         }
@@ -2059,7 +1355,7 @@ For each group you fill, Current Total should equal ${count}.`;
         // Function to update submit button state based on all percentage validations
         function updateSubmitButtonState() {
             const invalidGroups = document.querySelectorAll('.percentage-status.invalid');
-            const submitButtons = document.querySelectorAll('#form-page5 .btn-continue[data-next="6"], #save-button, .btn-submit');
+            const submitButtons = document.querySelectorAll('.btn-continue, #save-button, .btn-submit');
             
             submitButtons.forEach(button => {
                 if (invalidGroups.length > 0) {
@@ -2093,123 +1389,21 @@ For each group you fill, Current Total should equal ${count}.`;
         });
     }
 
-    // Function to show or hide category detail sections based on count inputs
-    function setupPackagingCategoryDetailsToggle() {
-        const packagingCountFields = PACKAGING_CATEGORY_CONFIG.map(cfg => cfg.countField);
-
-        const refreshAll = () => {
-            packagingCountFields.forEach(name => {
-                const field = document.querySelector(`[name="${name}"]`);
-                if (field) {
-                    togglePackagingCategoryDetails(field);
-                }
-            });
-            runWholePackageValidation();
-        };
-
-        document.addEventListener('input', event => {
-            const target = event.target;
-            if (!target || !packagingCountFields.includes(target.name)) {
-                return;
-            }
-            togglePackagingCategoryDetails(target);
-            runWholePackageValidation();
-        });
-
-        document.addEventListener('change', event => {
-            const target = event.target;
-            if (!target || !packagingCountFields.includes(target.name)) {
-                return;
-            }
-            togglePackagingCategoryDetails(target);
-            runWholePackageValidation();
-        });
-
-        setTimeout(refreshAll, 0);
-    }
-
-    function togglePackagingCategoryDetails(countField) {
-        if (!countField) return;
-
-        const categoryBlock = countField.closest('.purpose-category-block');
-        if (!categoryBlock) return;
-
-        const detailSection = categoryBlock.querySelector('.inline-category-details');
-        if (!detailSection) return;
-
-        const count = parseInt(countField.value, 10) || 0;
-        detailSection.style.display = count > 0 ? 'block' : 'none';
-
-        if (count <= 0) {
-            const warningEl = detailSection.querySelector('.category-warning');
-            if (warningEl) {
-                warningEl.textContent = '';
-                warningEl.style.display = 'none';
-            }
-            detailSection.classList.remove('validation-error');
-            clearPackagingDetailFields(detailSection);
-        }
-    }
-
-    function clearPackagingDetailFields(detailSection) {
-        if (!detailSection) return;
-
-        const inputs = detailSection.querySelectorAll('input[name], select[name], textarea[name]');
-        if (!inputs.length) return;
-
-        let formDataUpdated = false;
-        inputs.forEach(input => {
-            if (!input.name) return;
-
-            if (input.value !== '') {
-                input.value = '';
-            }
-
-            if (Object.prototype.hasOwnProperty.call(formData, input.name)) {
-                delete formData[input.name];
-                formDataUpdated = true;
-            }
-        });
-
-        if (formDataUpdated) {
-            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
-        }
-    }
-
-    function updateAllPackagingDetailsVisibility() {
-        const packagingDetails = document.getElementById('packaging-details');
-        if (!packagingDetails) return;
-
-        const countInputs = packagingDetails.querySelectorAll('.purpose-category-block input[name^="packaging_count_"]');
-        countInputs.forEach(input => togglePackagingCategoryDetails(input));
-        runWholePackageValidation();
-    }
-    // Expose to global scope for external calls
-    window.updateAllPackagingDetailsVisibility = updateAllPackagingDetailsVisibility;
-
     // Function to update UI based on packaging count
     function updatePackagingUI(count) {
         console.log('Updating UI for packaging count:', count);
 
         // Update visibility of packaging details section
         const packagingDetails = document.getElementById('packaging-details');
-        console.log('packaging-details element:', packagingDetails);
         if (packagingDetails) {
             packagingDetails.style.display = count > 0 ? 'block' : 'none';
-            console.log('Set packaging-details display to:', count > 0 ? 'block' : 'none');
 
             // Only update packaging items if the section is visible
             if (count > 0) {
                 updatePackagingItems(count);
             }
-        } else {
-            console.error('packaging-details element not found!');
         }
-
-        runWholePackageValidation();
-    }
-
-    // Function to update packaging items - separated from event handler
+    }    // Function to update packaging items - separated from event handler
     function updatePackagingItems(count) {
         console.log('Updating packaging items for count:', count);
 
@@ -2229,6 +1423,87 @@ For each group you fill, Current Total should equal ${count}.`;
                     <label for="packaging-userpiece-${i}">UserPieceID Label:</label>
                     <input type="text" id="packaging-userpiece-${i}" name="packaging_userpiece_${i}" class="form-input" placeholder="User defined">
                 </div>
+                
+                <!-- Four-Column Selection Interface -->
+                <div class="selection-grid-title">Package Details Selection</div>
+                <div class="selection-grid-subtitle">Click one option from each column to classify your package</div>
+                
+                <div class="packaging-selection-grid">
+                    <!-- Purpose Column -->
+                    <div class="selection-column">
+                        <div class="column-header">Purpose</div>
+                        <div class="column-options">
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="container-single-use food-beverage">
+                                Container - Single-use food/beverage
+                            </button>
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="container-multi-use food-beverage">
+                                Container - Multi-use food/beverage
+                            </button>
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="container-other">
+                                Container - Other
+                            </button>
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="bag or packing material">
+                                Bag or packing material
+                            </button>
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="personal item">
+                                Personal item
+                            </button>
+                            <button type="button" class="option-item" data-field="packaging_purpose" data-value="household item">
+                                Household item
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Recycle Code Column -->
+                    <div class="selection-column">
+                        <div class="column-header">Recycle Code</div>
+                        <div class="column-options">
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="1">1</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="2">2</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="3">3</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="4">4</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="5">5</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="6">6</button>
+                            <button type="button" class="option-item" data-field="packaging_recycle_code" data-value="7">7</button>
+                        </div>
+                    </div>
+
+                    <!-- Opacity Type Column -->
+                    <div class="selection-column">
+                        <div class="column-header">Opacity Type</div>
+                        <div class="column-options">
+                            <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Clear">Clear</button>
+                            <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Opaque-Light">Opaque-Light</button>
+                            <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Opaque-Dark">Opaque-Dark</button>
+                            <button type="button" class="option-item" data-field="packaging_color_opacity" data-value="Mixed">Mixed</button>
+                        </div>
+                    </div>
+
+                    <!-- Color Column -->
+                    <div class="selection-column">
+                        <div class="column-header">Color</div>
+                        <div class="column-options">
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Clear">Clear</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Black">Black</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Blue">Blue</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Brown">Brown</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Dark Blue">Dark Blue</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Light Blue">Light Blue</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Pink">Pink</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Purple">Purple</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Red">Red</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="White">White</button>
+                            <button type="button" class="option-item" data-field="packaging_color" data-value="Yellow">Yellow</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden inputs to store selected values -->
+                <input type="hidden" name="packaging_purpose_${i}" class="packaging-purpose-value">
+                <input type="hidden" name="packaging_recycle_code_${i}" class="packaging-recycle-code-value">
+                <input type="hidden" name="packaging_color_opacity_${i}" class="packaging-color-opacity-value">
+                <input type="hidden" name="packaging_color_${i}" class="packaging-color-value">
+                
                 <div style="display: none;" class="item-number">${i}</div>
                 <hr>
             `;
@@ -2318,26 +1593,22 @@ For each group you fill, Current Total should equal ${count}.`;
             const mediaSpecificFields = [
                 // Sample details
                 'microplastics_sample_amount', 'microplastics_sample_unit',
-                'fragments_sample_amount', 'fragments_sample_unit',
+                'fragments_sample_amount', 'fragments_sample_unit', 
                 'packaging_sample_amount', 'packaging_sample_unit',
-
-                // Water-specific fields (Additional Sampling Information page)
-                'environment_type', 'volume_sampled', 'water_depth',
-                'flow_velocity', 'suspended_solids', 'conductivity',
+                
+                // Water-specific fields
                 'water_type', 'water_type_other_description',
-                'total_water_depth', 'sample_water_depth', 'water_flow_velocity',
+                'total_water_depth', 'sample_water_depth', 'water_flow_velocity', 
                 'turbidity', 'total_suspended_solids',
-
-                // Sediment/soil-specific fields (Additional Sampling Information page)
-                'soil_dry_weight', 'soil_organic_matter', 'soil_moisture',
-                'soil_sand', 'soil_silt', 'soil_clay',
+                
+                // Sediment/soil-specific fields  
                 'sediment_type', 'sediment_type_other_description',
-                'soil_moisture_content', 'soil_texture',
+                'soil_moisture_content', 'soil_organic_matter', 'soil_texture',
                 'sediment_grain_size', 'sediment_organic_content',
-
+                
                 // Mixed media fields
                 'mixed_media_description',
-
+                
                 // Additional sampling parameters
                 'sampling_depth', 'sampling_method', 'filtration_method',
                 'extraction_method', 'identification_method'
@@ -2350,14 +1621,14 @@ For each group you fill, Current Total should equal ${count}.`;
             
             // Clear the visual form fields
             mediaSpecificFields.forEach(fieldName => {
-                const fields = document.querySelectorAll(`[name="${fieldName}"]`);
-                fields.forEach(field => {
+                const field = document.querySelector(`[name="${fieldName}"]`);
+                if (field) {
                     if (field.type === 'radio' || field.type === 'checkbox') {
                         field.checked = false;
                     } else {
                         field.value = '';
                     }
-                });
+                }
             });
             
             // Reset all unit selects to default
@@ -2454,33 +1725,6 @@ For each group you fill, Current Total should equal ${count}.`;
                             section.style.display = 'none';
                         });
                     }
-
-                    // Clear all additional info field data when selecting "No"
-                    const additionalInfoFields = [
-                        'air_temp', 'current_conditions', 'rainfall', 'environment_type',
-                        'volume_sampled', 'total_water_depth', 'sample_water_depth',
-                        'water_flow_velocity', 'turbidity', 'total_suspended_solids',
-                        'soil_dry_weight', 'soil_organic_matter', 'soil_moisture_content',
-                        'soil_texture', 'sediment_grain_size', 'sediment_organic_content'
-                    ];
-
-                    // Clear from formData and sessionStorage
-                    additionalInfoFields.forEach(field => {
-                        delete formData[field];
-                    });
-                    sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
-
-                    // Clear the visual form fields in additional info sections
-                    if (additionalInfoSections) {
-                        const fields = additionalInfoSections.querySelectorAll('input, select, textarea');
-                        fields.forEach(field => {
-                            if (field.type === 'radio' || field.type === 'checkbox') {
-                                field.checked = false;
-                            } else {
-                                field.value = '';
-                            }
-                        });
-                    }
                 }
             }
         }
@@ -2504,109 +1748,16 @@ For each group you fill, Current Total should equal ${count}.`;
                     if (microplasticsDetails) microplasticsDetails.style.display = 'none';
                     if (fragmentsDetails) fragmentsDetails.style.display = 'none';
                     if (packagingDetails) packagingDetails.style.display = 'none';
-
-                    // Clear all quantitative data fields when selecting "No"
-                    const quantitativeDataFields = [
-                        'replicates_count', 'microplastics_count', 'fragments_count', 'packaging_count',
-                        'microplastics_sample_amount', 'microplastics_sample_unit',
-                        'fragments_sample_amount', 'fragments_sample_unit',
-                        'packaging_sample_amount', 'packaging_sample_unit',
-                        // Microplastics size distribution
-                        'mp_size_lt_1um', 'mp_size_1_20um', 'mp_size_20_100um', 'mp_size_100um_1mm', 'mp_size_1_5mm',
-                        // Microplastics color distribution
-                        'mp_color_clear', 'mp_color_opaque_light', 'mp_color_opaque_dark', 'mp_color_mixed',
-                        // Microplastics form distribution
-                        'mp_form_fiber', 'mp_form_pellet', 'mp_form_fragment', 'mp_form_film', 'mp_form_foam',
-                        // Microplastics polymer types
-                        'mp_polymer_pet', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe', 'mp_polymer_pp', 'mp_polymer_ps',
-                        'mp_polymer_pc', 'mp_polymer_pan', 'mp_polymer_pmma', 'mp_polymer_pa', 'mp_polymer_abs',
-                        'mp_polymer_polyester_fiber', 'mp_polymer_acrylic_fiber', 'mp_polymer_pe_fiber', 'mp_polymer_pp_fiber',
-                        'mp_polymer_tire_rubber', 'mp_polymer_natural_rubber', 'mp_polymer_synthetic_rubber',
-                        // Fragments color distribution
-                        'fragment_color_clear', 'fragment_color_opaque_light', 'fragment_color_opaque_dark', 'fragment_color_mixed',
-                        // Legacy fragment color keys
-                        'frag_color_clear', 'frag_color_opaque_light', 'frag_color_opaque_dark', 'frag_color_mixed',
-                        // Fragments form distribution
-                        'fragment_form_fiber', 'fragment_form_pellet', 'fragment_form_film', 'fragment_form_foam', 'fragment_form_hardplastic', 'fragment_form_other',
-                        // Legacy fragment form keys
-                        'frag_form_fiber', 'frag_form_pellet', 'frag_form_fragment', 'frag_form_film', 'frag_form_foam',
-                        // Fragments polymer types
-                        'fragment_polymer_pet', 'fragment_polymer_hdpe', 'fragment_polymer_pvc', 'fragment_polymer_ldpe', 'fragment_polymer_pp', 'fragment_polymer_ps',
-                        'fragment_polymer_pc', 'fragment_polymer_pan', 'fragment_polymer_pmma', 'fragment_polymer_pa', 'fragment_polymer_abs',
-                        'fragment_polymer_polyester_fiber', 'fragment_polymer_acrylic_fiber', 'fragment_polymer_pe_fiber', 'fragment_polymer_pp_fiber',
-                        'fragment_polymer_tire_rubber', 'fragment_polymer_natural_rubber', 'fragment_polymer_synthetic_rubber',
-                        // Legacy fragment polymer keys
-                        'frag_polymer_pet', 'frag_polymer_hdpe', 'frag_polymer_pvc', 'frag_polymer_ldpe', 'frag_polymer_pp', 'frag_polymer_ps',
-                        'frag_polymer_pc', 'frag_polymer_pan', 'frag_polymer_pmma', 'frag_polymer_pa', 'frag_polymer_abs',
-                        'frag_polymer_polyester_fiber', 'frag_polymer_acrylic_fiber', 'frag_polymer_pe_fiber', 'frag_polymer_pp_fiber',
-                        'frag_polymer_tire_rubber', 'frag_polymer_natural_rubber', 'frag_polymer_synthetic_rubber',
-                        // Packaging items
-                        'packaging_item_1', 'packaging_item_2', 'packaging_item_3', 'packaging_item_4', 'packaging_item_5',
-                        'packaging_item_6', 'packaging_item_7', 'packaging_item_8', 'packaging_item_9', 'packaging_item_10'
-                    ];
-
-                    // Clear from formData and sessionStorage
-                    quantitativeDataFields.forEach(field => {
-                        delete formData[field];
-                    });
-                    sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
-
-                    // Clear the visual form fields in quantitative data sections
-                    if (quantitativeCountsContainer) {
-                        const fields = quantitativeCountsContainer.querySelectorAll('input, select, textarea');
-                        fields.forEach(field => {
-                            if (field.type === 'radio' || field.type === 'checkbox') {
-                                field.checked = false;
-                            } else {
-                                field.value = '';
-                            }
-                        });
-                    }
-
-                    // Also clear fields in detail sections
-                    [microplasticsDetails, fragmentsDetails, packagingDetails].forEach(section => {
-                        if (section) {
-                            const fields = section.querySelectorAll('input, select, textarea');
-                            fields.forEach(field => {
-                                if (field.type === 'radio' || field.type === 'checkbox') {
-                                    field.checked = false;
-                                } else {
-                                    field.value = '';
-                                }
-                            });
-                        }
-                    });
-
-                    // Also hide the amount containers
-                    const microplasticsAmountContainer = document.getElementById('microplastics-amount-container');
-                    const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
-                    const packagingAmountContainer = document.getElementById('packaging-amount-container');
-
-                    if (microplasticsAmountContainer) microplasticsAmountContainer.style.display = 'none';
-                    if (fragmentsAmountContainer) fragmentsAmountContainer.style.display = 'none';
-                    if (packagingAmountContainer) packagingAmountContainer.style.display = 'none';
-
-                    // Hide all percentage validation containers
-                    const validationContainers = document.querySelectorAll('.percentage-validation-container');
-                    validationContainers.forEach(container => {
-                        container.style.display = 'none';
-                    });
                 } else {
-                    // When "Yes" is selected, DON'T automatically show sections
-                    // Only show them when user enters count > 0
+                    // When "Yes" is selected, check values and show appropriate sections
                     // Check microplastics count
                     const microplasticsInput = document.getElementById('microplastics-count');
                     if (microplasticsInput) {
                         const microplasticsCount = parseInt(microplasticsInput.value) || 0;
                         const microplasticsDetails = document.getElementById('microplastics-details');
-                        const microplasticsAmountContainer = document.getElementById('microplastics-amount-container');
 
-                        // Only show if count > 0
                         if (microplasticsDetails) {
                             microplasticsDetails.style.display = microplasticsCount > 0 ? 'block' : 'none';
-                        }
-                        if (microplasticsAmountContainer) {
-                            microplasticsAmountContainer.style.display = microplasticsCount > 0 ? 'block' : 'none';
                         }
 
                         // Add change event listener - but don't duplicate
@@ -2615,12 +1766,8 @@ For each group you fill, Current Total should equal ${count}.`;
                             microplasticsInput.addEventListener('input', function() {
                                 const count = parseInt(this.value) || 0;
                                 const details = document.getElementById('microplastics-details');
-                                const amountContainer = document.getElementById('microplastics-amount-container');
                                 if (details) {
                                     details.style.display = count > 0 ? 'block' : 'none';
-                                }
-                                if (amountContainer) {
-                                    amountContainer.style.display = count > 0 ? 'block' : 'none';
                                 }
                                 // Save to formData
                                 formData['microplastics_count'] = this.value;
@@ -2634,14 +1781,9 @@ For each group you fill, Current Total should equal ${count}.`;
                     if (fragmentsInput) {
                         const fragmentsCount = parseInt(fragmentsInput.value) || 0;
                         const fragmentsDetails = document.getElementById('fragments-details');
-                        const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
 
-                        // Only show if count > 0
                         if (fragmentsDetails) {
                             fragmentsDetails.style.display = fragmentsCount > 0 ? 'block' : 'none';
-                        }
-                        if (fragmentsAmountContainer) {
-                            fragmentsAmountContainer.style.display = fragmentsCount > 0 ? 'block' : 'none';
                         }
 
                         // Add change event listener - but don't duplicate
@@ -2650,12 +1792,8 @@ For each group you fill, Current Total should equal ${count}.`;
                             fragmentsInput.addEventListener('input', function() {
                                 const count = parseInt(this.value) || 0;
                                 const details = document.getElementById('fragments-details');
-                                const amountContainer = document.getElementById('fragments-amount-container');
                                 if (details) {
                                     details.style.display = count > 0 ? 'block' : 'none';
-                                }
-                                if (amountContainer) {
-                                    amountContainer.style.display = count > 0 ? 'block' : 'none';
                                 }
                                 // Save to formData
                                 formData['fragments_count'] = this.value;
@@ -2667,7 +1805,7 @@ For each group you fill, Current Total should equal ${count}.`;
                     // Check packaging count - do not add another event handler here!
                     const packagingInput = document.getElementById('packaging-count');
                     if (packagingInput) {
-                        // Just update the UI based on the current value (will be 0 after clearing)
+                        // Just update the UI based on the current value
                         const packagingCount = parseInt(packagingInput.value) || 0;
                         updatePackagingUI(packagingCount);
                     }
@@ -2867,13 +2005,13 @@ For each group you fill, Current Total should equal ${count}.`;
                 // Update progress steps
                 updateProgressSteps(currentPage);
 
-                // If navigating to page 5 (Particle Details), update the particle details sections and load polymer options
-                if (nextPage === 5) {
-                    updatePage5Content();
+                // If navigating to page 4, update the particle details sections
+                if (nextPage === 4) {
+                    updateFormPage4Sections();
                 }
 
-                // If navigating to page 6 (Review and Submit), generate summary
-                if (nextPage === 6) {
+                // If navigating to the last page, generate summary
+                if (nextPage === 5) {
                     generateSummary();
                 }
             }
@@ -2881,12 +2019,10 @@ For each group you fill, Current Total should equal ${count}.`;
             // Check if the clicked element is the save button
             if (event.target.id === 'save-button') {
                 event.preventDefault();
-
-                // First save to sessionStorage
                 saveCurrentPageData();
 
-                // Then submit to server and show options after success
-                submitFormDataAndShowNextSteps();
+                // Show the next steps options instead of the old confirmation dialog
+                showNextStepsOptions();
             }
         });
     }
@@ -3018,85 +2154,39 @@ For each group you fill, Current Total should equal ${count}.`;
 
     // Function to show next steps options after saving
     function showNextStepsOptions() {
-        console.log('showNextStepsOptions called');
-
-        // Ensure page 6 is loaded first
-        const page6 = document.getElementById('form-page6');
-        if (!page6) {
-            console.log('Page 6 not loaded, loading it first...');
-            // Load page 6 if not already loaded
-            loadAndAppendNextPage(6).then(() => {
-                // After page 6 is loaded, try again
-                setTimeout(() => showNextStepsOptionsInternal(), 200);
-            });
-            return;
-        }
-
-        showNextStepsOptionsInternal();
-    }
-
-    function showNextStepsOptionsInternal() {
-        console.log('showNextStepsOptionsInternal called');
-
-        // Get page 6 element
-        const page6 = document.getElementById('form-page6');
-        if (!page6) {
-            console.error('Page 6 not found in DOM!');
-            return;
-        }
-        console.log('Page 6 found:', page6);
-
-        // Debug: log all children of page 6
-        console.log('Page 6 innerHTML length:', page6.innerHTML.length);
-        console.log('Page 6 has next-steps-options?', page6.innerHTML.includes('next-steps-options'));
-
-        // Find the save button and next steps container within page 6
-        const saveButton = page6.querySelector('#save-button');
-        console.log('Save button found:', saveButton);
+        // Hide the save button
+        const saveButton = document.getElementById('save-button');
         if (saveButton) {
             saveButton.style.display = 'none';
-            console.log('Save button hidden');
-        } else {
-            console.warn('Save button not found in page 6');
         }
 
-        // Show the next steps container within page 6
-        const nextStepsContainer = page6.querySelector('#next-steps-options');
-        console.log('Next steps container found:', nextStepsContainer);
+        // Show the next steps container
+        const nextStepsContainer = document.getElementById('next-steps-options');
         if (nextStepsContainer) {
             nextStepsContainer.style.display = 'block';
-            console.log('Next steps container displayed, style:', nextStepsContainer.style.display);
 
-            // Add event listeners to the option buttons (only if not already bound)
-            const newLocationButton = page6.querySelector('#new-location-date');
-            const differentMediaButton = page6.querySelector('#different-media');
-            const sameMediaSampleButton = page6.querySelector('#same-media-sample');
+            // Add event listeners to the option buttons
+            const newLocationButton = document.getElementById('new-location-date');
+            const differentMediaButton = document.getElementById('different-media');
+            const sameMediaSampleButton = document.getElementById('same-media-sample');
 
-            if (newLocationButton && !newLocationButton.hasAttribute('data-listener-bound')) {
-                newLocationButton.setAttribute('data-listener-bound', 'true');
+            if (newLocationButton) {
                 newLocationButton.addEventListener('click', function() {
                     handleNewLocationDate();
                 });
-                console.log('New location button listener added');
             }
 
-            if (differentMediaButton && !differentMediaButton.hasAttribute('data-listener-bound')) {
-                differentMediaButton.setAttribute('data-listener-bound', 'true');
+            if (differentMediaButton) {
                 differentMediaButton.addEventListener('click', function() {
                     handleDifferentMedia();
                 });
-                console.log('Different media button listener added');
             }
 
-            if (sameMediaSampleButton && !sameMediaSampleButton.hasAttribute('data-listener-bound')) {
-                sameMediaSampleButton.setAttribute('data-listener-bound', 'true');
+            if (sameMediaSampleButton) {
                 sameMediaSampleButton.addEventListener('click', function() {
                     handleSameMediaSample();
                 });
-                console.log('Same media button listener added');
             }
-        } else {
-            console.error('Next steps container not found in page 6!');
         }
     }
 
@@ -3122,46 +2212,20 @@ For each group you fill, Current Total should equal ${count}.`;
         });
     }
 
-    function preserveNextStepFields(fieldNames) {
-        const preservedData = {};
-
-        fieldNames.forEach(fieldName => {
-            if (Object.prototype.hasOwnProperty.call(formData, fieldName)) {
-                preservedData[fieldName] = formData[fieldName];
-            }
-        });
-
-        return preservedData;
-    }
-
     // Handler for Option B: Different Media Type (same location/date)
     function handleDifferentMedia() {
         // First save current data in background (without alert)
         saveFormDataSilently().then(() => {
-            // Preserve the full location context and sampling date/time metadata.
-            const preservedData = preserveNextStepFields([
-                'location_id',
-                'location_name',
-                'location_shortcode',
-                'location_description',
-                'land_use_cover',
-                'latitude',
-                'longitude',
-                'streetaddress',
-                'city',
-                'state',
-                'country',
-                'zip_code',
-                'acres',
-                'event_location_description',
-                'event_latitude',
-                'event_longitude',
-                'device_installation_period',
-                'sample_date',
-                'device_start_date',
-                'device_end_date',
-                'sample_time'
-            ]);
+            // Preserve location and date data from pages 1-2
+            const preservedData = {};
+            
+            // Keep location and date information
+            Object.keys(formData).forEach(key => {
+                if (key.includes('location') || key.includes('date') || key.includes('time') || 
+                    key.includes('latitude') || key.includes('longitude') || key.includes('lulc')) {
+                    preservedData[key] = formData[key];
+                }
+            });
             
             // Reset form data but keep preserved data
             formData = preservedData;
@@ -3185,38 +2249,17 @@ For each group you fill, Current Total should equal ${count}.`;
     function handleSameMediaSample() {
         // First save current data in background (without alert)
         saveFormDataSilently().then(() => {
-            // Preserve location/date context plus media selections/subtypes.
-            const preservedData = preserveNextStepFields([
-                'location_id',
-                'location_name',
-                'location_shortcode',
-                'location_description',
-                'land_use_cover',
-                'latitude',
-                'longitude',
-                'streetaddress',
-                'city',
-                'state',
-                'country',
-                'zip_code',
-                'acres',
-                'event_location_description',
-                'event_latitude',
-                'event_longitude',
-                'device_installation_period',
-                'sample_date',
-                'device_start_date',
-                'device_end_date',
-                'sample_time',
-                'media_type',
-                'water_type',
-                'water_type_other_description',
-                'sediment_type',
-                'sediment_type_other_description',
-                'soil_landscape_type',
-                'surface_landscape_type',
-                'mixed_media_description'
-            ]);
+            // Preserve location, date, and media type data from pages 1-3
+            const preservedData = {};
+            
+            // Keep location, date, and media type information
+            Object.keys(formData).forEach(key => {
+                if (key.includes('location') || key.includes('date') || key.includes('time') || 
+                    key.includes('latitude') || key.includes('longitude') || key.includes('lulc') ||
+                    key.includes('media_type') || key.includes('water_type') || key.includes('sediment_type')) {
+                    preservedData[key] = formData[key];
+                }
+            });
             
             // Reset form data but keep preserved data
             formData = preservedData;
@@ -3266,71 +2309,6 @@ For each group you fill, Current Total should equal ${count}.`;
                 element.value = '';
             }
         });
-
-        // Also clear the summary section
-        const summaryContainer = document.getElementById('summary-container');
-        if (summaryContainer) {
-            summaryContainer.innerHTML = '';
-        }
-
-        // Hide next steps options if they are showing
-        const nextStepsContainer = document.getElementById('next-steps-options');
-        if (nextStepsContainer) {
-            nextStepsContainer.style.display = 'none';
-        }
-
-        // Show save button again
-        const saveButton = document.getElementById('save-button');
-        if (saveButton) {
-            saveButton.style.display = 'block';
-        }
-
-        // Hide all expandable sections to reset to initial state
-        // Page 4: Hide additional info sections
-        const additionalInfoSections = document.getElementById('additional-info-sections');
-        if (additionalInfoSections) {
-            additionalInfoSections.style.display = 'none';
-        }
-
-        // Page 4: Hide media-specific sections
-        const waterSection = document.getElementById('water-section');
-        const soilSection = document.getElementById('soil-section');
-        if (waterSection) waterSection.style.display = 'none';
-        if (soilSection) soilSection.style.display = 'none';
-
-        // Page 5: Hide quantitative data container
-        const quantitativeContainer = document.getElementById('quantitative-counts-container');
-        if (quantitativeContainer) {
-            quantitativeContainer.style.display = 'none';
-        }
-
-        // Page 5: Hide amount containers
-        const microplasticsAmountContainer = document.getElementById('microplastics-amount-container');
-        const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
-        const packagingAmountContainer = document.getElementById('packaging-amount-container');
-        if (microplasticsAmountContainer) microplasticsAmountContainer.style.display = 'none';
-        if (fragmentsAmountContainer) fragmentsAmountContainer.style.display = 'none';
-        if (packagingAmountContainer) packagingAmountContainer.style.display = 'none';
-
-        // Page 5: Hide detail sections
-        const microplasticsDetails = document.getElementById('microplastics-details');
-        const fragmentsDetails = document.getElementById('fragments-details');
-        const packagingDetails = document.getElementById('packaging-details');
-        if (microplasticsDetails) microplasticsDetails.style.display = 'none';
-        if (fragmentsDetails) fragmentsDetails.style.display = 'none';
-        if (packagingDetails) packagingDetails.style.display = 'none';
-
-        // Hide all percentage validation containers
-        const validationContainers = document.querySelectorAll('.percentage-validation-container');
-        validationContainers.forEach(container => {
-            container.style.display = 'none';
-        });
-
-        // Clear packaging items container
-        const packagingItemsContainer = document.getElementById('packaging-items-container');
-        if (packagingItemsContainer) {
-            packagingItemsContainer.innerHTML = '';
-        }
     }
 
     // Helper function to clear media-specific fields (pages 3-6)
@@ -3346,63 +2324,6 @@ For each group you fill, Current Total should equal ${count}.`;
                 }
             });
         });
-
-        // Hide all expandable sections in these pages
-        // Page 4: Hide additional info sections
-        const additionalInfoSections = document.getElementById('additional-info-sections');
-        if (additionalInfoSections) {
-            additionalInfoSections.style.display = 'none';
-        }
-
-        // Page 4: Hide media-specific sections
-        const waterSection = document.getElementById('water-section');
-        const soilSection = document.getElementById('soil-section');
-        if (waterSection) waterSection.style.display = 'none';
-        if (soilSection) soilSection.style.display = 'none';
-
-        // Page 5: Hide quantitative data container
-        const quantitativeContainer = document.getElementById('quantitative-counts-container');
-        if (quantitativeContainer) {
-            quantitativeContainer.style.display = 'none';
-        }
-
-        // Page 5: Hide amount containers
-        const microplasticsAmountContainer = document.getElementById('microplastics-amount-container');
-        const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
-        const packagingAmountContainer = document.getElementById('packaging-amount-container');
-        if (microplasticsAmountContainer) microplasticsAmountContainer.style.display = 'none';
-        if (fragmentsAmountContainer) fragmentsAmountContainer.style.display = 'none';
-        if (packagingAmountContainer) packagingAmountContainer.style.display = 'none';
-
-        // Page 5: Hide detail sections
-        const microplasticsDetails = document.getElementById('microplastics-details');
-        const fragmentsDetails = document.getElementById('fragments-details');
-        const packagingDetails = document.getElementById('packaging-details');
-        if (microplasticsDetails) microplasticsDetails.style.display = 'none';
-        if (fragmentsDetails) fragmentsDetails.style.display = 'none';
-        if (packagingDetails) packagingDetails.style.display = 'none';
-
-        // Hide all percentage validation containers
-        const validationContainers = document.querySelectorAll('.percentage-validation-container');
-        validationContainers.forEach(container => {
-            container.style.display = 'none';
-        });
-
-        // Clear packaging items container
-        const packagingItemsContainer = document.getElementById('packaging-items-container');
-        if (packagingItemsContainer) {
-            packagingItemsContainer.innerHTML = '';
-        }
-
-        // Hide next steps options and show save button
-        const nextStepsContainer = document.getElementById('next-steps-options');
-        if (nextStepsContainer) {
-            nextStepsContainer.style.display = 'none';
-        }
-        const saveButton = document.getElementById('save-button');
-        if (saveButton) {
-            saveButton.style.display = 'block';
-        }
     }
 
     // Helper function to clear sample-specific fields (pages 4-6)
@@ -3418,57 +2339,6 @@ For each group you fill, Current Total should equal ${count}.`;
                 }
             });
         });
-
-        // Hide all expandable sections in these pages
-        // Page 4: Hide additional info sections
-        const additionalInfoSections = document.getElementById('additional-info-sections');
-        if (additionalInfoSections) {
-            additionalInfoSections.style.display = 'none';
-        }
-
-        // Page 5: Hide quantitative data container
-        const quantitativeContainer = document.getElementById('quantitative-counts-container');
-        if (quantitativeContainer) {
-            quantitativeContainer.style.display = 'none';
-        }
-
-        // Page 5: Hide amount containers
-        const microplasticsAmountContainer = document.getElementById('microplastics-amount-container');
-        const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
-        const packagingAmountContainer = document.getElementById('packaging-amount-container');
-        if (microplasticsAmountContainer) microplasticsAmountContainer.style.display = 'none';
-        if (fragmentsAmountContainer) fragmentsAmountContainer.style.display = 'none';
-        if (packagingAmountContainer) packagingAmountContainer.style.display = 'none';
-
-        // Page 5: Hide detail sections
-        const microplasticsDetails = document.getElementById('microplastics-details');
-        const fragmentsDetails = document.getElementById('fragments-details');
-        const packagingDetails = document.getElementById('packaging-details');
-        if (microplasticsDetails) microplasticsDetails.style.display = 'none';
-        if (fragmentsDetails) fragmentsDetails.style.display = 'none';
-        if (packagingDetails) packagingDetails.style.display = 'none';
-
-        // Hide all percentage validation containers
-        const validationContainers = document.querySelectorAll('.percentage-validation-container');
-        validationContainers.forEach(container => {
-            container.style.display = 'none';
-        });
-
-        // Clear packaging items container
-        const packagingItemsContainer = document.getElementById('packaging-items-container');
-        if (packagingItemsContainer) {
-            packagingItemsContainer.innerHTML = '';
-        }
-
-        // Hide next steps options and show save button
-        const nextStepsContainer = document.getElementById('next-steps-options');
-        if (nextStepsContainer) {
-            nextStepsContainer.style.display = 'none';
-        }
-        const saveButton = document.getElementById('save-button');
-        if (saveButton) {
-            saveButton.style.display = 'block';
-        }
     }
 
     // Helper function to show temporary success messages
@@ -3515,9 +2385,7 @@ For each group you fill, Current Total should equal ${count}.`;
         } else if (pageNumber === 4) {
             updatePage4Content();
         } else if (pageNumber === 5) {
-            updatePage5Content(); // Particle Details - load polymer options
-        } else if (pageNumber === 6) {
-            generateSummary(); // Review and Submit
+            generateSummary();
         }
     }
 
@@ -3552,7 +2420,7 @@ For each group you fill, Current Total should equal ${count}.`;
     // Function to update page 4 content based on previous pages data
     function updatePage4Content() {
         // Update particle details sections based on sample and media type
-        updateFormPage5Sections();
+        updateFormPage4Sections();
 
         // Show/hide quantitative data sections
         if (formData.has_quantitative_data === 'yes') {
@@ -3574,8 +2442,8 @@ For each group you fill, Current Total should equal ${count}.`;
     }
 
     // Function to update page 4 sections based on count values
-    function updateFormPage5Sections() {
-        console.log('updateFormPage5Sections called');
+    function updateFormPage4Sections() {
+        console.log('updateFormPage4Sections called');
         
         // Get current form data from session storage
         const currentFormData = JSON.parse(sessionStorage.getItem('microplastics_form_data') || '{}');
@@ -3683,9 +2551,9 @@ For each group you fill, Current Total should equal ${count}.`;
                     fillFormFieldsInPage(newPage);
                 }
 
-                // If loading page 5, update the particle details sections
+                // If loading page 4, update the particle details sections
                 if (pageNumber === 4) {
-                    updateFormPage5Sections();
+                    updateFormPage4Sections();
                 }
             }
         } catch (error) {
@@ -3752,12 +2620,6 @@ For each group you fill, Current Total should equal ${count}.`;
                 });
             });
         }
-
-        if (typeof updateAllPackagingDetailsVisibility === 'function') {
-            updateAllPackagingDetailsVisibility();
-        }
-
-        syncLocationMapFromInputs({ zoom: 13 });
     }    // Function to set up summary generation
     function setupSummaryGeneration() {
         console.log('=== Setting up summary generation ===');
@@ -3785,15 +2647,9 @@ For each group you fill, Current Total should equal ${count}.`;
                             setTimeout(() => generateSummary(), 50);
                         }
                         
-                        // Check for page 5 - load polymer options
+                        // Also check for page 5
                         if (node.id === 'form-page5') {
                             console.log('Page 5 detected via mutation observer');
-                            setTimeout(() => updatePage5Content(), 100);
-                        }
-
-                        // Check for page 6 - generate summary
-                        if (node.id === 'form-page6') {
-                            console.log('Page 6 detected via mutation observer');
                             setTimeout(() => generateSummary(), 100);
                         }
                     }
@@ -3915,11 +2771,120 @@ For each group you fill, Current Total should equal ${count}.`;
 
         summaryContainer.appendChild(validationSection);
 
-        // Define field groups for better organization
+        // Add data statistics summary section
+        const statsSection = document.createElement('div');
+        statsSection.className = 'statistics-summary-section';
+        statsSection.style.marginBottom = '20px';
+        statsSection.style.padding = '15px';
+        statsSection.style.backgroundColor = '#e3f2fd';
+        statsSection.style.border = '1px solid #bbdefb';
+        statsSection.style.borderRadius = '5px';
+
+        const statsHeader = document.createElement('h4');
+        statsHeader.textContent = 'Data Statistics Summary';
+        statsHeader.style.marginTop = '0';
+        statsHeader.style.marginBottom = '10px';
+        statsHeader.style.color = '#1976d2';
+        statsSection.appendChild(statsHeader);
+
+        const statsContainer = document.createElement('div');
+        statsContainer.style.display = 'grid';
+        statsContainer.style.gridTemplateColumns = 'repeat(auto-fit, minmax(200px, 1fr))';
+        statsContainer.style.gap = '10px';
+
+        // Calculate statistics
+        const stats = [];
+
+        // Basic sample information
+        if (formData.sample_date) {
+            stats.push({ label: 'Sample Date', value: formData.sample_date });
+        }
+        if (formData.media_type) {
+            stats.push({ label: 'Media Type', value: formData.media_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) });
+        }
+
+        // Quantitative data summary
+        if (formData.has_quantitative_data === 'yes') {
+            let totalParticles = 0;
+            const counts = [];
+            
+            if (formData.microplastics_count && parseInt(formData.microplastics_count) > 0) {
+                const count = parseInt(formData.microplastics_count);
+                totalParticles += count;
+                counts.push(`${count} microplastics`);
+            }
+            
+            if (formData.fragments_count && parseInt(formData.fragments_count) > 0) {
+                const count = parseInt(formData.fragments_count);
+                totalParticles += count;
+                counts.push(`${count} fragments`);
+            }
+            
+            if (formData.packaging_count && parseInt(formData.packaging_count) > 0) {
+                const count = parseInt(formData.packaging_count);
+                totalParticles += count;
+                counts.push(`${count} packaging items`);
+            }
+
+            if (totalParticles > 0) {
+                stats.push({ label: 'Total Particles', value: totalParticles.toString(), highlight: true });
+                stats.push({ label: 'Breakdown', value: counts.join(', ') });
+            }
+        } else {
+            stats.push({ label: 'Quantitative Data', value: 'No quantitative data provided' });
+        }
+
+        // Environmental conditions
+        if (formData.air_temp) {
+            stats.push({ label: 'Air Temperature', value: `${formData.air_temp}°C` });
+        }
+        if (formData.current_conditions) {
+            stats.push({ label: 'Weather Conditions', value: formData.current_conditions });
+        }
+        if (formData.rainfall) {
+            stats.push({ label: 'Rainfall (24h)', value: `${formData.rainfall} cm` });
+        }
+
+        // Sample amounts
+        if (formData.microplastics_sample_amount && formData.microplastics_sample_unit) {
+            stats.push({ label: 'Microplastics Sample', value: `${formData.microplastics_sample_amount} ${formData.microplastics_sample_unit}` });
+        }
+        if (formData.fragments_sample_amount && formData.fragments_sample_unit) {
+            stats.push({ label: 'Fragments Sample', value: `${formData.fragments_sample_amount} ${formData.fragments_sample_unit}` });
+        }
+
+        // Create stat cards
+        stats.forEach(stat => {
+            const statCard = document.createElement('div');
+            statCard.style.padding = '10px';
+            statCard.style.backgroundColor = stat.highlight ? '#fff3e0' : 'white';
+            statCard.style.border = '1px solid #e0e0e0';
+            statCard.style.borderRadius = '4px';
+            statCard.style.textAlign = 'center';
+
+            const statLabel = document.createElement('div');
+            statLabel.style.fontSize = '12px';
+            statLabel.style.color = '#666';
+            statLabel.style.marginBottom = '5px';
+            statLabel.style.fontWeight = 'bold';
+            statLabel.textContent = stat.label;
+
+            const statValue = document.createElement('div');
+            statValue.style.fontSize = stat.highlight ? '18px' : '14px';
+            statValue.style.color = stat.highlight ? '#ff6f00' : '#333';
+            statValue.style.fontWeight = stat.highlight ? 'bold' : 'normal';
+            statValue.textContent = stat.value;
+
+            statCard.appendChild(statLabel);
+            statCard.appendChild(statValue);
+            statsContainer.appendChild(statCard);
+        });
+
+        statsSection.appendChild(statsContainer);
+        summaryContainer.appendChild(statsSection);        // Define field groups for better organization
         const fieldGroups = {
             'Location Information': [
-                'location_id', 'location_name', 'location_shortcode', 'location_description', 'latitude', 'longitude',
-                'event_location_description', 'event_latitude', 'event_longitude', 'acres',
+                'location_id', 'location_name', 'location_shortcode', 'location_description', 'latitude', 'longitude', 'acres',
                 'streetaddress', 'city', 'state', 'country', 'zip_code'
             ],
             'Sampling Event Information': [
@@ -3951,7 +2916,7 @@ For each group you fill, Current Total should equal ${count}.`;
                 'mp_size_lt_1um', 'mp_size_1_20um', 'mp_size_20_100um', 'mp_size_100um_1mm', 'mp_size_1_5mm'
             ],
             'Microplastics Color Distribution': [
-                'mp_color_clear', 'mp_color_opaque_light', 'mp_color_opaque_dark', 'mp_color_mixed'
+                'fragment_color_clear', 'fragment_color_opaque_light', 'fragment_color_opaque_dark', 'fragment_color_mixed'
             ],
             'Microplastics Form Distribution': [
                 'mp_form_fiber', 'mp_form_pellet', 'mp_form_fragment', 'mp_form_film', 'mp_form_foam'
@@ -3965,9 +2930,6 @@ For each group you fill, Current Total should equal ${count}.`;
             ],
             'Microplastics Estimation Method': [
                 'mp_estimate_method'
-            ],
-            'Fragments Color Distribution': [
-                'fragment_color_clear', 'fragment_color_opaque_light', 'fragment_color_opaque_dark', 'fragment_color_mixed'
             ],
             'Fragments Form Distribution': [
                 'fragment_form_fiber', 'fragment_form_pellet', 'fragment_form_film', 'fragment_form_foam', 'fragment_form_hardplastic'
@@ -3991,9 +2953,6 @@ For each group you fill, Current Total should equal ${count}.`;
             'location_description': 'Location Description',
             'latitude': 'Latitude',
             'longitude': 'Longitude',
-            'event_location_description': 'Event Location Description (Override)',
-            'event_latitude': 'Event Latitude (Override)',
-            'event_longitude': 'Event Longitude (Override)',
             'acres': 'Area (km²)',
             'streetaddress': 'Street Address',
             'city': 'City',
@@ -4050,8 +3009,8 @@ For each group you fill, Current Total should equal ${count}.`;
             'microplastics_sample_unit': 'Microplastics Sample Unit',
             'fragments_sample_amount': 'Fragments Sample Amount',
             'fragments_sample_unit': 'Fragments Sample Unit',
-            'packaging_sample_amount': 'Whole Packaging Sample Amount',
-            'packaging_sample_unit': 'Whole Packaging Sample Unit',
+            'packaging_sample_amount': 'Packaging Sample Amount',
+            'packaging_sample_unit': 'Packaging Sample Unit',
 
             // Microplastics Size Distribution
             'mp_size_lt_1um': '< 1 μm (%)',
@@ -4061,10 +3020,10 @@ For each group you fill, Current Total should equal ${count}.`;
             'mp_size_1_5mm': '1-5 mm (%)',
 
             // Microplastics Color Distribution
-            'mp_color_clear': 'Clear (%)',
-            'mp_color_opaque_light': 'Opaque Light (%)',
-            'mp_color_opaque_dark': 'Opaque Dark (%)',
-            'mp_color_mixed': 'Mixed Colors (%)',
+            'fragment_color_clear': 'Clear (%)',
+            'fragment_color_opaque_light': 'Opaque Light (%)',
+            'fragment_color_opaque_dark': 'Opaque Dark (%)',
+            'fragment_color_mixed': 'Mixed Colors (%)',
 
             // Microplastics Form Distribution
             'mp_form_fiber': 'Fiber (%)',
@@ -4101,10 +3060,6 @@ For each group you fill, Current Total should equal ${count}.`;
             'mp_estimate_method': 'Microplastics Estimation Method',
 
             // Fragments Form Distribution
-            'fragment_color_clear': 'Clear (%)',
-            'fragment_color_opaque_light': 'Opaque Light (%)',
-            'fragment_color_opaque_dark': 'Opaque Dark (%)',
-            'fragment_color_mixed': 'Mixed Colors (%)',
             'fragment_form_fiber': 'Fiber (%)',
             'fragment_form_pellet': 'Pellet (%)',
             'fragment_form_film': 'Film (%)',
@@ -4149,57 +3104,6 @@ For each group you fill, Current Total should equal ${count}.`;
             fieldGroups['Packaging Items'] = packagingItems;
         }
 
-        const allDefinedFields = new Set();
-        Object.values(fieldGroups).forEach(fields => {
-            fields.forEach(field => allDefinedFields.add(field));
-        });
-
-        const otherFields = Object.keys(formData).filter(field => 
-            !allDefinedFields.has(field) && 
-            formData[field] && 
-            formData[field].toString().trim() !== '' &&
-            !field.startsWith('packaging_') // These are handled separately
-        );
-
-        let otherSectionAdded = false;
-        function appendOtherInformationSection() {
-            if (otherSectionAdded || otherFields.length === 0) {
-                return;
-            }
-
-            const otherHeader = document.createElement('h4');
-            otherHeader.textContent = 'Other Information';
-            otherHeader.style.marginBottom = '10px';
-            otherHeader.style.marginTop = '15px';
-            otherHeader.style.paddingBottom = '5px';
-            otherHeader.style.borderBottom = '1px solid #ddd';
-            summaryContainer.appendChild(otherHeader);
-
-            otherFields.forEach(field => {
-                const itemDiv = document.createElement('div');
-                itemDiv.className = 'summary-item';
-                itemDiv.style.display = 'flex';
-                itemDiv.style.marginBottom = '8px';
-
-                const labelDiv = document.createElement('div');
-                labelDiv.className = 'summary-label';
-                labelDiv.style.width = '40%';
-                labelDiv.style.fontWeight = 'bold';
-                labelDiv.textContent = fieldLabels[field] || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-
-                const valueDiv = document.createElement('div');
-                valueDiv.className = 'summary-value';
-                valueDiv.style.width = '60%';
-                valueDiv.textContent = formData[field];
-
-                itemDiv.appendChild(labelDiv);
-                itemDiv.appendChild(valueDiv);
-                summaryContainer.appendChild(itemDiv);
-            });
-
-            otherSectionAdded = true;
-        }
-
         // Create summary sections by field groups
         for (const [groupTitle, fields] of Object.entries(fieldGroups)) {
             // Skip certain groups based on conditions
@@ -4231,10 +3135,6 @@ For each group you fill, Current Total should equal ${count}.`;
             // Add fields from this group that have values
             let hasValues = false;
             fields.forEach(field => {
-                if (field.endsWith('_sample_unit')) {
-                    return;
-                }
-
                 if (formData[field] && formData[field].toString().trim() !== '') {
                     hasValues = true;
 
@@ -4254,10 +3154,8 @@ For each group you fill, Current Total should equal ${count}.`;
                     valueDiv.style.width = '60%';
                     
                     // Special handling for certain fields
-                    if (field.includes('_sample_amount')) {
-                        const unitField = field.replace('_amount', '_unit');
-                        const unitValue = formData[unitField] ? ` ${formData[unitField]}` : '';
-                        valueDiv.textContent = `${formData[field]}${unitValue}`;
+                    if (field.includes('_sample_amount') && formData[field.replace('_amount', '_unit')]) {
+                        valueDiv.textContent = `${formData[field]} ${formData[field.replace('_amount', '_unit')]}`;
                     } else if (field === 'device_installation_period') {
                         valueDiv.textContent = formData[field] === 'yes' ? 'Yes (Device installed for a period)' : 'No (Single collection event)';
                     } else if (field === 'has_quantitative_data') {
@@ -4289,14 +3187,6 @@ For each group you fill, Current Total should equal ${count}.`;
             if (!hasValues) {
                 summaryContainer.removeChild(groupHeader);
             }
-
-            if (groupTitle === 'Location Information') {
-                appendOtherInformationSection();
-            }
-        }
-
-        if (!otherSectionAdded) {
-            appendOtherInformationSection();
         }
 
         // Add a section for packaging details if needed
@@ -4363,57 +3253,23 @@ For each group you fill, Current Total should equal ${count}.`;
             }
         }
 
-        function resolveSectionEditPage(sectionTitle) {
-            if (sectionTitle === 'Location Information') return 1;
-            if (sectionTitle === 'Other Information') return 4;
-            if (sectionTitle === 'Sampling Event Information') return 2;
-            if (sectionTitle === 'Media Information') return 3;
-            if (
-                sectionTitle === 'Environmental Conditions' ||
-                sectionTitle === 'Additional Water Information' ||
-                sectionTitle === 'Additional Soil Information'
-            ) {
-                return 4;
-            }
-            if (sectionTitle === 'Data Validation Status') return 6;
-            return 5; // Most summary blocks map to Step 5 details
-        }
-
         // Add edit buttons for each section for better usability
         const sectionHeaders = summaryContainer.querySelectorAll('h4');
-        sectionHeaders.forEach(header => {
+        sectionHeaders.forEach((header, index) => {
             const sectionTitle = header.textContent;
-            const pageNumber = resolveSectionEditPage(sectionTitle);
+            let pageNumber = 1; // Default
 
-            const editButton = document.createElement('button');
-            editButton.type = 'button';
-            editButton.className = 'btn-edit-section';
-            editButton.textContent = 'Edit';
-            editButton.style.marginLeft = '10px';
-            editButton.style.fontSize = '12px';
-            editButton.style.padding = '2px 8px';
-            editButton.style.backgroundColor = '#f0f0f0';
-            editButton.style.border = '1px solid #ccc';
-            editButton.style.borderRadius = '3px';
-            editButton.style.cursor = 'pointer';
-
-            editButton.addEventListener('click', function() {
-                scrollToPage(pageNumber);
-            });
-
-            header.appendChild(editButton);
-        });
-
-        // Some headers are appended later (for example "Other Information"),
-        // so attach Edit buttons to any section that still does not have one.
-        summaryContainer.querySelectorAll('h4').forEach(header => {
-            if (header.querySelector('.btn-edit-section')) {
-                return;
+            // Determine which page this section belongs to
+            if (sectionTitle === 'Location Information') {
+                pageNumber = 1;
+            } else if (sectionTitle === 'Sample Details') {
+                pageNumber = 2;
+            } else if (sectionTitle === 'Media Information' || sectionTitle === 'Additional Information') {
+                pageNumber = 3;
+            } else {
+                pageNumber = 4;
             }
 
-            const sectionTitle = header.textContent;
-            const pageNumber = resolveSectionEditPage(sectionTitle);
-
             const editButton = document.createElement('button');
             editButton.type = 'button';
             editButton.className = 'btn-edit-section';
@@ -4425,12 +3281,58 @@ For each group you fill, Current Total should equal ${count}.`;
             editButton.style.border = '1px solid #ccc';
             editButton.style.borderRadius = '3px';
             editButton.style.cursor = 'pointer';
+
             editButton.addEventListener('click', function() {
                 scrollToPage(pageNumber);
             });
 
             header.appendChild(editButton);
         });
+
+        // Add "Other Fields" section to show any fields not covered in the defined groups
+        const allDefinedFields = new Set();
+        Object.values(fieldGroups).forEach(fields => {
+            fields.forEach(field => allDefinedFields.add(field));
+        });
+
+        const otherFields = Object.keys(formData).filter(field => 
+            !allDefinedFields.has(field) && 
+            formData[field] && 
+            formData[field].toString().trim() !== '' &&
+            !field.startsWith('packaging_') // These are handled separately
+        );
+
+        if (otherFields.length > 0) {
+            const otherHeader = document.createElement('h4');
+            otherHeader.textContent = 'Other Information';
+            otherHeader.style.marginBottom = '10px';
+            otherHeader.style.marginTop = '15px';
+            otherHeader.style.paddingBottom = '5px';
+            otherHeader.style.borderBottom = '1px solid #ddd';
+            summaryContainer.appendChild(otherHeader);
+
+            otherFields.forEach(field => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'summary-item';
+                itemDiv.style.display = 'flex';
+                itemDiv.style.marginBottom = '8px';
+
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'summary-label';
+                labelDiv.style.width = '40%';
+                labelDiv.style.fontWeight = 'bold';
+                labelDiv.textContent = fieldLabels[field] || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                const valueDiv = document.createElement('div');
+                valueDiv.className = 'summary-value';
+                valueDiv.style.width = '60%';
+                valueDiv.textContent = formData[field];
+
+                itemDiv.appendChild(labelDiv);
+                itemDiv.appendChild(valueDiv);
+                summaryContainer.appendChild(itemDiv);
+            });
+        }
 
         console.log('Summary generation completed');
     }
@@ -4446,20 +3348,6 @@ For each group you fill, Current Total should equal ${count}.`;
         // Add an iteration flag to indicate this is part of an iteration
         const dataToSubmit = { ...formData, is_iteration: 'true' };
 
-        // Pre-validate
-        const pre = preValidateBeforeSubmit(dataToSubmit);
-        if (!pre.ok) {
-            const msg = 'Could not save: ' + pre.issues.join(' ');
-            if (typeof showTemporaryMessage === 'function') {
-                showTemporaryMessage(msg, 'error');
-            } else {
-                alert(msg);
-            }
-            saveButton.textContent = originalText;
-            saveButton.disabled = false;
-            return;
-        }
-
         // Use fetch API to submit data
         fetch('/api/save-form-data', {
                 method: 'POST',
@@ -4469,13 +3357,9 @@ For each group you fill, Current Total should equal ${count}.`;
                 },
                 body: JSON.stringify(dataToSubmit)
             })
-            .then(async response => {
+            .then(response => {
                 if (!response.ok) {
-                    let data;
-                    try { data = await response.json(); } catch (_) { data = null; }
-                    devLogSaveError('save-and-iterate', response.status, data, formData);
-                    const friendly = buildFriendlySaveError(response.status, data, formData);
-                    throw new Error(friendly);
+                    throw new Error('Network response was not ok');
                 }
                 return response.json();
             })
@@ -4543,12 +3427,7 @@ For each group you fill, Current Total should equal ${count}.`;
             })
             .catch(error => {
                 console.error('Error:', error);
-                const msg = (error && error.message) ? error.message : 'An error occurred while saving the data.';
-                if (typeof showTemporaryMessage === 'function') {
-                    showTemporaryMessage(msg, 'error');
-                } else {
-                    alert(msg);
-                }
+                alert('An error occurred while saving the data. Please try again.');
                 saveButton.textContent = originalText;
                 saveButton.disabled = false;
             });
@@ -4560,18 +3439,6 @@ For each group you fill, Current Total should equal ${count}.`;
         console.log('Form data to submit:', formData);
         console.log('Form data JSON:', JSON.stringify(formData, null, 2));
         
-        // Pre-validate to avoid confusing server errors
-        const pre = preValidateBeforeSubmit(formData);
-        if (!pre.ok) {
-            const msg = 'Could not save: ' + pre.issues.join(' ');
-            if (typeof showTemporaryMessage === 'function') {
-                showTemporaryMessage(msg, 'error');
-            } else {
-                alert(msg);
-            }
-            return Promise.reject(new Error(msg));
-        }
-
         // Submit data directly to save endpoint
         return fetch('/api/save-form-data', {
             method: 'POST',
@@ -4581,14 +3448,10 @@ For each group you fill, Current Total should equal ${count}.`;
             },
             body: JSON.stringify(formData)
         })
-        .then(async response => {
+        .then(response => {
             console.log('Silent save response status:', response.status);
             if (!response.ok) {
-                let data;
-                try { data = await response.json(); } catch (_) { data = null; }
-                devLogSaveError('silent-save', response.status, data, formData);
-                const friendly = buildFriendlySaveError(response.status, data, formData);
-                throw new Error(friendly);
+                throw new Error('Save network response was not ok: ' + response.status);
             }
             return response.json();
         })
@@ -4598,93 +3461,6 @@ For each group you fill, Current Total should equal ${count}.`;
                 return data; // Return success data
             } else {
                 throw new Error(data.message || 'Save failed');
-            }
-        });
-    }
-
-    // Function to submit form data and show next steps options
-    function submitFormDataAndShowNextSteps() {
-        // Show loading state
-        const saveButton = document.getElementById('save-button');
-        const originalText = saveButton ? saveButton.textContent : 'Save';
-        if (saveButton) {
-            saveButton.textContent = 'Saving...';
-            saveButton.disabled = true;
-        }
-
-        console.log('=== SUBMITTING FORM DATA ===');
-        console.log('Form data:', JSON.stringify(formData, null, 2));
-
-        // Pre-validate before submitting to server
-        const pre = preValidateBeforeSubmit(formData);
-        if (!pre.ok) {
-            const msg = 'Could not save: ' + pre.issues.join(' ');
-            if (typeof showTemporaryMessage === 'function') {
-                showTemporaryMessage(msg, 'error');
-            } else {
-                alert(msg);
-            }
-            if (saveButton) {
-                saveButton.textContent = originalText;
-                saveButton.disabled = false;
-            }
-            return;
-        }
-
-        // Submit data to server
-        fetch('/api/save-form-data', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify(formData)
-        })
-        .then(async response => {
-            console.log('Save response status:', response.status);
-            if (!response.ok) {
-                let data;
-                try { data = await response.json(); } catch (_) { data = null; }
-                devLogSaveError('save-and-next-steps', response.status, data, formData);
-                const friendly = buildFriendlySaveError(response.status, data, formData);
-                throw new Error(friendly);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Save success:', data);
-            if (data.success) {
-                // Show success message at the top of the page
-                showTemporaryMessage('Data Saved Successfully!', 'success');
-
-                // Show three options on the page (not in popup)
-                showNextStepsOptions();
-
-                // Re-enable save button
-                if (saveButton) {
-                    saveButton.textContent = originalText;
-                    saveButton.disabled = false;
-                }
-            } else {
-                // Show error message
-                alert('Error saving data: ' + data.message);
-                if (saveButton) {
-                    saveButton.textContent = originalText;
-                    saveButton.disabled = false;
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Error saving data:', error);
-            const msg = (error && error.message) ? error.message : 'An error occurred while saving the data.';
-            if (typeof showTemporaryMessage === 'function') {
-                showTemporaryMessage(msg, 'error');
-            } else {
-                alert(msg);
-            }
-            if (saveButton) {
-                saveButton.textContent = originalText;
-                saveButton.disabled = false;
             }
         });
     }
@@ -4711,22 +3487,6 @@ For each group you fill, Current Total should equal ${count}.`;
         console.log('Form data to submit:', formData);
         console.log('Form data JSON:', JSON.stringify(formData, null, 2));
         
-        // Pre-validate before submitting
-        const pre = preValidateBeforeSubmit(formData);
-        if (!pre.ok) {
-            const msg = 'Could not save: ' + pre.issues.join(' ');
-            if (typeof showTemporaryMessage === 'function') {
-                showTemporaryMessage(msg, 'error');
-            } else {
-                alert(msg);
-            }
-            if (saveButton) {
-                saveButton.textContent = originalText;
-                saveButton.disabled = false;
-            }
-            return;
-        }
-
         // Submit data directly to save endpoint
         fetch('/api/save-form-data', {
             method: 'POST',
@@ -4736,15 +3496,11 @@ For each group you fill, Current Total should equal ${count}.`;
             },
             body: JSON.stringify(formData)
         })
-        .then(async response => {
+        .then(response => {
             console.log('Save response status:', response.status);
             console.log('Save response headers:', response.headers);
             if (!response.ok) {
-                let data;
-                try { data = await response.json(); } catch (_) { data = null; }
-                devLogSaveError('save-only', response.status, data, formData);
-                const friendly = buildFriendlySaveError(response.status, data, formData);
-                throw new Error(friendly);
+                throw new Error('Save network response was not ok: ' + response.status);
             }
             return response.json();
         })
@@ -4770,12 +3526,7 @@ For each group you fill, Current Total should equal ${count}.`;
         })
         .catch(error => {
             console.error('Error:', error);
-            const msg = (error && error.message) ? error.message : 'An error occurred while saving the data.';
-            if (typeof showTemporaryMessage === 'function') {
-                showTemporaryMessage(msg, 'error');
-            } else {
-                alert(msg);
-            }
+            alert('An error occurred while saving the data. Please try again. Error: ' + error.message);
             if (saveButton) {
                 saveButton.textContent = originalText;
                 saveButton.disabled = false;

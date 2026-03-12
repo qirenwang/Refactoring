@@ -57,10 +57,14 @@ function fetchLocations() {
                         option.textContent = displayText;
                         
                         // Add additional data as attributes for future use
-                        option.setAttribute('data-description', location.description || '');
-                        option.setAttribute('data-city', location.city || '');
-                        option.setAttribute('data-state', location.state || '');
-                        option.setAttribute('data-zipcode', location.zipCode || '');
+                        option.setAttribute('data-name', location.name ?? '');
+                        option.setAttribute('data-user-loc-id', location.userLocId ?? '');
+                        option.setAttribute('data-description', location.description ?? '');
+                        option.setAttribute('data-city', location.city ?? '');
+                        option.setAttribute('data-state', location.state ?? '');
+                        option.setAttribute('data-zipcode', location.zipCode ?? '');
+                        option.setAttribute('data-latitude', location.latitude ?? '');
+                        option.setAttribute('data-longitude', location.longitude ?? '');
                         
                         selectElement.appendChild(option);
                     });

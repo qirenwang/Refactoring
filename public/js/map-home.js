@@ -1,5 +1,6 @@
 /**
  * Home page map initialization and functions
+ * Displays real sample data from the database
  */
 
 // Document ready function for home page
@@ -10,14 +11,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Initialize the interactive map centered on Detroit with sample data points
+// Initialize the interactive map centered on Great Lakes region with real data
 function initHomeMap() {
-    // Detroit, Michigan coordinates
-    const detroitLat = 42.3314;
-    const detroitLng = -83.0458;
+    // Great Lakes region center (covers Detroit area and surrounding)
+    const centerLat = 43.5;
+    const centerLng = -84.0;
 
-    // Create the map centered on Detroit
-    const map = L.map('home-map').setView([detroitLat, detroitLng], 12);
+    // Create the map
+    const map = L.map('home-map').setView([centerLat, centerLng], 6);
 
     // Add the tile layer (OpenStreetMap)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -36,112 +37,106 @@ function initHomeMap() {
         '#a65628', // brown
         '#f781bf', // pink
         '#999999', // grey
-        '#66c2a5' // teal
+        '#66c2a5'  // teal
     ];
 
-    // Define sample types
-    const sampleTypes = [
-        'sample type 1',
-        'sample type 2',
-        'sample type 3',
-        'sample type 4',
-        'sample type 5',
-        'sample type 6',
-        'sample type 7',
-        'sample type 8',
-        'sample type 9',
-        'sample type 10'
-    ];
+    // Fetch real map data from the API
+    fetch('/api/map-data')
+        .then(response => response.json())
+        .then(response => {
+            if (response.success && Array.isArray(response.data)) {
+                const points = response.data;
+                const markers = [];
+                const sampleTypesSet = new Set();
 
-    // Generate random points around Detroit
-    const points = generateRandomPoints(detroitLat, detroitLng, 10, 0.05);
+                // Add each point to the map
+                points.forEach((point) => {
+                    // Convert field names from API
+                    const lat = parseFloat(point.lat || point.latitude);
+                    const lng = parseFloat(point.lng || point.longitude);
+                    const location = point.location || point.location_name;
+                    const sampleType = point.sampleType || point.sample_type || 'Unknown';
+                    const date = point.date || point.collection_date;
 
-    // Add each point to the map
-    points.forEach((point, index) => {
-        // Create a custom colored marker
-        const markerColor = markerColors[index % markerColors.length];
-        const sampleType = sampleTypes[index % sampleTypes.length];
+                    if (!lat || !lng) return;
 
-        const markerHtml = `
-            <div style="background-color: ${markerColor}; width: 12px; height: 12px; 
-            border-radius: 50%; border: 2px solid white; box-shadow: 0 0 3px rgba(0,0,0,0.4)"></div>
-        `;
+                    // Track sample types for the legend
+                    sampleTypesSet.add(sampleType);
 
-        const icon = L.divIcon({
-            html: markerHtml,
-            className: 'custom-marker',
-            iconSize: [16, 16],
-            iconAnchor: [8, 8],
-            popupAnchor: [0, -8]
+                    // Assign a color based on the sample type (hashing the string to pick a color)
+                    const markerColor = getColorForType(sampleType, markerColors);
+
+                    const markerHtml = `
+                        <div style="background-color: ${markerColor}; width: 12px; height: 12px;
+                        border-radius: 50%; border: 2px solid white; box-shadow: 0 0 3px rgba(0,0,0,0.4)"></div>
+                    `;
+
+                    const icon = L.divIcon({
+                        html: markerHtml,
+                        className: 'custom-marker',
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8],
+                        popupAnchor: [0, -8]
+                    });
+
+                    // Create the marker
+                    const marker = L.marker([lat, lng], { icon: icon }).addTo(map);
+
+                    // Format date
+                    const dateStr = date ? new Date(date).toLocaleDateString() : 'N/A';
+
+                    // Add popup with sample information
+                    marker.bindPopup(`
+                        <div class="marker-popup">
+                            <h4>${sampleType}</h4>
+                            <p>Location: <span class="data-value">${location || 'N/A'}</span></p>
+                            <p>Particle Count: <span class="data-value">${point.particleCount || 1}</span></p>
+                            <p>Coordinates: <span class="data-value">${lat.toFixed(4)}, ${lng.toFixed(4)}</span></p>
+                            <p>Collected: <span class="data-value">${dateStr}</span></p>
+                        </div>
+                    `);
+
+                    markers.push(marker);
+                });
+
+                // Update the map legend with actual sample types
+                const sampleTypes = Array.from(sampleTypesSet);
+                const legendColors = sampleTypes.map(type => getColorForType(type, markerColors));
+                updateMapLegend(legendColors, sampleTypes);
+
+                // Fit map to markers if we have any
+                if (markers.length > 0) {
+                    const group = L.featureGroup(markers);
+                    map.fitBounds(group.getBounds().pad(0.1));
+                }
+
+                console.log(`Map loaded with ${markers.length} data points`);
+            } else {
+                console.warn('No map data available or API error:', response.message);
+                showNoDataMessage();
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching map data:', error);
+            showNoDataMessage();
         });
-
-        // Create the marker
-        const marker = L.marker([point.lat, point.lng], { icon: icon }).addTo(map);
-
-        // Generate random data values
-        const microplasticCount = Math.floor(Math.random() * 300) + 10;
-        const collectionDate = getRandomDate();
-        
-        // Generate random concentration data (particles/L for water, particles/g for soil)
-        const mediaType = Math.random() > 0.5 ? 'water' : 'soil';
-        const concentrationValue = mediaType === 'water' 
-            ? (Math.random() * 1000 + 10).toFixed(1)  // particles per liter
-            : (Math.random() * 500 + 5).toFixed(1);   // particles per gram
-        const concentrationUnit = mediaType === 'water' ? 'particles/L' : 'particles/g';
-
-        // Add popup with sample information
-        marker.bindPopup(`
-            <div class="marker-popup">
-                <h4>${sampleType}</h4>
-                <p>Location: <span class="data-value">${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}</span></p>
-                <p>Microplastic Count: <span class="data-value">${microplasticCount}</span></p>
-                <p>Concentration: <span class="data-value">${concentrationValue} ${concentrationUnit}</span></p>
-                <p>Collected: <span class="data-value">${collectionDate}</span></p>
-            </div>
-        `);
-    });
-
-    // Update the map legend with the marker colors and sample types
-    updateMapLegend(markerColors, sampleTypes);
 }
 
-// Generate random points around a center point
-function generateRandomPoints(centerLat, centerLng, numPoints, radius) {
-    const points = [];
-
-    for (let i = 0; i < numPoints; i++) {
-        // Generate a random angle and distance within the radius
-        const angle = Math.random() * 2 * Math.PI;
-        const distance = Math.random() * radius;
-
-        // Convert to lat/lng offset 
-        // Note: Simple approximation, works for small distances
-        const latOffset = distance * Math.cos(angle);
-        const lngOffset = distance * Math.sin(angle) / Math.cos(centerLat * Math.PI / 180);
-
-        points.push({
-            lat: centerLat + latOffset,
-            lng: centerLng + lngOffset
-        });
+// Get consistent color for a sample type
+function getColorForType(type, colors) {
+    let typeIndex = 0;
+    for (let i = 0; i < type.length; i++) {
+        typeIndex += type.charCodeAt(i);
     }
-
-    return points;
+    return colors[typeIndex % colors.length];
 }
 
-// Generate a random date within the last 2 years
-function getRandomDate() {
-    const today = new Date();
-    const pastDate = new Date(today);
-    pastDate.setFullYear(today.getFullYear() - 2);
-
-    const randomTime = pastDate.getTime() + Math.random() * (today.getTime() - pastDate.getTime());
-    const randomDate = new Date(randomTime);
-
-    return randomDate.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    });
+// Show message when no data is available
+function showNoDataMessage() {
+    const legend = document.querySelector('.map-legend');
+    if (legend) {
+        legend.innerHTML = '<div class="legend-item"><span>No sample data available yet</span></div>';
+    }
 }
 
 // Update the map legend with the marker colors and sample types
@@ -150,6 +145,11 @@ function updateMapLegend(colors, types) {
     if (!legend) return;
 
     legend.innerHTML = ''; // Clear existing legend
+
+    if (types.length === 0) {
+        legend.innerHTML = '<div class="legend-item"><span>No data available</span></div>';
+        return;
+    }
 
     // Create rows with 4 columns each
     const itemsPerRow = 4;
@@ -165,7 +165,7 @@ function updateMapLegend(colors, types) {
             if (index >= types.length) break;
 
             const type = types[index];
-            const color = colors[index % colors.length];
+            const color = colors[index];
 
             const legendItem = document.createElement('div');
             legendItem.className = 'legend-item';

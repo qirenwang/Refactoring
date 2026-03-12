@@ -16,7 +16,7 @@ const { testConnection } = require('./config/database');
 const sessionConfig = require('./config/session');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Security middleware - completely disable CSP in development
 if (process.env.NODE_ENV === 'production') {
@@ -95,6 +95,11 @@ app.use(session(sessionConfig));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
+// Disable view caching in development mode
+if (process.env.NODE_ENV === 'development') {
+    app.set('view cache', false);
+}
+
 // Import routes
 const authRoutes = require('./routes/auth');
 const pageRoutes = require('./routes/pages');
@@ -145,7 +150,27 @@ async function startServer() {
             console.log(`Server running on port ${PORT}`);
             console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
             console.log(`Local access: http://localhost:${PORT}`);
-            console.log(`Network access: http://192.168.31.158:${PORT}`);
+            
+            // Original hardcoded network access (commented out for reference)
+            // console.log(`Network access: http://192.168.31.158:${PORT}`);
+            
+            // New: Dynamic network IP detection (added to show actual local IP)
+            const os = require('os');
+            const networkInterfaces = os.networkInterfaces();
+            let localIP = '192.168.31.158'; // fallback to original IP
+            
+            // Find first non-internal IPv4 address
+            for (const name of Object.keys(networkInterfaces)) {
+                for (const net of networkInterfaces[name]) {
+                    if (net.family === 'IPv4' && !net.internal) {
+                        localIP = net.address;
+                        break;
+                    }
+                }
+                if (localIP !== '192.168.31.158') break;
+            }
+            
+            console.log(`Network access: http://${localIP}:${PORT}`);
         });
     } catch (error) {
         console.error('Failed to start server:', error);

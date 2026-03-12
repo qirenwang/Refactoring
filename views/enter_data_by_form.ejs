@@ -26,7 +26,8 @@
     
     <div class="content">
         <%- include('partials/sidebar') %>
-      <div class="main-content">        <div class="form-progress-container">
+      <div class="main-content">
+        <div class="form-progress-container">
             <div class="form-progress">
                 <div class="progress-step active" data-step="1">
                     <span class="step-number">1</span>
@@ -50,22 +51,190 @@
                 </div>
                 <div class="progress-step" data-step="6">
                     <span class="step-number">6</span>
-                    <span class="step-label">Review & Submit</span>
+                    <span class="step-label">Confirmation</span>
                 </div>
             </div>
         </div>
         
         <!-- Form Pages Container -->
         <div class="form-pages-container">
-            <%- include('data_forms/formpage1') %>
+            <!-- Page 1: Location Information - Initially visible -->
+            <div class="form-page" id="form-page1" data-page="1">
+                <h2 class="form-section-title">Location Information</h2>
+                <div class="instruction">
+                    <span class="bold">Choose ONE</span> of the 2 ways below to enter the sampling location. Reuse a previous location for repeat sampling, or enter a new location and then provide location details using coordinates, a full indoor address, or a ZIP code for approximate area only.
+                </div>
+                <div class="location-options">
+                    <div class="option">
+                        <span class="option-number">1</span>
+                        <span class="option-title">Select previously sampled location</span> (repeat sampling)
+                        <div class="select-container">
+                            <select id="location-select" class="location-select" name="location_id">
+                                <option value="">-- Select a location --</option>
+                            </select>
+                            <div id="location-loading" class="location-loading">Loading locations...</div>
+                        </div>
+                    </div>                    <div class="option">
+                        <span class="option-number">2</span>
+                        <!-- # add a note here -->
+                        <span class="option-title">Enter new location</span>
+                        <div class="instruction-note" style="color: #e74c3c; background-color: #fdf2f2; padding: 8px; margin: 8px 0; border-left: 4px solid #e74c3c; font-size: 14px;">
+                            <strong>Important:</strong> To create a brand new location, clear "Select previously sampled location" first. If an existing location is selected, only location description and coordinates are treated as event-level overrides.
+                        </div>
+                        <div class="location-form">                            <div class="form-row">
+                                <label class="form-label">Location Name (<span style="color: red;">*</span>, for pull-down menu):</label>
+                            </div>
+                            <div class="form-row">
+                                <input type="text" id="location-name" name="location_name" class="form-input" placeholder="Enter location name">
+                            </div>
+
+                            <div class="form-row">
+                                <label class="form-label">Location Short Code (<span style="color: red;">*</span>, for quickly identifying location types, such as a storm drain or lake, see documentation):</label>
+                            </div>
+                            <div class="form-row">
+                                <input type="text" id="location-shortcode" name="location_shortcode" class="form-input" placeholder="For quickly identifying location types, such as a storm drain or lake, see documentation.">
+                            </div>
+
+                            <div class="form-row">
+                                <label class="form-label">Location Description (<span style="color: red;">*</span>):</label>
+                            </div>
+                            <div class="form-row">
+                                <input type="text" id="location-description" name="location_description" class="form-input" placeholder="Enter location description">
+                            </div>
+
+                            <div class="form-row">
+                                <label class="form-label">Land Use and Land Cover (LULC) (<span style="color: red;">*</span>):</label>
+                            </div>
+                            <div class="form-row">
+                                <select id="land-use-cover" name="land_use_cover" class="form-input" required>
+                                    <option value="">-- Select Land Use and Land Cover --</option>
+                                    <option value="water">Water</option>
+                                    <option value="trees">Trees</option>
+                                    <option value="flooded_vegetation">Flooded Vegetation</option>
+                                    <option value="crops">Crops</option>
+                                    <option value="built_area">Built Area</option>
+                                    <option value="bare_ground">Bare Ground</option>
+                                    <option value="snow_ice">Snow/Ice</option>
+                                    <option value="rangeland">Rangeland</option>
+                                </select>
+                            </div>
+
+                            <div class="instruction" style="margin-top: 10px;">
+                                For new locations, use <span class="bold">latitude/longitude</span> for precise outdoor sampling points, <span class="bold">full address + Find Address on Map</span> for indoor samples, or <span class="bold">ZIP code</span> when you can only share an approximate area.
+                            </div>
+
+                            <span class="form-label"><span class="bold">For outdoor:</span></span>
+                            <div class="coordinates-container">
+                                <div class="coordinate-field">
+                                    <div class="coordinate-label">Latitude (click map)</div>
+                                    <input type="text" id="latitude" name="latitude" class="coordinate-input" placeholder="Enter latitude">
+                                </div>
+                                <div class="coordinate-field">
+                                    <div class="coordinate-label">Longitude</div>
+                                    <input type="text" id="longitude" name="longitude" class="coordinate-input" placeholder="Enter longitude">
+                                </div>
+                            </div>
+                            
+                            <div class="coordinate-hint">Click the map to set coordinates, drag the marker to refine them, or type latitude and longitude manually.</div>
+                            
+                            <!-- Map container -->
+                            <div id="map"></div>
+                            
+                            <div class="form-row">
+                                <label class="form-label">Acres (if sampling a broad area):</label>
+                                <input type="text" id="acres" name="acres" class="form-input" placeholder="Enter area in acres">
+                            </div>
+
+
+                            <span class="form-label"><span class="bold">For indoor:</span> Full address</span>
+                            <div class="coordinate-hint" style="margin-top: 6px;">Enter the full address, then select <span class="bold">Find Address on Map</span> to place the marker. Review the point and drag it if needed.</div>
+                            <input type="text" name="streetaddress" class="input-field" placeholder="StreetAddress">
+                            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                <input type="text" name="city" class="input-field" placeholder="City" style="flex:1;">
+                                <input type="text" name="state" class="input-field" placeholder="State" style="flex:1;">
+                                <input type="text" name="country" class="input-field" placeholder="Country" style="flex:1;">
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px;">
+                                <button type="button" id="find-address-on-map" class="btn-continue" style="width: auto; padding: 8px 14px;">Find Address on Map</button>
+                                <div id="address-geocode-status" style="font-size: 13px; line-height: 1.4;"></div>
+                            </div>
+                            
+
+                            <span class="form-label">Or ZIP code only</span> (for confidential data or samples collected over a wide area):
+                            <div class="coordinate-hint" style="margin-top: 6px;">ZIP code is kept for approximate area reporting only. It will not place a precise point on the map.</div>
+                            <input type="text" name="zip_code" class="input-field" placeholder="zip code">
+                        </div>
+
+
+                    </div>
+                </div>
+                <div class="form-navigation">
+                    <button type="button" id="page1-continue" class="btn-continue" data-next="2">Continue</button>
+                </div>
+            </div>
         </div>
           <!-- Templates for form pages that will be loaded progressively -->
         <div style="display: none;" id="form-templates">
+            <!-- Page 2: Sampling Event Information -->
             <%- include('data_forms/formpage2') %>
+
+            <!-- Page 3: Media Selection -->
             <%- include('data_forms/formpage3') %>
+
+            <!-- Page 4: Additional Information -->
             <%- include('data_forms/formpage4') %>
+
+            <!-- Page 5: Particle Details -->
             <%- include('data_forms/formpage5') %>
-            <%- include('data_forms/formpage6') %>
+
+            <!-- Page 6: Review and Submit -->
+            <template id="template-form-page6">
+                <div class="form-page" id="form-page6" data-page="6">
+                    <h2 class="form-section-title">Review and Submit</h2>
+                    <div class="form-section">
+                        <div class="confirmation-message">
+                            <p>Please review your data before final submission. You can go back to previous pages to make changes if needed.</p>
+                        </div>
+                        <div class="data-summary">
+                            <h3>Data Summary
+                                <button type="button" onclick="if(window.generateSummary) window.generateSummary(); else console.log('generateSummary not available');" style="margin-left: 10px; padding: 5px 10px; font-size: 12px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh Summary</button>
+                            </h3>
+                            <div id="summary-container">
+                                <!-- Summary will be populated by JavaScript -->
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">Additional Notes:</label>
+                            <textarea name="additional_notes" class="form-textarea" placeholder="Any additional information you'd like to provide..."></textarea>
+                        </div>
+                    </div>
+                    <div class="form-navigation">
+                        <button type="button" id="save-button" class="btn-save">Save and Continue</button>
+
+                        <!-- Next Steps Options (shown after successful save) -->
+                        <div id="next-steps-options" class="next-steps-container" style="display: none;">
+                            <h3>Data Saved Successfully! What would you like to do next?</h3>
+                            <div class="next-steps-buttons">
+                                <button type="button" id="new-location-date" class="btn-option">
+                                    <strong>A) Start New Location/Date</strong>
+                                    <br><small>Begin fresh data entry for a different location and date</small>
+                                </button>
+                                <button type="button" id="different-media" class="btn-option">
+                                    <strong>B) Different Media Type</strong>
+                                    <br><small>Change media type for same location and date</small>
+                                </button>
+                                <button type="button" id="same-media-sample" class="btn-option">
+                                    <strong>C) Additional Sample</strong>
+                                    <br><small>Add another sample for same media, location, and date</small>
+                                </button>
+                            </div>
+                            <div class="next-steps-note">
+                                <p><em>Choose your next action to continue data entry efficiently.</em></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
         </div>
         
         <!-- Form data will be submitted through AJAX -->
@@ -106,7 +275,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     keysToRemove.forEach(key => sessionStorage.removeItem(key));
-      // Initialize fresh session storage for form data
+    
+    // Initialize fresh session storage for form data
     sessionStorage.setItem('microplastics_form_data', JSON.stringify({}));
     console.log('Form cache cleared and reinitialized.');
     
@@ -145,7 +315,8 @@ document.addEventListener('DOMContentLoaded', function() {
         textareas.forEach(textarea => {
             textarea.value = '';
         });
-          console.log('All form fields cleared.');
+        
+        console.log('All form fields cleared.');
     }
     
     // Also disable browser autofill to prevent refilling after we clear
@@ -153,7 +324,8 @@ document.addEventListener('DOMContentLoaded', function() {
     formElements.forEach(element => {
         element.setAttribute('autocomplete', 'off');
     });
-      // Force clear any browser-cached values after a short delay
+    
+    // Force clear any browser-cached values after a short delay
     setTimeout(() => {
         clearAllFormFields();
         console.log('Second pass form field clearing completed.');
@@ -180,60 +352,19 @@ document.addEventListener('DOMContentLoaded', function() {
             window.isPageInitialLoad = true;
         }
     });
-    
-    // DEBUG: Check if elements exist
-    const container = document.querySelector('.form-pages-container');
-    const button = document.getElementById('page1-continue');
-    console.log('Container exists:', !!container);
-    console.log('Button exists:', !!button);
-    
-    // DEBUG: Add direct click listener to button as backup
-    if (button) {
-        console.log('Adding direct click listener to page1-continue button');
-        button.addEventListener('click', function(event) {
-            console.log('=== DIRECT BUTTON CLICK DETECTED ===');
-            console.log('Event:', event);
-            console.log('Target:', event.target);
-            console.log('Button ID:', event.target.id);
-            console.log('Button classes:', event.target.className);
-            
-            // Check if form-handler.js validation function exists
-            if (typeof validateAndProceedFromPage1 === 'function') {
-                console.log('form-handler.js validation function found, calling it');
-                event.preventDefault();
-                event.stopPropagation();
-                validateAndProceedFromPage1();
-            } else {
-                console.log('form-handler.js validation function NOT found');
-                alert('Validation function not available. Form-handler.js may not be loaded correctly.');
-            }
-        });
-    }
-      // DEBUG: Test if form-handler.js functions are available
-    setTimeout(() => {
-        console.log('=== Checking form-handler.js functions ===');
-        console.log('validateAndProceedFromPage1 exists:', typeof validateAndProceedFromPage1 !== 'undefined');
-        console.log('validateLocationInput exists:', typeof validateLocationInput !== 'undefined');
-        console.log('setupNavigationButtons exists:', typeof setupNavigationButtons !== 'undefined');
-        
-        if (typeof validateAndProceedFromPage1 === 'undefined') {
-            console.error('ERROR: validateAndProceedFromPage1 function not found!');
-            console.log('This means form-handler.js may not be loaded correctly.');
-        }
-    }, 1000);
-    
+
     // Pre-fill form with any data already in the session
-    // const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
-    // for (const key in formData) {
-    //     const element = document.querySelector(`[name="${key}"]`);
-    //     if (element) {
-    //         if (element.type === 'checkbox' || element.type === 'radio') {
-    //             element.checked = formData[key];
-    //         } else {
-    //             element.value = formData[key];
-    //         }
-    //     }
-    // }
+    const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
+    for (const key in formData) {
+        const element = document.querySelector(`[name="${key}"]`);
+        if (element) {
+            if (element.type === 'checkbox' || element.type === 'radio') {
+                element.checked = formData[key];
+            } else {
+                element.value = formData[key];
+            }
+        }
+    }
       // Set up event listeners for Continue buttons - HANDLED BY form-handler.js
     // document.querySelector('.form-pages-container').addEventListener('click', function(event) {
     //     if (event.target.classList.contains('btn-continue')) {
@@ -275,14 +406,20 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (event.target.name === 'has_quantitative_data') {
             const quantitativeContainer = document.getElementById('quantitative-counts-container');
-            if (event.target.value === 'yes') {
-                quantitativeContainer.style.display = 'block';
-            } else {
-                quantitativeContainer.style.display = 'none';
-                // Also hide detail sections
-                document.getElementById('microplastics-details').style.display = 'none';
-                document.getElementById('fragments-details').style.display = 'none';
-                document.getElementById('packaging-details').style.display = 'none';
+            if (quantitativeContainer) {
+                if (event.target.value === 'yes') {
+                    quantitativeContainer.style.display = 'block';
+                } else {
+                    quantitativeContainer.style.display = 'none';
+                    // Also hide detail sections
+                    const microplasticsDetails = document.getElementById('microplastics-details');
+                    const fragmentsDetails = document.getElementById('fragments-details');
+                    const packagingDetails = document.getElementById('packaging-details');
+
+                    if (microplasticsDetails) microplasticsDetails.style.display = 'none';
+                    if (fragmentsDetails) fragmentsDetails.style.display = 'none';
+                    if (packagingDetails) packagingDetails.style.display = 'none';
+                }
             }
         }
     });
@@ -292,27 +429,42 @@ document.addEventListener('DOMContentLoaded', function() {
         if (event.target.id === 'microplastics-count') {
             const count = parseInt(event.target.value) || 0;
             const detailsSection = document.getElementById('microplastics-details');
-            detailsSection.style.display = count > 0 ? 'block' : 'none';
+            if (detailsSection) {
+                detailsSection.style.display = count > 0 ? 'block' : 'none';
+            }
         }
-        
+
         if (event.target.id === 'fragments-count') {
             const count = parseInt(event.target.value) || 0;
             const detailsSection = document.getElementById('fragments-details');
-            detailsSection.style.display = count > 0 ? 'block' : 'none';
+            if (detailsSection) {
+                detailsSection.style.display = count > 0 ? 'block' : 'none';
+            }
         }
         
         if (event.target.id === 'packaging-count') {
             const count = parseInt(event.target.value) || 0;
             const detailsSection = document.getElementById('packaging-details');
             const itemsContainer = document.getElementById('packaging-items-container');
-            
+
+            // Check if elements exist before manipulating them
+            if (!itemsContainer || !detailsSection) {
+                console.warn('Packaging elements not found - page may not be loaded yet');
+                return;
+            }
+
             if (count > 0) {
                 detailsSection.style.display = 'block';
-                
+
                 // Create packaging item forms
                 itemsContainer.innerHTML = '';
                 const template = document.getElementById('packaging-item-template');
-                
+
+                if (!template) {
+                    console.warn('Packaging item template not found');
+                    return;
+                }
+
                 for (let i = 1; i <= count; i++) {
                     const itemElement = template.content.cloneNode(true);
                     itemElement.querySelector('.item-number').textContent = i;
@@ -324,10 +476,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // // Set up save button
+    // Set up save button - DISABLED, now handled by form-handler.js
     // document.addEventListener('click', function(event) {
     //     if (event.target.id === 'save-button') {
-    //         submitFormDataAndRedirect();
+    //         submitFormData();
     //     }
     // });
     
@@ -363,22 +515,22 @@ document.addEventListener('DOMContentLoaded', function() {
         // Append to the form pages container
         document.querySelector('.form-pages-container').appendChild(pageContent);
         
-        // // Pre-fill the newly added page with any existing data
-        // const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
-        // const newPage = document.getElementById('form-page' + pageNumber);
+        // Pre-fill the newly added page with any existing data
+        const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
+        const newPage = document.getElementById('form-page' + pageNumber);
         
-        // if (newPage) {
-        //     const formElements = newPage.querySelectorAll('input, select, textarea');
-        //     formElements.forEach(element => {
-        //         if (element.name && formData[element.name]) {
-        //             if (element.type === 'checkbox' || element.type === 'radio') {
-        //                 element.checked = (formData[element.name] === element.value);
-        //             } else {
-        //                 element.value = formData[element.name];
-        //             }
-        //         }
-        //     });
-        // }
+        if (newPage) {
+            const formElements = newPage.querySelectorAll('input, select, textarea');
+            formElements.forEach(element => {
+                if (element.name && formData[element.name]) {
+                    if (element.type === 'checkbox' || element.type === 'radio') {
+                        element.checked = (formData[element.name] === element.value);
+                    } else {
+                        element.value = formData[element.name];
+                    }
+                }
+            });
+        }
         
         // Scroll to the new page
         newPage.scrollIntoView({ behavior: 'smooth' });
@@ -395,8 +547,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Function to submit the form data and redirect to review page
-    function submitFormDataAndRedirect() {
+    // Function to submit the form data
+    function submitFormData() {
         // Display a loading indicator
         const loadingIndicator = document.createElement('div');
         loadingIndicator.className = 'loading-indicator';
@@ -407,7 +559,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
         
         // Submit via AJAX
-        fetch('/save-form-data', {
+        fetch('/api/save-form-data', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

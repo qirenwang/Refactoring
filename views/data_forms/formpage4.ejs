@@ -23,11 +23,29 @@
             
             <!-- Additional information sections - initially hidden -->
             <div id="additional-info-sections" style="display: none;">
+
                 
                 
                 <!-- In Water section - Only shown when media type is water -->
                 <div class="info-section media-specific-section" id="water-section" data-media-type="water" style="display: none;">
                     <h3 class="section-subtitle">In Water</h3>
+                    <div class="form-row">
+                        <label class="form-label">Environment Type:</label>
+                        <select name="environment_type" class="form-select">
+                            <option value="">-- Select --</option>
+                            <option value="Ocean">Ocean</option>
+                            <option value="Great Lake">Great Lake</option>
+                            <option value="Inland Lake">Inland Lake (at least 5 acres but not one of the named Great Lakes)</option>
+                            <option value="Pond">Pond (less than 5 acres)</option>
+                            <option value="River">River</option>
+                            <option value="Stream">Stream</option>
+                            <option value="Wetland">Wetland</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Volume sampled (liters):</label>
+                        <input type="number" step="0.01" name="volume_sampled" class="form-input" placeholder="Enter volume">
+                    </div>
                     <div class="form-row">
                         <label class="form-label">Total water depth at the sampling site (m):</label>
                         <input type="number" step="0.01" name="total_water_depth" class="form-input" placeholder="Enter total depth in meters">
@@ -37,7 +55,7 @@
                         <input type="number" step="0.01" name="sample_water_depth" class="form-input" placeholder="Enter sample depth in meters">
                     </div>
                     <div class="form-row">
-                        <label class="form-label">Water flow velocity (m/s):</label>
+                        <label class="form-label">Water flow velocity (meters per second):</label>
                         <input type="number" step="0.01" name="water_flow_velocity" class="form-input" placeholder="Enter velocity in m/s">
                     </div>
                     <div class="form-row">
@@ -65,6 +83,10 @@
                 <!-- In Aquatic Sediment section - Only shown when media type is soil_sediment -->
                 <div class="info-section media-specific-section" id="sediment-section" data-media-type="soil_sediment" style="display: none;">
                     <h3 class="section-subtitle">In Aquatic Sediment</h3>
+                    <div class="form-row">
+                        <label class="form-label">Sampling depth (meters):</label>
+                        <input type="number" step="0.01" name="sediment_depth" class="form-input" placeholder="Enter sampling depth">
+                    </div>
                     <div class="form-row">
                         <label class="form-label">Sediment sample dry weight (g):</label>
                         <input type="number" step="0.01" name="sediment_dry_weight" class="form-input" placeholder="Enter dry weight">
