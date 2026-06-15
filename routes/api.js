@@ -32,23 +32,23 @@ function validatePercentageGroups(formData) {
     const percentageGroups = {
         // Microplastics size percentages
         mp_size: [
-            'mp_size_lt_1um', 
-            'mp_size_1_20um', 
-            'mp_size_20_100um', 
-            'mp_size_100um_1mm', 
+            'mp_size_lt_1um',
+            'mp_size_1_20um',
+            'mp_size_20_100um',
+            'mp_size_100um_1mm',
             'mp_size_1_5mm'
         ],
         // Microplastics color percentages
         mp_color: [
             'mp_color_clear',
-            'mp_color_opaque_light', 
+            'mp_color_opaque_light',
             'mp_color_opaque_dark',
             'mp_color_mixed'
         ],
         // Microplastics form percentages
         mp_form: [
             'mp_form_fiber',
-            'mp_form_pellet', 
+            'mp_form_pellet',
             'mp_form_fragment'
         ],
         // Microplastics polymer percentages
@@ -86,11 +86,11 @@ function validatePercentageGroups(formData) {
     };
 
     const errors = [];
-    
+
     for (const [groupName, fields] of Object.entries(percentageGroups)) {
         let total = 0;
         let hasAnyValue = false;
-        
+
         fields.forEach(fieldName => {
             const value = formData[fieldName];
             if (value !== undefined && value !== null && value !== '') {
@@ -101,7 +101,7 @@ function validatePercentageGroups(formData) {
                 }
             }
         });
-        
+
         // Only validate if user has entered any values in this group
         if (hasAnyValue) {
             if (Math.abs(total - 100) > 0.1) {
@@ -113,7 +113,7 @@ function validatePercentageGroups(formData) {
             }
         }
     }
-    
+
     if (errors.length > 0) {
         return {
             isValid: false,
@@ -121,7 +121,7 @@ function validatePercentageGroups(formData) {
             details: errors
         };
     }
-    
+
     return { isValid: true };
 }
 
@@ -256,6 +256,265 @@ function calculateRecycleCodeSum(formData, type) {
         sum += value;
     }
     return sum;
+}
+
+function parseNullableFloat(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseNullableInt(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function firstPresent(formData, ...keys) {
+    for (const key of keys) {
+        if (formData[key] !== undefined && formData[key] !== null && formData[key] !== '') {
+            return formData[key];
+        }
+    }
+    return null;
+}
+
+function getDetailRows(formData, snakeKey, camelKey) {
+    const value = formData[snakeKey] ?? formData[camelKey] ?? [];
+    return Array.isArray(value) ? value : [];
+}
+
+function normalizeDetailRow(row) {
+    return {
+        refNum: parseNullableInt(row.ref_num ?? row.refNum),
+        legacy: row.legacy ?? '',
+        percent: parseNullableFloat(row.percent),
+        methodPercentEstimate: row.method_percent_estimate ?? row.methodPercentEstimate ?? null
+    };
+}
+
+function detailRowsTotal(rows) {
+    return rows.reduce((sum, row) => sum + (parseNullableFloat(row.percent) || 0), 0);
+}
+
+function hasPolymerPercentages(formData, prefix) {
+    return Object.keys(formData).some(key => key.startsWith(prefix) && parseNullableFloat(formData[key]) > 0);
+}
+
+function getPublicationInputState(formData) {
+    const selectedPublication = parseNullableInt(firstPresent(formData, 'publication_id_num', 'publication_id', 'publicationId'));
+    const newPublicationFields = [
+        firstPresent(formData, 'publication_year', 'publicationYear'),
+        firstPresent(formData, 'publication_authors', 'publicationAuthors'),
+        firstPresent(formData, 'publication_journal', 'publicationJournal'),
+        firstPresent(formData, 'publication_full_citation_apa', 'publicationFullCitationApa'),
+        firstPresent(formData, 'publication_pub_source_code', 'publicationPubSourceCode')
+    ];
+
+    return {
+        selectedPublication,
+        hasNewPublicationInput: newPublicationFields.some(value => value !== null),
+        hasCompleteNewPublication: newPublicationFields.every(value => value !== null)
+    };
+}
+
+function hasDebrisDetailData(formData) {
+    const detailRows = [
+        ...getDetailRows(formData, 'fragments_color_details', 'fragmentsColorDetails'),
+        ...getDetailRows(formData, 'fragments_form_details', 'fragmentsFormDetails'),
+        ...getDetailRows(formData, 'fragments_opacity_details', 'fragmentsOpacityDetails'),
+        ...getDetailRows(formData, 'fragments_purpose_details', 'fragmentsPurposeDetails')
+    ];
+
+    return detailRows.length > 0 ||
+        hasPolymerPercentages(formData, 'fragment_polymer_') ||
+        firstPresent(formData, 'fragments_method_polymer_num', 'fragments_methodPolymerNum') ||
+        firstPresent(formData, 'fragments_method_polymer_other', 'fragments_methodPolymerOther') ||
+        firstPresent(formData, 'fragments_method_percent_estimate');
+}
+
+function validateNewSaveRules(formData) {
+    const errors = [];
+    const totalSampleAmount = firstPresent(formData, 'total_sample_amount', 'totalSampleAmount');
+    const sampleUnit = firstPresent(formData, 'sample_unit', 'sampleUnit');
+
+    // Publication is optional. Only require complete details when the user
+    // explicitly opted in via the Yes/No toggle.
+    const publicationPresent = firstPresent(formData, 'publication_present', 'publicationPresent');
+    const publicationInput = getPublicationInputState(formData);
+    if (publicationPresent === 'yes' &&
+        !publicationInput.selectedPublication && !publicationInput.hasCompleteNewPublication) {
+        errors.push('Publication source is incomplete. Please fill in the publication details or choose "No".');
+    }
+
+    if ((totalSampleAmount && !sampleUnit) || (!totalSampleAmount && sampleUnit)) {
+        errors.push('Total Sample Amount and Sample Unit must be entered together.');
+    }
+
+    const hasQuantitativeData = firstPresent(formData, 'has_quantitative_data', 'hasQuantitativeData') === 'yes';
+    const debrisCount =
+        (parseNullableInt(formData.fragments_count) || 0) +
+        (parseNullableInt(formData.packaging_count) || 0);
+    const debrisMass = parseNullableFloat(firstPresent(formData, 'fragments_mass_debris_total', 'fragments_massDebrisTotal')) || 0;
+    if (hasQuantitativeData && hasDebrisDetailData(formData) && debrisCount <= 0 && debrisMass <= 0) {
+        errors.push('Enter at least a count or a mass for debris.');
+    }
+
+    const detailGroups = [
+        ['fragments_color_details', 'fragmentsColorDetails'],
+        ['fragments_form_details', 'fragmentsFormDetails'],
+        ['fragments_opacity_details', 'fragmentsOpacityDetails'],
+        ['fragments_purpose_details', 'fragmentsPurposeDetails'],
+        ['micro_color_details', 'microColorDetails'],
+        ['micro_shape_details', 'microShapeDetails'],
+        ['micro_texture_details', 'microTextureDetails'],
+        ['micro_opacity_details', 'microOpacityDetails'],
+        ['micro_size_details', 'microSizeDetails']
+    ];
+
+    detailGroups.forEach(([snakeKey, camelKey]) => {
+        const rows = getDetailRows(formData, snakeKey, camelKey);
+        if (rows.length === 0) return;
+
+        const total = detailRowsTotal(rows);
+        if (Math.abs(total - 100) > 0.1) {
+            errors.push(`${snakeKey} percentages sum to ${total.toFixed(1)}% but must equal 100%.`);
+        }
+
+        const missingMethod = rows.some(row => !normalizeDetailRow(row).methodPercentEstimate);
+        if (missingMethod) {
+            errors.push(`${snakeKey} requires a percent-estimation method for every provided row.`);
+        }
+    });
+
+    if (hasPolymerPercentages(formData, 'fragment_polymer_') && !firstPresent(formData, 'fragments_method_polymer_num', 'fragments_methodPolymerNum')) {
+        errors.push('Fragments polymer details require fragments_method_polymer_num.');
+    }
+    if (hasPolymerPercentages(formData, 'fragment_polymer_') && !firstPresent(formData, 'fragments_method_percent_estimate')) {
+        errors.push('Fragments polymer details require fragments_method_percent_estimate.');
+    }
+
+    if (hasPolymerPercentages(formData, 'mp_polymer_') && !firstPresent(formData, 'micro_method_polymer_num', 'micro_methodPolymerNum')) {
+        errors.push('Microplastics polymer details require micro_method_polymer_num.');
+    }
+    if (hasPolymerPercentages(formData, 'mp_polymer_') && !firstPresent(formData, 'micro_method_percent_estimate')) {
+        errors.push('Microplastics polymer details require micro_method_percent_estimate.');
+    }
+
+    return {
+        isValid: errors.length === 0,
+        message: errors.join('; '),
+        details: errors
+    };
+}
+
+async function getTableColumns(connection, tableName) {
+    const [rows] = await connection.execute(
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        [tableName]
+    );
+    return new Set(rows.map(row => row.COLUMN_NAME));
+}
+
+async function insertFromMap(connection, tableName, dataMap, tableColumns = null) {
+    const availableColumns = tableColumns || await getTableColumns(connection, tableName);
+    const entries = Object.entries(dataMap).filter(([column]) => availableColumns.has(column));
+    const columns = entries.map(([column]) => `\`${column}\``).join(', ');
+    const placeholders = entries.map(() => '?').join(', ');
+    const values = entries.map(([, value]) => value);
+
+    await connection.execute(
+        `INSERT INTO ${tableName} (${columns}) VALUES (${placeholders})`,
+        values
+    );
+}
+
+async function nextTableId(connection, tableName, idColumn) {
+    const [rows] = await connection.execute(`SELECT MAX(\`${idColumn}\`) as maxId FROM ${tableName}`);
+    return (rows[0].maxId || 0) + 1;
+}
+
+async function insertDetailRows(connection, config, parentId, rows) {
+    let nextId = await nextTableId(connection, config.tableName, config.idColumn);
+
+    for (const rawRow of rows) {
+        const row = normalizeDetailRow(rawRow);
+        if (!row.refNum || row.percent === null) continue;
+
+        const dataMap = {
+            [config.idColumn]: nextId++,
+            [config.parentColumn]: parentId,
+            [config.refColumn]: row.refNum,
+            [config.legacyColumn]: row.legacy,
+            [config.percentColumn]: row.percent,
+            Method_PercentEstimate: row.methodPercentEstimate,
+            DateEntered: new Date()
+        };
+
+        await insertFromMap(connection, config.tableName, dataMap);
+    }
+}
+
+async function createPublication(connection, publicationData) {
+    const publicationId = await nextTableId(connection, 'Publications', 'PublicationUniqueID');
+    await connection.execute(`
+        INSERT INTO Publications (
+            PublicationUniqueID, Year, Authors, Journal, FullCitation_APA,
+            PubSource_Code, PubSource_Legacy, DateEntered
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE())
+    `, [
+        publicationId,
+        parseNullableInt(publicationData.year),
+        publicationData.authors,
+        publicationData.journal,
+        publicationData.fullCitationApa,
+        parseNullableInt(publicationData.pubSourceCode),
+        publicationData.pubSourceLegacy || String(publicationData.pubSourceCode || '')
+    ]);
+    return publicationId;
+}
+
+async function resolvePublicationId(connection, formData) {
+    // Publication is now optional. The SamplingEvent.PublicationID_Num column is
+    // nullable, so we store NULL whenever a publication is absent.
+    const publicationPresent = firstPresent(formData, 'publication_present', 'publicationPresent');
+    if (publicationPresent === 'no') {
+        return null;
+    }
+
+    const selectedPublication = firstPresent(formData, 'publication_id_num', 'publication_id', 'publicationId');
+    if (selectedPublication) {
+        return parseNullableInt(selectedPublication);
+    }
+
+    const year = firstPresent(formData, 'publication_year', 'publicationYear');
+    const authors = firstPresent(formData, 'publication_authors', 'publicationAuthors');
+    const journal = firstPresent(formData, 'publication_journal', 'publicationJournal');
+    const citation = firstPresent(formData, 'publication_full_citation_apa', 'publicationFullCitationApa');
+    const sourceCode = firstPresent(formData, 'publication_pub_source_code', 'publicationPubSourceCode');
+
+    if (year && authors && journal && citation && sourceCode) {
+        return createPublication(connection, {
+            year,
+            authors,
+            journal,
+            fullCitationApa: citation,
+            pubSourceCode: sourceCode,
+            pubSourceLegacy: null
+        });
+    }
+
+    // If the user opted in ('yes') but left required publication fields incomplete,
+    // surface a clear error; otherwise treat publication as optional and skip it.
+    if (publicationPresent === 'yes') {
+        const error = new Error('Publication source is incomplete. Please fill in the publication details or choose "No".');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    // No publication provided and the user didn't opt in: store NULL
+    // (PublicationID_Num is nullable).
+    return null;
 }
 
 // Health check endpoint
@@ -414,18 +673,18 @@ router.post('/add-test-location-data', requireAuth, async (req, res) => {
             // Insert location
             const [locationResult] = await pool.execute(`
                 INSERT INTO Location (
-                    LocationName, Location_Desc, \`Env-Indoor_SelectID\`,
-                    \`Lat-DecimalDegree\`, \`Long-DecimalDegree\`, 
+                    LocationName, Location_Desc, \`Env_Indoor_SelectID\`,
+                    \`Lat_DecimalDegree\`, \`Long_DecimalDegree\`,
                     City, State, Country, ZipCode,
                     UserCreated
                 ) VALUES (?, ?, 1, ?, ?, ?, ?, 'USA', ?, ?)
             `, [
-                loc.name, 
-                `Test location for ${loc.name}`, 
-                loc.lat, 
-                loc.lng, 
-                loc.city, 
-                loc.state, 
+                loc.name,
+                `Test location for ${loc.name}`,
+                loc.lat,
+                loc.lng,
+                loc.city,
+                loc.state,
                 loc.zipCode,
                 req.session.username
             ]);
@@ -447,8 +706,8 @@ router.post('/add-test-location-data', requireAuth, async (req, res) => {
                     Micro5mmAndSmaller_Count, FragLargerThan5mm_Count, WholePkg_Count
                 ) VALUES (?, ?, 1, ?, ?, ?)
             `, [
-                locationId, 
-                locationId, 
+                locationId,
+                locationId,
                 Math.floor(Math.random() * 100) + 10,
                 Math.floor(Math.random() * 50) + 5,
                 Math.floor(Math.random() * 20) + 1
@@ -474,12 +733,12 @@ router.get('/php/get_map_data.php', async (req, res) => {
     try {
         // Build the SQL query with optional filters using the actual database schema
         let sql = `
-            SELECT 
+            SELECT
                 sd.SampleUniqueID,
                 l.LocationName as location,
                 l.ZipCode as zipCode,
-                l.\`Lat-DecimalDegree\` as lat, 
-                l.\`Long-DecimalDegree\` as lng,
+                l.\`Lat_DecimalDegree\` as lat,
+                l.\`Long_DecimalDegree\` as lng,
                 mt.MediaTypeOverall as sampleType,
                 DATE(se.SamplingDate) as date,
                 mt.MediaTypeOverall as plasticTypes,
@@ -488,29 +747,29 @@ router.get('/php/get_map_data.php', async (req, res) => {
             LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
             LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
             LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
-            WHERE l.\`Lat-DecimalDegree\` IS NOT NULL AND l.\`Long-DecimalDegree\` IS NOT NULL
+            WHERE l.\`Lat_DecimalDegree\` IS NOT NULL AND l.\`Long_DecimalDegree\` IS NOT NULL
         `;
-        
+
         const params = [];
-        
+
         // Apply ZIP code filter if provided (search in actual ZipCode field)
         if (req.query.zipcode && req.query.zipcode.trim()) {
             sql += " AND l.ZipCode = ?";
             params.push(parseInt(req.query.zipcode.trim()));
         }
-        
+
         // Apply plastic type filter if provided (search in media_type)
         if (req.query.plastic_type && req.query.plastic_type.trim()) {
             sql += " AND mt.MediaTypeOverall LIKE ?";
             params.push(`%${req.query.plastic_type.trim()}%`);
         }
-        
+
         // Order by collection date (most recent first)
         sql += " ORDER BY se.SamplingDate DESC";
-        
+
         // Execute the query
         const [rows] = await pool.execute(sql, params);
-        
+
         // Format the data to match the PHP response format
         const formattedData = rows.map(row => ({
             SampleUniqueID: row.SampleUniqueID,
@@ -523,7 +782,7 @@ router.get('/php/get_map_data.php', async (req, res) => {
             plasticTypes: row.plasticTypes || 'N/A',
             particleCount: row.particleCount || 0
         }));
-        
+
         // Return the data as JSON (matching PHP response format)
         res.json({
             success: true,
@@ -531,7 +790,7 @@ router.get('/php/get_map_data.php', async (req, res) => {
             data: formattedData,
             timestamp: new Date().toISOString().slice(0, 19).replace('T', ' ') // MySQL datetime format
         });
-        
+
     } catch (error) {
         console.error('Error fetching map data:', error);
         res.json({
@@ -545,10 +804,10 @@ router.get('/php/get_map_data.php', async (req, res) => {
 router.get('/map-data', async (req, res) => {
     try {
         const [rows] = await pool.execute(`
-            SELECT 
+            SELECT
                 sd.SampleUniqueID as id,
-                l.\`Lat-DecimalDegree\` as latitude,
-                l.\`Long-DecimalDegree\` as longitude,
+                l.\`Lat_DecimalDegree\` as latitude,
+                l.\`Long_DecimalDegree\` as longitude,
                 mt.MediaTypeOverall as sample_type,
                 l.LocationName as location_name,
                 se.SamplingDate as collection_date,
@@ -557,8 +816,8 @@ router.get('/map-data', async (req, res) => {
             LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
             LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
             LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
-            WHERE l.\`Lat-DecimalDegree\` IS NOT NULL 
-            AND l.\`Long-DecimalDegree\` IS NOT NULL
+            WHERE l.\`Lat_DecimalDegree\` IS NOT NULL
+            AND l.\`Long_DecimalDegree\` IS NOT NULL
             ORDER BY se.SamplingDate DESC
         `);
 
@@ -582,7 +841,7 @@ router.post('/test-save', async (req, res) => {
     console.log('Request headers:', JSON.stringify(req.headers, null, 2));
     console.log('Request body:', JSON.stringify(req.body, null, 2));
     console.log('Session data:', JSON.stringify(req.session, null, 2));
-    
+
     res.json({
         success: true,
         message: 'Test endpoint working',
@@ -591,16 +850,128 @@ router.post('/test-save', async (req, res) => {
     });
 });
 
-// Get reference data (polymers, purposes, etc.)
+// Reference data endpoints
+router.get('/ref/methods', async (req, res) => {
+    try {
+        const { type, appliesTo } = req.query;
+        let sql = `
+            SELECT MethodsUniqueID, MethodType, AppliesTo_MP, AppliesTo_Debris,
+                   AppliesTo_SoilType, Method_Code, Method_Label, DateEntered
+            FROM Methods_Ref
+            WHERE MethodType <> 'Count'
+        `;
+        const params = [];
+
+        if (type) {
+            sql += ' AND MethodType = ?';
+            params.push(type);
+        }
+
+        if (appliesTo === 'MP') {
+            sql += ' AND AppliesTo_MP = 1';
+        } else if (appliesTo === 'Debris') {
+            sql += ' AND AppliesTo_Debris = 1';
+        } else if (appliesTo === 'SoilType') {
+            sql += ' AND AppliesTo_SoilType = 1';
+        }
+
+        sql += ' ORDER BY MethodsUniqueID';
+
+        const [methods] = await pool.execute(sql, params);
+        res.json({ success: true, data: methods });
+    } catch (error) {
+        console.error('Error fetching methods reference:', error);
+        res.status(500).json({ success: false, message: 'Error fetching methods reference' });
+    }
+});
+
+router.get('/ref/opacity', async (req, res) => {
+    try {
+        const [opacities] = await pool.query(`
+            SELECT OpacityUniqueID, Opacity_Code, Opacity_Label
+            FROM Opacity_Ref
+            ORDER BY OpacityUniqueID
+        `);
+        res.json({ success: true, data: opacities });
+    } catch (error) {
+        console.error('Error fetching opacity reference:', error);
+        res.status(500).json({ success: false, message: 'Error fetching opacity reference' });
+    }
+});
+
+router.get('/ref/soil-texture', async (req, res) => {
+    try {
+        const [soilTextures] = await pool.query(`
+            SELECT SoilTextureUniqueID, SoilTexture_Code, SoilTexture_Definition
+            FROM SoilTexture_Ref
+            ORDER BY SoilTextureUniqueID
+        `);
+        res.json({ success: true, data: soilTextures });
+    } catch (error) {
+        console.error('Error fetching soil texture reference:', error);
+        res.status(500).json({ success: false, message: 'Error fetching soil texture reference' });
+    }
+});
+
+router.get('/ref/units', async (req, res) => {
+    try {
+        const [units] = await pool.query(`
+            SELECT UnitsUniqueID, Units_Type, Units_Code, Units_Desc
+            FROM Units_Ref
+            ORDER BY UnitsUniqueID
+        `);
+        res.json({ success: true, data: units });
+    } catch (error) {
+        console.error('Error fetching units reference:', error);
+        res.status(500).json({ success: false, message: 'Error fetching units reference' });
+    }
+});
+
+// Get reference data (polymers, purposes, methods, forms, colors, etc.)
 router.get('/references', async (req, res) => {
     try {
         const [polymers] = await pool.query('SELECT * FROM PolymerType_Ref ORDER BY Polymer_Code');
         const [purposes] = await pool.query('SELECT * FROM Purpose_Ref ORDER BY Purpose_Name');
+        const [colors] = await pool.query('SELECT * FROM ColorType_Ref ORDER BY ColorUniqueID');
+        const [forms] = await pool.query('SELECT * FROM Form_Ref ORDER BY FormUniqueID');
+        const [methods] = await pool.query(`
+            SELECT MethodsUniqueID, MethodType, AppliesTo_MP, AppliesTo_Debris,
+                   AppliesTo_SoilType, Method_Code, Method_Label, DateEntered
+            FROM Methods_Ref
+            WHERE MethodType <> 'Count'
+            ORDER BY MethodsUniqueID
+        `);
+        const [opacities] = await pool.query(`
+            SELECT OpacityUniqueID, Opacity_Code, Opacity_Label
+            FROM Opacity_Ref
+            ORDER BY OpacityUniqueID
+        `);
+        const [soilTextures] = await pool.query(`
+            SELECT SoilTextureUniqueID, SoilTexture_Code, SoilTexture_Definition
+            FROM SoilTexture_Ref
+            ORDER BY SoilTextureUniqueID
+        `);
+        const [units] = await pool.query(`
+            SELECT UnitsUniqueID, Units_Type, Units_Code, Units_Desc
+            FROM Units_Ref
+            ORDER BY UnitsUniqueID
+        `);
+        const [sizes] = await pool.query('SELECT * FROM SizeClass_Ref ORDER BY SizeUniqueID');
+        const [pubSources] = await pool.query('SELECT * FROM PubSource_Ref ORDER BY PubSourceUniqueID');
+
         res.json({
             success: true,
             data: {
                 polymers,
-                purposes
+                purposes,
+                colors,
+                forms,
+                methods,
+                opacities,
+                soilTextures,
+                units,
+                sizes,
+                pubSources
             }
         });
     } catch (error) {
@@ -609,23 +980,83 @@ router.get('/references', async (req, res) => {
     }
 });
 
+router.get('/publications', async (req, res) => {
+    try {
+        const [publications] = await pool.query(`
+            SELECT PublicationUniqueID as publication_id_num,
+                   Year as publication_year,
+                   Authors as publication_authors,
+                   Journal as publication_journal,
+                   FullCitation_APA as publication_full_citation_apa,
+                   PubSource_Code as publication_pub_source_code,
+                   PubSource_Legacy as publication_pub_source_legacy,
+                   DateEntered as date_entered
+            FROM Publications
+            ORDER BY Year DESC, PublicationUniqueID DESC
+        `);
+        res.json({ success: true, data: publications });
+    } catch (error) {
+        console.error('Error fetching publications:', error);
+        res.status(500).json({ success: false, message: 'Error fetching publications' });
+    }
+});
+
+router.post('/publications', requireAuth, async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        const year = parseNullableInt(req.body.publication_year);
+        const authors = firstPresent(req.body, 'publication_authors');
+        const journal = firstPresent(req.body, 'publication_journal');
+        const citation = firstPresent(req.body, 'publication_full_citation_apa');
+        const sourceCode = parseNullableInt(firstPresent(req.body, 'publication_pub_source_code'));
+
+        if (!year || !authors || !journal || !citation || !sourceCode) {
+            return res.status(400).json({
+                success: false,
+                message: 'publication_year, publication_authors, publication_journal, publication_full_citation_apa, and publication_pub_source_code are required'
+            });
+        }
+
+        await connection.beginTransaction();
+        const publicationId = await createPublication(connection, {
+            year,
+            authors,
+            journal,
+            fullCitationApa: citation,
+            pubSourceCode: sourceCode,
+            pubSourceLegacy: null
+        });
+        await connection.commit();
+
+        res.json({ success: true, publication_id_num: publicationId });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error creating publication:', error);
+        res.status(500).json({ success: false, message: 'Error creating publication: ' + error.message });
+    } finally {
+        connection.release();
+    }
+});
+
 // Save form data
-router.post('/save-form-data', 
+router.post('/save-form-data',
     requireAuth,
     [
         // Validation for required fields - check both possible field names
         body('location_id').optional(),
         body('selected_location_id').optional(),
-        body('sample_date').notEmpty().withMessage('Sample date is required'),
+        // sample_date is validated manually below because for device-period samples
+        // the primary date comes from device_start_date instead of sample_date.
+        body('sample_date').optional(),
         body('media_type').notEmpty().withMessage('Media type is required')
     ],
     async (req, res) => {
         console.log('=== SAVE FORM DATA REQUEST ===');
         console.log('Request body:', JSON.stringify(req.body, null, 2));
         console.log('Session user_id:', req.session.user_id);
-        
+
         const connection = await pool.getConnection();
-        
+
         try {
             const errors = validationResult(req);
             if (!errors.isEmpty()) {
@@ -638,7 +1069,7 @@ router.post('/save-form-data',
             }
 
             const formData = req.body;
-            
+
             // Percentage validation for Quality Control data
             const percentageValidationResult = validatePercentageGroups(formData);
             if (!percentageValidationResult.isValid) {
@@ -649,22 +1080,57 @@ router.post('/save-form-data',
                 });
             }
 
-            // Whole Package hierarchical validation
-            const packageValidationResult = validateWholePackageHierarchy(formData);
-            if (!packageValidationResult.isValid) {
+            // Legacy PackageCategoryDetails validation is hidden in the active UI.
+            // FragmentsPurposes row totals now validate purpose data.
+
+            const newSaveValidationResult = validateNewSaveRules(formData);
+            if (!newSaveValidationResult.isValid) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Package validation failed: ' + packageValidationResult.message,
-                    errors: packageValidationResult.details
+                    message: 'Updated field validation failed: ' + newSaveValidationResult.message,
+                    errors: newSaveValidationResult.details
                 });
             }
-            
+
             // Get location ID from either field name
             const locationId = formData.location_id || formData.selected_location_id;
             if (!locationId) {
                 return res.status(400).json({
                     success: false,
                     message: 'Location is required'
+                });
+            }
+
+            // Normalize date/time values: treat empty strings as NULL so they
+            // don't get rejected by MySQL date/time columns. Validate the primary
+            // sampling date before opening a transaction.
+            const normalizeDate = (value) => {
+                if (value === undefined || value === null) return null;
+                const trimmed = String(value).trim();
+                return trimmed === '' ? null : trimmed;
+            };
+
+            const isDevicePeriod = formData.device_installation_period === 'yes';
+            const deviceStartDate = normalizeDate(formData.device_start_date);
+            const deviceEndDate = normalizeDate(formData.device_end_date);
+            const singleSampleDate = normalizeDate(formData.sample_date);
+
+            // For a device-period sample the primary SamplingDate (NOT NULL) is the
+            // device installation start date; otherwise it's the single collection date.
+            const primarySamplingDate = isDevicePeriod ? deviceStartDate : singleSampleDate;
+
+            if (!primarySamplingDate) {
+                return res.status(400).json({
+                    success: false,
+                    message: isDevicePeriod
+                        ? 'Device installation start date is required'
+                        : 'Sample date is required'
+                });
+            }
+            if (isDevicePeriod && !deviceEndDate) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Device removal/end date is required'
                 });
             }
 
@@ -688,19 +1154,21 @@ router.post('/save-form-data',
             console.log('Starting database transaction...');
 
             // Step 1: Insert into SamplingEvent table (complete fields)
+            const publicationId = await resolvePublicationId(connection, formData);
             const samplingEventData = {
                 LocationID_Num: parseInt(locationId),
-                SamplingDate: formData.sample_date,
+                PublicationID_Num: publicationId,
+                SamplingDate: primarySamplingDate,
                 UserSamplingID: userId,
-                'AirTemp-C': formData.air_temp ? parseFloat(formData.air_temp) : null,
-                'Weather-Current': formData.current_conditions ? await getWeatherTypeId(connection, formData.current_conditions) : null,
-                'Weather-Precedent24': formData.precedent_weather ? await getWeatherTypeId(connection, formData.precedent_weather) : null,
-                'Rainfall-cm-Precedent24': formData.rainfall ? parseFloat(formData.rainfall) : null,
+                'AirTemp_C': formData.air_temp ? parseFloat(formData.air_temp) : null,
+                'Weather_Current': formData.current_conditions ? await getWeatherTypeId(connection, formData.current_conditions) : null,
+                'Weather_Precedent24': formData.precedent_weather ? await getWeatherTypeId(connection, formData.precedent_weather) : null,
+                'Rainfall_cm_Precedent24': formData.rainfall ? parseFloat(formData.rainfall) : null,
                 SamplerNames: formData.sample_description || null,
                 DeviceInstallationPeriod: formData.device_installation_period || 'no',
-                DeviceStartDate: formData.device_start_date || null,
-                DeviceEndDate: formData.device_end_date || null,
-                SampleTime: formData.sample_time || null,
+                DeviceStartDate: isDevicePeriod ? deviceStartDate : null,
+                DeviceEndDate: isDevicePeriod ? deviceEndDate : null,
+                SampleTime: normalizeDate(formData.sample_time),
                 WeatherPrecedent24: formData.precedent_weather_24h ? await getWeatherTypeId(connection, formData.precedent_weather_24h) : null,
                 AdditionalNotes: mergedAdditionalNotes
             };
@@ -716,20 +1184,21 @@ router.post('/save-form-data',
 
             const [samplingEventResult] = await connection.execute(`
                 INSERT INTO SamplingEvent (
-                    SamplingEventUniqueID, LocationID_Num, SamplingDate, UserSamplingID, \`AirTemp-C\`, 
-                    \`Weather-Current\`, \`Weather-Precedent24\`, \`Rainfall-cm-Precedent24\`, SamplerNames,
-                    DeviceInstallationPeriod, DeviceStartDate, DeviceEndDate, SampleTime, 
+                    SamplingEventUniqueID, LocationID_Num, PublicationID_Num, SamplingDate, UserSamplingID, \`AirTemp_C\`,
+                    \`Weather_Current\`, \`Weather_Precedent24\`, \`Rainfall_cm_Precedent24\`, SamplerNames,
+                    DeviceInstallationPeriod, DeviceStartDate, DeviceEndDate, SampleTime,
                     WeatherPrecedent24, AdditionalNotes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 samplingEventUniqueId,
                 samplingEventData.LocationID_Num,
+                samplingEventData.PublicationID_Num,
                 samplingEventData.SamplingDate,
                 samplingEventData.UserSamplingID,
-                samplingEventData['AirTemp-C'],
-                samplingEventData['Weather-Current'],
-                samplingEventData['Weather-Precedent24'],
-                samplingEventData['Rainfall-cm-Precedent24'],
+                samplingEventData['AirTemp_C'],
+                samplingEventData['Weather_Current'],
+                samplingEventData['Weather_Precedent24'],
+                samplingEventData['Rainfall_cm_Precedent24'],
                 samplingEventData.SamplerNames,
                 samplingEventData.DeviceInstallationPeriod,
                 samplingEventData.DeviceStartDate,
@@ -757,6 +1226,28 @@ router.post('/save-form-data',
             const soilSandVal = (formData.soil_sand ?? formData.sediment_sand);
             const soilSiltVal = (formData.soil_silt ?? formData.sediment_silt);
             const soilClayVal = (formData.soil_clay ?? formData.sediment_clay);
+            const totalSampleAmountVal = firstPresent(
+                formData,
+                'total_sample_amount',
+                'totalSampleAmount',
+                'microplastics_sample_amount',
+                'fragments_sample_amount',
+                'packaging_sample_amount'
+            );
+            const sampleUnitVal = firstPresent(
+                formData,
+                'sample_unit',
+                'sampleUnit',
+                'microplastics_sample_unit',
+                'fragments_sample_unit',
+                'packaging_sample_unit'
+            );
+            const microplasticsSampleAmountVal = totalSampleAmountVal;
+            const microplasticsSampleUnitVal = sampleUnitVal;
+            const fragmentsSampleAmountVal = totalSampleAmountVal;
+            const fragmentsSampleUnitVal = sampleUnitVal;
+            const packagingSampleAmountVal = totalSampleAmountVal;
+            const packagingSampleUnitVal = sampleUnitVal;
 
             // Additional field normalization for new columns
             const turbidityVal = formData.turbidity;
@@ -779,7 +1270,7 @@ router.post('/save-form-data',
                 FragLargerThan5mm_Count: formData.fragments_count ? parseInt(formData.fragments_count) : null,
                 Micro5mmAndSmaller_Count: formData.microplastics_count ? parseInt(formData.microplastics_count) : null,
                 WaterEnvType_SelectID: waterEnvTypeId,
-                'SoilMoisture%': soilMoistureVal ? parseFloat(soilMoistureVal) : null,
+                'SoilMoisture_Percent': soilMoistureVal ? parseFloat(soilMoistureVal) : null,
                 StorageLocation: 1, // Default storage location
                 // Additional fields from formpage2-5
                 MediaSubType: getMediaSubType(formData),
@@ -796,13 +1287,16 @@ router.post('/save-form-data',
                 SoilSand: soilSandVal ? parseFloat(soilSandVal) : null,
                 SoilSilt: soilSiltVal ? parseFloat(soilSiltVal) : null,
                 SoilClay: soilClayVal ? parseFloat(soilClayVal) : null,
+                SoilTexture: firstPresent(formData, 'soil_texture', 'soilTexture'),
                 ReplicatesCount: formData.replicates_count ? parseInt(formData.replicates_count) : null,
-                MicroplasticsSampleAmount: formData.microplastics_sample_amount ? parseFloat(formData.microplastics_sample_amount) : null,
-                MicroplasticsSampleUnit: formData.microplastics_sample_unit || null,
-                FragmentsSampleAmount: formData.fragments_sample_amount ? parseFloat(formData.fragments_sample_amount) : null,
-                FragmentsSampleUnit: formData.fragments_sample_unit || null,
-                PackagingSampleAmount: formData.packaging_sample_amount ? parseFloat(formData.packaging_sample_amount) : null,
-                PackagingSampleUnit: formData.packaging_sample_unit || null,
+                TotalSampleAmount: parseNullableFloat(totalSampleAmountVal),
+                SampleUnit: sampleUnitVal || null,
+                MicroplasticsSampleAmount: parseNullableFloat(microplasticsSampleAmountVal),
+                MicroplasticsSampleUnit: microplasticsSampleUnitVal || null,
+                FragmentsSampleAmount: parseNullableFloat(fragmentsSampleAmountVal),
+                FragmentsSampleUnit: fragmentsSampleUnitVal || null,
+                PackagingSampleAmount: parseNullableFloat(packagingSampleAmountVal),
+                PackagingSampleUnit: packagingSampleUnitVal || null,
                 // New columns added by migration
                 Turbidity: turbidityVal ? parseFloat(turbidityVal) : null,
                 DissolvedOxygen: dissolvedOxygenVal ? parseFloat(dissolvedOxygenVal) : null,
@@ -824,68 +1318,74 @@ router.post('/save-form-data',
             );
             const sampleUniqueId = (maxSampleIdResult[0].maxId || 0) + 1;
 
-            const [sampleDetailsResult] = await connection.execute(`
-                INSERT INTO SampleDetails (
-                    SampleUniqueID, SamplingEvent_Num, MediaType_SelectID, WholePkg_Count,
-                    FragLargerThan5mm_Count, Micro5mmAndSmaller_Count,
-                    WaterEnvType_SelectID, \`SoilMoisture%\`, StorageLocation,
-                    MediaSubType, LandscapeType, MixedMediaDescription, VolumeSampled,
-                    WaterDepth, SamplingDepth, FlowVelocity, SuspendedSolids, Conductivity,
-                    SoilDryWeight, SoilOrganicMatter, SoilSand, SoilSilt, SoilClay,
-                    ReplicatesCount, MicroplasticsSampleAmount, MicroplasticsSampleUnit,
-                    FragmentsSampleAmount, FragmentsSampleUnit, PackagingSampleAmount, PackagingSampleUnit,
-                    Turbidity, DissolvedOxygen, SampleWaterDepth,
-                    SurfaceAreaSampled, PermeableSurfaces, ImpermeableSurfaces,
-                    WaterTypeOtherDescription, SedimentTypeOtherDescription, MediaAdditionalNotes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [
-                sampleUniqueId,
-                sampleDetailsData.SamplingEvent_Num,
-                sampleDetailsData.MediaType_SelectID,
-                sampleDetailsData.WholePkg_Count,
-                sampleDetailsData.FragLargerThan5mm_Count,
-                sampleDetailsData.Micro5mmAndSmaller_Count,
-                sampleDetailsData.WaterEnvType_SelectID,
-                sampleDetailsData['SoilMoisture%'],
-                sampleDetailsData.StorageLocation,
-                sampleDetailsData.MediaSubType,
-                sampleDetailsData.LandscapeType,
-                sampleDetailsData.MixedMediaDescription,
-                sampleDetailsData.VolumeSampled,
-                sampleDetailsData.WaterDepth,
-                sampleDetailsData.SamplingDepth,
-                sampleDetailsData.FlowVelocity,
-                sampleDetailsData.SuspendedSolids,
-                sampleDetailsData.Conductivity,
-                sampleDetailsData.SoilDryWeight,
-                sampleDetailsData.SoilOrganicMatter,
-                sampleDetailsData.SoilSand,
-                sampleDetailsData.SoilSilt,
-                sampleDetailsData.SoilClay,
-                sampleDetailsData.ReplicatesCount,
-                sampleDetailsData.MicroplasticsSampleAmount,
-                sampleDetailsData.MicroplasticsSampleUnit,
-                sampleDetailsData.FragmentsSampleAmount,
-                sampleDetailsData.FragmentsSampleUnit,
-                sampleDetailsData.PackagingSampleAmount,
-                sampleDetailsData.PackagingSampleUnit,
-                // New columns
-                sampleDetailsData.Turbidity,
-                sampleDetailsData.DissolvedOxygen,
-                sampleDetailsData.SampleWaterDepth,
-                sampleDetailsData.SurfaceAreaSampled,
-                sampleDetailsData.PermeableSurfaces,
-                sampleDetailsData.ImpermeableSurfaces,
-                sampleDetailsData.WaterTypeOtherDescription,
-                sampleDetailsData.SedimentTypeOtherDescription,
-                sampleDetailsData.MediaAdditionalNotes
-            ]);
+            await insertFromMap(connection, 'SampleDetails', {
+                SampleUniqueID: sampleUniqueId,
+                SamplingEvent_Num: sampleDetailsData.SamplingEvent_Num,
+                MediaType_SelectID: sampleDetailsData.MediaType_SelectID,
+                WholePkg_Count: sampleDetailsData.WholePkg_Count,
+                FragLargerThan5mm_Count: sampleDetailsData.FragLargerThan5mm_Count,
+                Micro5mmAndSmaller_Count: sampleDetailsData.Micro5mmAndSmaller_Count,
+                WaterEnvType_SelectID: sampleDetailsData.WaterEnvType_SelectID,
+                SoilMoisture_Percent: sampleDetailsData.SoilMoisture_Percent,
+                StorageLocation: sampleDetailsData.StorageLocation,
+                MediaSubType: sampleDetailsData.MediaSubType,
+                LandscapeType: sampleDetailsData.LandscapeType,
+                MixedMediaDescription: sampleDetailsData.MixedMediaDescription,
+                VolumeSampled: sampleDetailsData.VolumeSampled,
+                WaterDepth: sampleDetailsData.WaterDepth,
+                SamplingDepth: sampleDetailsData.SamplingDepth,
+                FlowVelocity: sampleDetailsData.FlowVelocity,
+                SuspendedSolids: sampleDetailsData.SuspendedSolids,
+                Conductivity: sampleDetailsData.Conductivity,
+                SoilDryWeight: sampleDetailsData.SoilDryWeight,
+                SoilOrganicMatter: sampleDetailsData.SoilOrganicMatter,
+                SoilSand: sampleDetailsData.SoilSand,
+                SoilSilt: sampleDetailsData.SoilSilt,
+                SoilClay: sampleDetailsData.SoilClay,
+                SoilTexture: sampleDetailsData.SoilTexture,
+                ReplicatesCount: sampleDetailsData.ReplicatesCount,
+                TotalSampleAmount: sampleDetailsData.TotalSampleAmount,
+                SampleUnit: sampleDetailsData.SampleUnit,
+                MicroplasticsSampleAmount: sampleDetailsData.MicroplasticsSampleAmount,
+                MicroplasticsSampleUnit: sampleDetailsData.MicroplasticsSampleUnit,
+                FragmentsSampleAmount: sampleDetailsData.FragmentsSampleAmount,
+                FragmentsSampleUnit: sampleDetailsData.FragmentsSampleUnit,
+                PackagingSampleAmount: sampleDetailsData.PackagingSampleAmount,
+                PackagingSampleUnit: sampleDetailsData.PackagingSampleUnit,
+                Turbidity: sampleDetailsData.Turbidity,
+                DissolvedOxygen: sampleDetailsData.DissolvedOxygen,
+                SampleWaterDepth: sampleDetailsData.SampleWaterDepth,
+                SurfaceAreaSampled: sampleDetailsData.SurfaceAreaSampled,
+                PermeableSurfaces: sampleDetailsData.PermeableSurfaces,
+                ImpermeableSurfaces: sampleDetailsData.ImpermeableSurfaces,
+                WaterTypeOtherDescription: sampleDetailsData.WaterTypeOtherDescription,
+                SedimentTypeOtherDescription: sampleDetailsData.SedimentTypeOtherDescription,
+                MediaAdditionalNotes: sampleDetailsData.MediaAdditionalNotes
+            });
 
             const sampleDetailsId = sampleUniqueId; // Use the generated ID
             console.log('Sample details created with ID:', sampleDetailsId);
 
+            let microUniqueId = null;
+            let fragmentUniqueId = null;
+
             // Step 3: Insert microplastics details if provided (complete fields)
-            if (formData.has_quantitative_data === 'yes' && formData.microplastics_count && parseInt(formData.microplastics_count) > 0) {
+            const microDetailRows = [
+                ...getDetailRows(formData, 'micro_color_details', 'microColorDetails'),
+                ...getDetailRows(formData, 'micro_shape_details', 'microShapeDetails'),
+                ...getDetailRows(formData, 'micro_texture_details', 'microTextureDetails'),
+                ...getDetailRows(formData, 'micro_opacity_details', 'microOpacityDetails'),
+                ...getDetailRows(formData, 'micro_size_details', 'microSizeDetails')
+            ];
+            const shouldInsertMicroplastics = formData.has_quantitative_data === 'yes' && (
+                parseNullableInt(formData.microplastics_count) > 0 ||
+                parseNullableFloat(firstPresent(formData, 'micro_mass_mp_total', 'micro_massMPTotal')) > 0 ||
+                firstPresent(formData, 'micro_method_polymer_num', 'micro_methodPolymerNum') ||
+                microDetailRows.length > 0 ||
+                hasPolymerPercentages(formData, 'mp_polymer_')
+            );
+
+            if (shouldInsertMicroplastics) {
                 console.log('Inserting microplastics details...');
 
                 // Helper to safely pull numeric values with optional fallback keys
@@ -899,85 +1399,187 @@ router.post('/save-form-data',
                     }
                     return null;
                 };
-                
+
                 // Generate a unique ID for microplastics
                 const [maxMicroIdResult] = await connection.execute(
                     'SELECT MAX(Micro_UniqueID) as maxId FROM MicroplasticsInSample'
                 );
-                const microUniqueId = (maxMicroIdResult[0].maxId || 0) + 1;
-                
-                await connection.execute(`
-                    INSERT INTO MicroplasticsInSample (
-                        Micro_UniqueID, SampleDetails_Num, \`PercentSize_<1um\`, \`PercentSize_1-20um\`,
-                        \`PercentSize_20-100um\`, \`PercentSize_100um-1mm\`, \`PercentSize_1-5mm\`,
-                        PercentForm_fiber, PercentForm_Pellet, PercentForm_Fragment,
-                        PercentColor_Clear, PercentColor_OpaqueLight, PercentColor_OpaqueDark, PercentColor_Mixed,
-                        Method_Desc
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `, [
-                    microUniqueId,
-                    sampleDetailsId,
-                    formData.mp_size_lt_1um ? parseInt(formData.mp_size_lt_1um) : null,
-                    formData.mp_size_1_20um ? parseInt(formData.mp_size_1_20um) : null,
-                    formData.mp_size_20_100um ? parseInt(formData.mp_size_20_100um) : null,
-                    formData.mp_size_100um_1mm ? parseInt(formData.mp_size_100um_1mm) : null,
-                    formData.mp_size_1_5mm ? parseInt(formData.mp_size_1_5mm) : null,
-                    formData.mp_form_fiber ? parseInt(formData.mp_form_fiber) : null,
-                    formData.mp_form_pellet ? parseInt(formData.mp_form_pellet) : null,
-                    formData.mp_form_fragment ? parseInt(formData.mp_form_fragment) : null,
-                    // UI uses fragment_* fields for color; fall back to those if mp_* not provided
-                    pickInt('mp_color_clear', 'fragment_color_clear'),
-                    pickInt('mp_color_opaque_light', 'fragment_color_opaque_light'),
-                    pickInt('mp_color_opaque_dark', 'fragment_color_opaque_dark'),
-                    pickInt('mp_color_mixed', 'fragment_color_mixed'),
-                    formData.mp_estimate_method || null
-                ]);
+                microUniqueId = (maxMicroIdResult[0].maxId || 0) + 1;
+
+                await insertFromMap(connection, 'MicroplasticsInSample', {
+                    Micro_UniqueID: microUniqueId,
+                    SampleDetails_Num: sampleDetailsId,
+                    Micro5mmAndSmaller_Count: parseNullableInt(formData.microplastics_count),
+                    Mass_MP_Total: parseNullableFloat(firstPresent(formData, 'micro_mass_mp_total', 'micro_massMPTotal')),
+                    Method_Polymer_Num: parseNullableInt(firstPresent(formData, 'micro_method_polymer_num', 'micro_methodPolymerNum')),
+                    Method_Polymer_Other: firstPresent(formData, 'micro_method_polymer_other', 'micro_methodPolymerOther'),
+                    PercentSize_LessThan1um: formData.mp_size_lt_1um ? parseInt(formData.mp_size_lt_1um) : null,
+                    PercentSize_1_20um: formData.mp_size_1_20um ? parseInt(formData.mp_size_1_20um) : null,
+                    PercentSize_20_100um: formData.mp_size_20_100um ? parseInt(formData.mp_size_20_100um) : null,
+                    PercentSize_100um_1mm: formData.mp_size_100um_1mm ? parseInt(formData.mp_size_100um_1mm) : null,
+                    PercentSize_1_5mm: formData.mp_size_1_5mm ? parseInt(formData.mp_size_1_5mm) : null,
+                    PercentForm_fiber: formData.mp_form_fiber ? parseInt(formData.mp_form_fiber) : null,
+                    PercentForm_Pellet: formData.mp_form_pellet ? parseInt(formData.mp_form_pellet) : null,
+                    PercentForm_Fragment: formData.mp_form_fragment ? parseInt(formData.mp_form_fragment) : null,
+                    PercentColor_Clear: pickInt('mp_color_clear', 'fragment_color_clear'),
+                    PercentColor_OpaqueLight: pickInt('mp_color_opaque_light', 'fragment_color_opaque_light'),
+                    PercentColor_OpaqueDark: pickInt('mp_color_opaque_dark', 'fragment_color_opaque_dark'),
+                    PercentColor_Mixed: pickInt('mp_color_mixed', 'fragment_color_mixed')
+                });
                 console.log('Microplastics details inserted with ID:', microUniqueId);
-                
+
                 // Insert polymer details for microplastics if provided
                 await insertPolymerDetails(connection, microUniqueId, formData, 'microplastics');
             }
 
             // Step 4: Insert fragments details if provided (complete fields)
-            if (formData.has_quantitative_data === 'yes' && formData.fragments_count && parseInt(formData.fragments_count) > 0) {
+            const fragmentDetailRows = [
+                ...getDetailRows(formData, 'fragments_color_details', 'fragmentsColorDetails'),
+                ...getDetailRows(formData, 'fragments_form_details', 'fragmentsFormDetails'),
+                ...getDetailRows(formData, 'fragments_opacity_details', 'fragmentsOpacityDetails'),
+                ...getDetailRows(formData, 'fragments_purpose_details', 'fragmentsPurposeDetails')
+            ];
+            const shouldInsertFragments = formData.has_quantitative_data === 'yes' && (
+                parseNullableInt(formData.fragments_count) > 0 ||
+                parseNullableInt(formData.packaging_count) > 0 ||
+                parseNullableFloat(firstPresent(formData, 'fragments_mass_debris_total', 'fragments_massDebrisTotal')) > 0 ||
+                firstPresent(formData, 'fragments_method_polymer_num', 'fragments_methodPolymerNum') ||
+                fragmentDetailRows.length > 0 ||
+                hasPolymerPercentages(formData, 'fragment_polymer_')
+            );
+
+            if (shouldInsertFragments) {
                 console.log('Inserting fragments details...');
-                
+
                 // Generate a unique ID for fragments
                 const [maxFragmentIdResult] = await connection.execute(
                     'SELECT MAX(Fragment_UniqueID) as maxId FROM FragmentsInSample'
                 );
-                const fragmentUniqueId = (maxFragmentIdResult[0].maxId || 0) + 1;
-                
-                await connection.execute(`
-                    INSERT INTO FragmentsInSample (
-                        Fragment_UniqueID, SampleDetails_Num, \`PercentColor_Clear\`, \`PercentColor_Op-Color\`,
-                        \`PercentColor_Op-Dk\`, \`PercentColor_Mixed\`, PercentForm_Fiber,
-                        PercentForm_Pellet, PercentForm_Film, PercentForm_Foam, PercentForm_HardPlastic,
-                        PercentForm_Other, Method_Desc
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `, [
-                    fragmentUniqueId,
-                    sampleDetailsId,
-                    formData.fragment_color_clear ? parseInt(formData.fragment_color_clear) : null,
-                    formData.fragment_color_opaque_light ? parseInt(formData.fragment_color_opaque_light) : null,
-                    formData.fragment_color_opaque_dark ? parseInt(formData.fragment_color_opaque_dark) : null,
-                    formData.fragment_color_mixed ? parseInt(formData.fragment_color_mixed) : null,
-                    formData.fragment_form_fiber ? parseInt(formData.fragment_form_fiber) : null,
-                    formData.fragment_form_pellet ? parseInt(formData.fragment_form_pellet) : null,
-                    formData.fragment_form_film ? parseInt(formData.fragment_form_film) : null,
-                    formData.fragment_form_foam ? parseInt(formData.fragment_form_foam) : null,
-                    formData.fragment_form_hardplastic ? parseInt(formData.fragment_form_hardplastic) : null,
-                    formData.fragment_form_other ? parseInt(formData.fragment_form_other) : null,
-                    formData.fragment_estimate_method || null // Method description for fragments
-                ]);
+                fragmentUniqueId = (maxFragmentIdResult[0].maxId || 0) + 1;
+
+                await insertFromMap(connection, 'FragmentsInSample', {
+                    Fragment_UniqueID: fragmentUniqueId,
+                    SampleDetails_Num: sampleDetailsId,
+                    Mass_Debris_Total: parseNullableFloat(firstPresent(formData, 'fragments_mass_debris_total', 'fragments_massDebrisTotal')),
+                    PurposeKnown_Count: parseNullableInt(formData.packaging_count),
+                    PurposeUnknown_Count: parseNullableInt(formData.fragments_count),
+                    Method_Polymer_Num: parseNullableInt(firstPresent(formData, 'fragments_method_polymer_num', 'fragments_methodPolymerNum')),
+                    Method_Polymer_Other: firstPresent(formData, 'fragments_method_polymer_other', 'fragments_methodPolymerOther'),
+                    PercentColor_Clear: formData.fragment_color_clear ? parseInt(formData.fragment_color_clear) : null,
+                    PercentColor_Op_Color: formData.fragment_color_opaque_light ? parseInt(formData.fragment_color_opaque_light) : null,
+                    PercentColor_Op_Dk: formData.fragment_color_opaque_dark ? parseInt(formData.fragment_color_opaque_dark) : null,
+                    PercentColor_Mixed: formData.fragment_color_mixed ? parseInt(formData.fragment_color_mixed) : null,
+                    PercentForm_Fiber: formData.fragment_form_fiber ? parseInt(formData.fragment_form_fiber) : null,
+                    PercentForm_Pellet: formData.fragment_form_pellet ? parseInt(formData.fragment_form_pellet) : null,
+                    PercentForm_Film: formData.fragment_form_film ? parseInt(formData.fragment_form_film) : null,
+                    PercentForm_Foam: formData.fragment_form_foam ? parseInt(formData.fragment_form_foam) : null,
+                    PercentForm_HardPlastic: formData.fragment_form_hardplastic ? parseInt(formData.fragment_form_hardplastic) : null,
+                    PercentForm_Other: formData.fragment_form_other ? parseInt(formData.fragment_form_other) : null
+                });
                 console.log('Fragments details inserted with ID:', fragmentUniqueId);
-                
+
                 // Insert polymer details for fragments if provided
                 await insertPolymerDetails(connection, fragmentUniqueId, formData, 'fragments');
             }
 
-            // Step 5: Insert packaging details if provided
-            if (formData.has_quantitative_data === 'yes' && formData.packaging_count && parseInt(formData.packaging_count) > 0) {
+            // Step 4B: Insert row-based detail percentages
+            if (fragmentUniqueId) {
+                await insertDetailRows(connection, {
+                    tableName: 'FragmentsColorDetails',
+                    idColumn: 'FragmentColor_UniqueID',
+                    parentColumn: 'FragInSample_Num',
+                    refColumn: 'FragColor_Num',
+                    legacyColumn: 'FragColor_Legacy',
+                    percentColumn: 'FragColorPercent'
+                }, fragmentUniqueId, getDetailRows(formData, 'fragments_color_details', 'fragmentsColorDetails'));
+
+                await insertDetailRows(connection, {
+                    tableName: 'FragmentsFormDetails',
+                    idColumn: 'FragForm_UniqueID',
+                    parentColumn: 'FragInSample_Num',
+                    refColumn: 'FragForm_Num',
+                    legacyColumn: 'FragForm_Legacy',
+                    percentColumn: 'FragFormPercent'
+                }, fragmentUniqueId, getDetailRows(formData, 'fragments_form_details', 'fragmentsFormDetails'));
+
+                await insertDetailRows(connection, {
+                    tableName: 'FragmentsOpacityDetails',
+                    idColumn: 'FragOpacity_UniqueID',
+                    parentColumn: 'FragInSample_Num',
+                    refColumn: 'FragOpacity_Num',
+                    legacyColumn: 'FragOpacity_Legacy',
+                    percentColumn: 'FragOpacityPercent'
+                }, fragmentUniqueId, getDetailRows(formData, 'fragments_opacity_details', 'fragmentsOpacityDetails'));
+
+                await insertDetailRows(connection, {
+                    tableName: 'FragmentsPurposes',
+                    idColumn: 'FragPurposeUniqueID',
+                    parentColumn: 'FragInSample_Num',
+                    refColumn: 'Purpose_Num',
+                    legacyColumn: 'Purpose_Legacy',
+                    percentColumn: 'Percent_Purpose'
+                }, fragmentUniqueId, getDetailRows(formData, 'fragments_purpose_details', 'fragmentsPurposeDetails'));
+            }
+
+            if (microUniqueId) {
+                await insertDetailRows(connection, {
+                    tableName: 'MicroplasticsColorDetails',
+                    idColumn: 'MicroColor_UniqueID',
+                    parentColumn: 'MicroInSample_Num',
+                    refColumn: 'MicroColor_Num',
+                    legacyColumn: 'MicroColor_Legacy',
+                    percentColumn: 'MicroColorPercent'
+                }, microUniqueId, getDetailRows(formData, 'micro_color_details', 'microColorDetails'));
+
+                await insertDetailRows(connection, {
+                    tableName: 'MicroplasticsOpacityDetails',
+                    idColumn: 'MicroOpacityUniqueID',
+                    parentColumn: 'MicroInSample_Num',
+                    refColumn: 'MicroOpacity_Num',
+                    legacyColumn: 'MicroOpacity_Legacy',
+                    percentColumn: 'MicroOpacityPercent'
+                }, microUniqueId, getDetailRows(formData, 'micro_opacity_details', 'microOpacityDetails'));
+
+                await insertDetailRows(connection, {
+                    tableName: 'MicroplasticsSizeDetails',
+                    idColumn: 'MicroplasticsSize_UniqueID',
+                    parentColumn: 'MicroInSample_Num',
+                    refColumn: 'MicroSize_Num',
+                    legacyColumn: 'MicroSize_Legacy',
+                    percentColumn: 'MicroSizePercent'
+                }, microUniqueId, getDetailRows(formData, 'micro_size_details', 'microSizeDetails'));
+
+                await insertDetailRows(connection, {
+                    tableName: 'MicroplasticsFormDetails',
+                    idColumn: 'MicroForm_UniqueID',
+                    parentColumn: 'MicroInSample_Num',
+                    refColumn: 'MicroShape_Num',
+                    legacyColumn: 'MicroShape_Legacy',
+                    percentColumn: 'MicroShape_Percent'
+                }, microUniqueId, getDetailRows(formData, 'micro_shape_details', 'microShapeDetails'));
+
+                await insertDetailRows(connection, {
+                    tableName: 'MicroplasticsFormDetails',
+                    idColumn: 'MicroForm_UniqueID',
+                    parentColumn: 'MicroInSample_Num',
+                    refColumn: 'MicroTexture_Num',
+                    legacyColumn: 'MicroTexture_Legacy',
+                    percentColumn: 'MicroTexture_Percent'
+                }, microUniqueId, getDetailRows(formData, 'micro_texture_details', 'microTextureDetails'));
+            }
+
+            // Step 5: Insert legacy packaging details only when legacy category inputs are present.
+            const legacyPackageCategoryFields = [
+                'packaging_count_single_use',
+                'packaging_count_multi_use',
+                'packaging_count_other_container',
+                'packaging_count_bag',
+                'packaging_count_packing',
+                'packaging_count_other',
+                'packaging_count_unknown'
+            ];
+            const hasLegacyPackageCategoryInput = legacyPackageCategoryFields.some(field => parseNullableInt(formData[field]) > 0);
+            if (formData.has_quantitative_data === 'yes' && formData.packaging_count && parseInt(formData.packaging_count) > 0 && hasLegacyPackageCategoryInput) {
                 console.log('Inserting packaging details...');
 
                 // Category mapping for the new UI structure
@@ -1075,29 +1677,6 @@ router.post('/save-form-data',
                 }
             }
 
-            // Step 6: Insert Raman spectroscopy details if provided
-            if (formData.has_raman_data === 'yes' && formData.raman_wavelength) {
-                console.log('Inserting Raman details...');
-                
-                try {
-                    // Generate a unique ID for Raman details
-                    const [maxRamanIdResult] = await connection.execute(
-                        'SELECT MAX(Raman_UniqueID) as maxId FROM RamanDetails'
-                    );
-                    const ramanUniqueId = (maxRamanIdResult[0].maxId || 0) + 1;
-                    
-                    await connection.execute(`
-                        INSERT INTO RamanDetails (Raman_UniqueID, SampleDetails_Num, Wavelength)
-                        VALUES (?, ?, ?)
-                    `, [ramanUniqueId, sampleDetailsId, parseInt(formData.raman_wavelength)]);
-                    
-                    console.log('Raman details inserted with ID:', ramanUniqueId);
-                } catch (error) {
-                    console.error('Error inserting Raman details:', error);
-                    // Continue execution even if Raman insertion fails
-                }
-            }
-
             await connection.commit();
             console.log('Transaction committed successfully');
 
@@ -1105,14 +1684,15 @@ router.post('/save-form-data',
                 success: true,
                 message: 'Data saved successfully',
                 samplingEventId: samplingEventId,
-                sampleDetailsId: sampleDetailsId
+                sampleDetailsId: sampleDetailsId,
+                publicationId: publicationId
             });
 
         } catch (error) {
             await connection.rollback();
             console.error('Error saving form data:', error);
             console.error('Error stack:', error.stack);
-            res.status(500).json({
+            res.status(error.statusCode || 500).json({
                 success: false,
                 message: 'Error saving data: ' + error.message,
                 error: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -1138,11 +1718,11 @@ async function getMediaTypeId(connection, mediaType) {
         'SELECT MediaTypeUniqueID FROM 	MediaType_WithinLitterWaterSoil_Ref WHERE MediaTypeOverall = ?',
         [mediaType]
     );
-    
+
     if (rows.length > 0) {
         return rows[0].MediaTypeUniqueID;
     }
-    
+
     // Fallback to mapping if no exact match found
     const mediaTypeMapping = {
         'water': 1,
@@ -1160,11 +1740,11 @@ async function getWaterEnvTypeId(connection, environmentType) {
         'SELECT WaterEnv_UniqueID FROM WaterEnvType_Ref WHERE WaterEnv_Name = ?',
         [environmentType]
     );
-    
+
     if (rows.length > 0) {
         return rows[0].WaterEnv_UniqueID;
     }
-    
+
     // Fallback to mapping if no exact match found
     const environmentTypeMapping = {
         'Stream': 1,
@@ -1200,8 +1780,12 @@ function getLandscapeType(formData) {
 
 async function insertPolymerDetails(connection, parentId, formData, type) {
     const tableName = type === 'microplastics' ? 'MicroplasticsPolymerDetails' : 'FragmentsPolymerDetails';
-    const foreignKey = type === 'microplastics' ? 'Micro_UniqueID' : 'Fragment_UniqueID';
+    const idColumn = type === 'microplastics' ? 'MicroPolymerUniqueID' : 'FragPolymerUniqueID';
+    const foreignKey = type === 'microplastics' ? 'MicroInSample_Num' : 'FragInSample_Num';
     const fieldPrefix = type === 'microplastics' ? 'mp_polymer_' : 'fragment_polymer_';
+    const methodPercentEstimate = type === 'microplastics'
+        ? firstPresent(formData, 'micro_method_percent_estimate')
+        : firstPresent(formData, 'fragments_method_percent_estimate');
 
     try {
         // Fetch polymer references
@@ -1210,18 +1794,18 @@ async function insertPolymerDetails(connection, parentId, formData, type) {
         for (const polymer of polymerRefs) {
             // Match the field name convention (lowercase code)
             // Ensure we handle special characters if necessary, but assuming simple codes for now
-            // If DB code is 'PE-UHMW', we might need to normalize. 
+            // If DB code is 'PE-UHMW', we might need to normalize.
             // For now assume direct lowercase mapping or frontend matches backend generation.
-            const code = polymer.Polymer_Code.toLowerCase().replace(/[^a-z0-9]/g, '_'); 
+            const code = polymer.Polymer_Code.toLowerCase().replace(/[^a-z0-9]/g, '_');
             // Note: The previous hardcoded list had 'pe_uhmw', so we normalize to snake_case if needed or just use code.
             // Let's stick to simple lowercase for now, but if the code has hyphens, we might need to check.
             // Actually, if we update the frontend to use the same logic, it will match.
-            
+
             // However, to maintain backward compatibility with existing hardcoded frontend (until I update it):
             // The existing list has: pete, hdpe, pvc, ldpe, pp, ps, other, pa, pc, rubber, pla, abs, eva, pb, pe_uhmw, pmma, hips, eps, bitumen, pan
             // If DB has 'PE-UHMW', lowercase is 'pe-uhmw'. Existing field is 'pe_uhmw'.
             // I'll try to match both just in case.
-            
+
             let fieldName = `${fieldPrefix}${code}`;
             let percentage = formData[fieldName];
 
@@ -1238,15 +1822,24 @@ async function insertPolymerDetails(connection, parentId, formData, type) {
             if (percentage && parseInt(percentage) > 0) {
                 try {
                     const [maxIdResult] = await connection.execute(
-                        `SELECT MAX(ID) as maxId FROM ${tableName}`
+                        `SELECT MAX(${idColumn}) as maxId FROM ${tableName}`
                     );
                     const polymerDetailsId = (maxIdResult[0].maxId || 0) + 1;
-                    
+
                     await connection.execute(`
-                        INSERT INTO ${tableName} (ID, ${foreignKey}, PolymerID_Num, Percentage)
-                        VALUES (?, ?, ?, ?)
-                    `, [polymerDetailsId, parentId, polymer.PolymerUniqueID, parseInt(percentage)]);
-                    
+                        INSERT INTO ${tableName} (
+                            ${idColumn}, ${foreignKey}, PolymerID_Num, PolymerType_Legacy,
+                            Percentage, Method_PercentEstimate, DateEntered
+                        ) VALUES (?, ?, ?, ?, ?, ?, NOW())
+                    `, [
+                        polymerDetailsId,
+                        parentId,
+                        polymer.PolymerUniqueID,
+                        polymer.Polymer_Code,
+                        parseInt(percentage),
+                        methodPercentEstimate
+                    ]);
+
                     console.log(`Inserted ${type} polymer detail: ID ${polymer.PolymerUniqueID} (${code}) = ${percentage}%`);
                 } catch (error) {
                     console.error(`Error inserting polymer details for ${code}:`, error);
@@ -1273,7 +1866,7 @@ router.post('/upload-file-data',
 
             // Process the uploaded file based on its type
             const fileExtension = req.file.originalname.split('.').pop().toLowerCase();
-            
+
             if (!['csv', 'xlsx', 'json'].includes(fileExtension)) {
                 return res.status(400).json({
                     success: false,
@@ -1311,13 +1904,25 @@ router.get('/my-samples', requireAuth, async (req, res) => {
 
         // Inline numeric LIMIT/OFFSET to avoid prepared statement issues on some MySQL versions
         const samplesSql = `
-            SELECT 
+            SELECT
                 sd.SampleUniqueID as id,
-                l.\`Lat-DecimalDegree\` as latitude,
-                l.\`Long-DecimalDegree\` as longitude,
+                l.\`Lat_DecimalDegree\` as latitude,
+                l.\`Long_DecimalDegree\` as longitude,
                 mt.MediaTypeOverall as sample_type,
                 l.LocationName as location_name,
                 se.SamplingDate as collection_date,
+                COALESCE(
+                    sd.TotalSampleAmount,
+                    sd.MicroplasticsSampleAmount,
+                    sd.FragmentsSampleAmount,
+                    sd.PackagingSampleAmount
+                ) as total_sample_amount,
+                COALESCE(
+                    sd.SampleUnit,
+                    sd.MicroplasticsSampleUnit,
+                    sd.FragmentsSampleUnit,
+                    sd.PackagingSampleUnit
+                ) as sample_unit,
                 l.Location_Desc as notes,
                 se.SamplingDate as created_at
             FROM SampleDetails sd
@@ -1332,7 +1937,7 @@ router.get('/my-samples', requireAuth, async (req, res) => {
         const [rows] = await pool.execute(samplesSql, [userId]);
 
         const [countResult] = await pool.execute(`
-            SELECT COUNT(*) as total 
+            SELECT COUNT(*) as total
             FROM SampleDetails sd
             LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
             WHERE se.UserSamplingID = ?
@@ -1366,7 +1971,7 @@ router.get('/my-samples', requireAuth, async (req, res) => {
 // Update sample data - Remove this endpoint as it references non-existent table
 // router.put('/sample/:id', requireAuth, [...], async (req, res) => { ... });
 
-// Delete sample data - Remove this endpoint as it references non-existent table  
+// Delete sample data - Remove this endpoint as it references non-existent table
 // router.delete('/sample/:id', requireAuth, async (req, res) => { ... });
 
 // Check session status
@@ -1383,7 +1988,7 @@ router.get('/check-session', (req, res) => {
         const sessionTimeout = parseInt(process.env.SESSION_TIMEOUT) * 1000 || 1800000; // 30 minutes default
         const now = Date.now();
         const lastActivity = req.session.last_activity || req.session.cookie.expires;
-        
+
         if (lastActivity && (now - lastActivity) > sessionTimeout) {
             return res.json({
                 logged_in: true,
@@ -1414,7 +2019,7 @@ router.get('/check-session', (req, res) => {
 router.get('/check-location-exists', async (req, res) => {
     try {
         const { name } = req.query;
-        
+
         if (!name || !name.trim()) {
             return res.json({
                 success: true,
@@ -1422,15 +2027,15 @@ router.get('/check-location-exists', async (req, res) => {
                 message: 'No location name provided'
             });
         }
-        
+
         // Check only in Location table
         const [locationRows] = await pool.execute(
             'SELECT COUNT(*) as count FROM Location WHERE LocationName = ?',
             [name.trim()]
         );
-        
+
         const existsInLocation = locationRows[0].count > 0;
-        
+
         res.json({
             success: true,
             exists: existsInLocation,
@@ -1439,7 +2044,7 @@ router.get('/check-location-exists', async (req, res) => {
                 locationCount: locationRows[0].count
             }
         });
-        
+
     } catch (error) {
         console.error('Error checking location existence:', error);
         res.status(500).json({
@@ -1458,7 +2063,7 @@ router.get('/locations', async (req, res) => {
 
         let sql = `
 
-            SELECT 
+            SELECT
 
                 Loc_UniqueID as id,
 
@@ -1474,21 +2079,21 @@ router.get('/locations', async (req, res) => {
 
                 ZipCode as zipCode,
 
-                \`Lat-DecimalDegree\` as latitude,
+                \`Lat_DecimalDegree\` as latitude,
 
-                \`Long-DecimalDegree\` as longitude
+                \`Long_DecimalDegree\` as longitude
 
-            FROM Location 
+            FROM Location
 
             WHERE 1=1
 
         `;
 
-        
+
 
         const params = [];
 
-        
+
 
         // Filter by logged-in user if session exists
 
@@ -1500,7 +2105,7 @@ router.get('/locations', async (req, res) => {
 
         }
 
-        
+
 
         sql += " ORDER BY LocationName ASC";
 
@@ -1543,7 +2148,7 @@ router.get('/locations', async (req, res) => {
 });
 
 // Create new location
-router.post('/locations', 
+router.post('/locations',
     requireAuth,    [        body('locationName').notEmpty().withMessage('Location name is required').isLength({ max: 255 }).withMessage('Location name too long'),
         body('locationShortCode').notEmpty().withMessage('Location short code is required').isLength({ max: 50 }).withMessage('Location short code too long'),
         body('locationDescription').notEmpty().withMessage('Location description is required').isLength({ max: 500 }).withMessage('Location description too long'),
@@ -1574,7 +2179,6 @@ router.post('/locations',
                 state,
                 country,
                 zipCode,
-                land_use_cover, // Extract land_use_cover from body
                 acres // Extract acres from body
             } = req.body;
 
@@ -1593,18 +2197,17 @@ router.post('/locations',
                     UserLocID_txt,
                     LocationName,
                     Location_Desc,
-                    \`Lat-DecimalDegree\`,
-                    \`Long-DecimalDegree\`,
+                    \`Lat_DecimalDegree\`,
+                    \`Long_DecimalDegree\`,
                     StreetAddress,
                     City,
                     State,
                     Country,
                     ZipCode,
-                    LandUseCover,
-                    \`Area-acres\`,
-                    \`Env-Indoor_SelectID\`,
+                    \`Area_acres\`,
+                    \`Env_Indoor_SelectID\`,
                     UserCreated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 locationShortCode || null, // Add the short code field
                 locationName,
@@ -1616,8 +2219,7 @@ router.post('/locations',
                 state || null,
                 country || null,
                 zipCode ? parseInt(zipCode) || null : null, // Convert to integer
-                land_use_cover || null, // Insert LandUseCover
-                acres ? parseFloat(acres) : null, // Insert Area-acres
+                acres ? parseFloat(acres) : null, // Insert Area_acres
                 1, // Default to Environmental (Outdoors)
                 req.session.username || 'system'
             ]);
@@ -1637,7 +2239,7 @@ router.post('/locations',
                     message: 'A location with this name already exists'
                 });
             }
-            
+
             res.status(500).json({
                 success: false,
                 message: 'Error creating location'
@@ -1653,7 +2255,7 @@ router.get('/my-locations', requireAuth, async (req, res) => {
     try {
     const userId = String(req.session.user_id);
         const username = req.session.username;
-        
+
         // Check if user is authenticated
         if (!userId || !username) {
             return res.status(401).json({
@@ -1661,9 +2263,9 @@ router.get('/my-locations', requireAuth, async (req, res) => {
                 message: 'User not authenticated'
             });
         }
-        
+
         const query = `
-            SELECT 
+            SELECT
                 Loc_UniqueID as id,
                 UserLocID_txt as userLocId,
                 LocationName as name,
@@ -1673,17 +2275,17 @@ router.get('/my-locations', requireAuth, async (req, res) => {
                 Country as country,
                 StreetAddress as streetAddress,
                 ZipCode as zipCode,
-                \`Lat-DecimalDegree\` as latitude,
-                \`Long-DecimalDegree\` as longitude,
+                \`Lat_DecimalDegree\` as latitude,
+                \`Long_DecimalDegree\` as longitude,
                 UserCreated as userCreated,
                 0 as sample_count
-            FROM Location 
+            FROM Location
             WHERE UserCreated = ?
             ORDER BY Loc_UniqueID DESC
         `;
-        
+
         const [locations] = await pool.execute(query, [username]);
-        
+
         res.json({
             success: true,
             locations: locations,
@@ -1704,7 +2306,7 @@ router.post('/contact', [
     body('user_email').isEmail().normalizeEmail().withMessage('Please enter a valid email address'),
     body('user_organization').optional().trim().isLength({ max: 200 }).withMessage('Organization name is too long'),
     body('question_category').isIn([
-        'general', 'data-entry', 'data-analysis', 'technical', 
+        'general', 'data-entry', 'data-analysis', 'technical',
         'research', 'manuals', 'sample-analysis', 'other'
     ]).withMessage('Please select a valid question category'),
     body('user_question').trim().isLength({ min: 10, max: 2000 }).withMessage('Question must be between 10 and 2000 characters'),
@@ -1734,7 +2336,7 @@ router.post('/contact', [
         try {
             await pool.execute(`
                 INSERT INTO contact_submissions (
-                    user_name, user_email, user_organization, 
+                    user_name, user_email, user_organization,
                     question_category, user_question, subscribe_updates,
                     submission_date, ip_address
                 ) VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
@@ -1757,7 +2359,7 @@ router.post('/contact', [
 
         // Send email to administrators
         const adminEmailResult = await sendContactFormEmail(contactData);
-        
+
         // Send confirmation email to user
         const userEmailResult = await sendContactConfirmationEmail(contactData);
 
@@ -1790,38 +2392,38 @@ router.post('/contact', [
 router.get('/admin/contact-submissions', requireAuth, async (req, res) => {
     try {
         const { status, category } = req.query;
-        
+
         let query = 'SELECT * FROM contact_submissions';
         let params = [];
         let conditions = [];
-        
+
         if (status) {
             conditions.push('status = ?');
             params.push(status);
         }
-        
+
         if (category) {
             conditions.push('question_category = ?');
             params.push(category);
         }
-        
+
         if (conditions.length > 0) {
             query += ' WHERE ' + conditions.join(' AND ');
         }
-        
+
         query += ' ORDER BY submission_date DESC';
-        
+
         const [submissions] = await pool.execute(query, params);
-        
+
         // Get stats
         const [rows] = await pool.execute(`
-            SELECT 
+            SELECT
                 status,
                 COUNT(*) as count
-            FROM contact_submissions 
+            FROM contact_submissions
             GROUP BY status
         `);
-        
+
         const stats = {
             total: submissions.length,
             new: 0,
@@ -1829,14 +2431,14 @@ router.get('/admin/contact-submissions', requireAuth, async (req, res) => {
             resolved: 0,
             closed: 0
         };
-        
-        
+
+
         res.json({
             success: true,
             submissions,
             stats
         });
-        
+
     } catch (error) {
         console.error('Error fetching contact submissions:', error);
         res.status(500).json({
@@ -1851,7 +2453,7 @@ router.put('/admin/contact-submissions/:id/status', requireAuth, async (req, res
     try {
         const { id } = req.params;
         const { status } = req.body;
-        
+
         // Validate status
         const validStatuses = ['new', 'in_progress', 'resolved', 'closed'];
         if (!validStatuses.includes(status)) {
@@ -1860,25 +2462,25 @@ router.put('/admin/contact-submissions/:id/status', requireAuth, async (req, res
                 message: 'Invalid status'
             });
         }
-        
+
         const updateData = { status };
-        
+
         // If resolving, set resolved_date and resolved_by
         if (status === 'resolved') {
             updateData.resolved_date = new Date();
             updateData.resolved_by = req.session.user.username; // Assuming user info in session
         }
-        
+
         await pool.execute(
             'UPDATE contact_submissions SET status = ?, resolved_date = ?, resolved_by = ? WHERE id = ?',
             [status, updateData.resolved_date || null, updateData.resolved_by || null, id]
         );
-        
+
         res.json({
             success: true,
             message: 'Status updated successfully'
         });
-        
+
     } catch (error) {
         console.error('Error updating contact submission status:', error);
         res.status(500).json({
@@ -1892,10 +2494,10 @@ router.put('/admin/contact-submissions/:id/status', requireAuth, async (req, res
 router.get('/download-template', requireAuth, async (req, res) => {
     try {
         const templateType = req.query.type || 'comprehensive';
-        
+
         // Generate template based on type
         const template = generateTemplate(templateType);
-        
+
         if (templateType === 'csv') {
             res.setHeader('Content-Type', 'text/csv');
             res.setHeader('Content-Disposition', 'attachment; filename="microplastics_data_template.csv"');
@@ -1907,7 +2509,7 @@ router.get('/download-template', requireAuth, async (req, res) => {
             res.setHeader('Content-Disposition', `attachment; filename="microplastics_data_template_${templateType}.csv"`);
             res.send(template);
         }
-        
+
     } catch (error) {
         console.error('Error generating template:', error);
         res.status(500).json({
@@ -1921,31 +2523,31 @@ router.get('/download-template', requireAuth, async (req, res) => {
 function generateTemplate(templateType) {
     const headers = [
         // Location Information
-        'location_name', 'location_shortcode', 'latitude', 'longitude', 'streetaddress', 
+        'location_name', 'location_shortcode', 'latitude', 'longitude', 'streetaddress',
         'city', 'state', 'country', 'zip_code',
-        
+
         // Sample Information
         'sample_date', 'media_type', 'water_type', 'sediment_type',
-        
+
         // Weather Conditions
         'air_temp', 'current_conditions', 'recent_rainfall_amount', 'recent_rainfall_period',
-        
+
         // Sample Details
         'microplastics_count', 'microplastics_sample_amount', 'microplastics_sample_unit',
         'fragments_count', 'fragments_sample_amount', 'fragments_sample_unit',
         'packaging_count', 'packaging_sample_amount', 'packaging_sample_unit',
-        
+
         // Microplastics Percentages
         'mp_size_lt_1um', 'mp_size_1_20um', 'mp_size_20_100um', 'mp_size_100um_1mm', 'mp_size_1_5mm',
         'mp_color_clear', 'mp_color_opaque_light', 'mp_color_opaque_dark', 'mp_color_mixed',
         'mp_form_fiber', 'mp_form_pellet', 'mp_form_fragment',
         // Fragments color percentages
         'fragment_color_clear', 'fragment_color_opaque_light', 'fragment_color_opaque_dark', 'fragment_color_mixed',
-        
+
         // Polymer Types (sample selection)
         'mp_polymer_pete', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe', 'mp_polymer_pp',
         'mp_polymer_ps', 'mp_polymer_pa', 'mp_polymer_pc', 'mp_polymer_pla', 'mp_polymer_abs',
-        
+
         // Packaging Details
         'packaging_count_single_use', 'packaging_count_multi_use',
         'single_use_recycle_1', 'single_use_recycle_2', 'single_use_recycle_3', 'single_use_recycle_4',
@@ -1953,15 +2555,15 @@ function generateTemplate(templateType) {
         'multi_use_recycle_1', 'multi_use_recycle_2', 'multi_use_recycle_3', 'multi_use_recycle_4',
         'multi_use_recycle_5', 'multi_use_recycle_6', 'multi_use_recycle_7'
     ];
-    
+
     if (templateType === 'comprehensive') {
         // Single comprehensive template with all fields
         let csvContent = headers.join(',') + '\n';
-        
+
         // Add example row with sample data
         const exampleRow = headers.map(() => '').join(',');
         csvContent += exampleRow + '\n';
-        
+
         // Add comments explaining each field (as separate lines)
         csvContent += '\n# Field Descriptions:\n';
         csvContent += '# location_name: Name of sampling location (required)\n';
@@ -1969,19 +2571,19 @@ function generateTemplate(templateType) {
         csvContent += '# media_type: water, soil_sediment, in_soil, soil_litter, or mixed_composite\n';
         csvContent += '# Percentage fields: Must sum to 100% or leave all blank in each group\n';
         csvContent += '# Packaging counts: Recycle codes must sum to their respective totals\n';
-        
+
         return csvContent;
-        
+
     } else if (templateType === 'multi-sheet') {
         // For multi-sheet, return comprehensive for now
         // In a real implementation, this would generate multiple sheets
         return generateTemplate('comprehensive');
-        
+
     } else if (templateType === 'csv') {
         // Basic CSV template
         return headers.join(',') + '\n';
     }
-    
+
     return headers.join(',') + '\n';
 }
 
@@ -1992,8 +2594,8 @@ router.get('/map-data', async (req, res) => {
             SELECT
                 sd.SampleUniqueID as id,
                 l.LocationName as location,
-                l.\`Lat-DecimalDegree\` as lat,
-                l.\`Long-DecimalDegree\` as lng,
+                l.\`Lat_DecimalDegree\` as lat,
+                l.\`Long_DecimalDegree\` as lng,
                 mt.MediaTypeOverall as sampleType,
                 se.SamplingDate as date,
                 COUNT(DISTINCT sd.SampleUniqueID) as particleCount
@@ -2001,9 +2603,9 @@ router.get('/map-data', async (req, res) => {
             LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
             LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
             LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
-            WHERE l.\`Lat-DecimalDegree\` IS NOT NULL
-              AND l.\`Long-DecimalDegree\` IS NOT NULL
-            GROUP BY sd.SampleUniqueID, l.LocationName, l.\`Lat-DecimalDegree\`, l.\`Long-DecimalDegree\`, mt.MediaTypeOverall, se.SamplingDate
+            WHERE l.\`Lat_DecimalDegree\` IS NOT NULL
+              AND l.\`Long_DecimalDegree\` IS NOT NULL
+            GROUP BY sd.SampleUniqueID, l.LocationName, l.\`Lat_DecimalDegree\`, l.\`Long_DecimalDegree\`, mt.MediaTypeOverall, se.SamplingDate
             ORDER BY se.SamplingDate DESC
         `;
 

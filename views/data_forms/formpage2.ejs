@@ -19,7 +19,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Single Collection Date (Default) -->
             <div class="form-field" id="single-collection-section">
                 <div class="form-label">Plastic Collection Date (<span style="color: red;">*</span>):</div>
@@ -27,7 +27,7 @@
                     <input type="date" name="sample_date" class="date-input" id="sample-date" placeholder="mm/dd/yyyy">
                 </div>
             </div>
-            
+
             <!-- Device Installation Period Dates (Hidden by default) -->
             <div class="form-field" id="device-period-section" style="display: none;">
                 <div class="date-range-container">
@@ -51,11 +51,60 @@
                     <input type="time" name="sample_time" class="time-input-wide" id="sample-time">
                 </div>
             </div>
-            
+
             <div class="form-field">
                 <div class="form-label">Sample Description (optional):</div>
                 <div>
                     <textarea name="sample_description" class="form-textarea-wide" id="sample-description" placeholder="Brief description of your sampling event..." rows="2"></textarea>
+                </div>
+            </div>
+
+            <div class="publication-source-section" id="publication-source-section">
+                <h3 class="section-subtitle">Publication Source</h3>
+                <div class="option-question">
+                    <p>Is this sample associated with a publication source?</p>
+                    <div class="radio-options">
+                        <label class="radio-option">
+                            <input type="radio" name="publication_present" value="yes" class="toggle-publication-source">
+                            <span class="radio-label">Yes</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="publication_present" value="no" class="toggle-publication-source" checked>
+                            <span class="radio-label">No</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Publication fields - hidden until "Yes" is selected -->
+                <div id="publication-source-fields" style="display: none;">
+                    <div class="form-row">
+                        <label class="form-label">Select Existing Publication:</label>
+                        <select name="publication_id_num" id="publication-id-num" class="form-select publication-select">
+                            <option value="">-- Select Publication --</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Publication Year:</label>
+                        <input type="number" name="publication_year" class="form-input" min="1900" max="2100">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Authors:</label>
+                        <input type="text" name="publication_authors" class="form-input">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Journal:</label>
+                        <input type="text" name="publication_journal" class="form-input">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Full Citation APA:</label>
+                        <textarea name="publication_full_citation_apa" class="form-textarea" rows="3"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Publication Source Type:</label>
+                        <select name="publication_pub_source_code" class="form-select publication-source-select">
+                            <option value="">-- Select Source Type --</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>

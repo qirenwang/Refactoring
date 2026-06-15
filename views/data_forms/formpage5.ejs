@@ -66,79 +66,72 @@
                     <span class="radio-label">No</span>
                 </label>
             </div>
-            
-            <div id="quantitative-counts-container" class="form-section" style="display:none;">
 
-                
-                <!-- Microplastics Count and Sample Amount -->
+            <div id="quantitative-counts-container" class="form-section" style="display:none;">
+                <div id="unified-sample-amounts" class="sample-amount-unified">
+                    <div class="form-row">
+                        <label class="form-label">Total Sample Amount:</label>
+                        <input type="number" step="0.001" name="total_sample_amount" class="form-input amount-input" placeholder="Enter amount" min="0">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Sample Unit:</label>
+                        <select name="sample_unit" class="form-select unit-select">
+                            <option value="">-- Select Unit --</option>
+                            <option value="L" class="water-unit">Liters (L)</option>
+                            <option value="g" class="soil-unit">Mass - dry weight (g)</option>
+                            <option value="km2" class="soil-unit area-unit">Area (km²)</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="count-section">
                     <div class="form-row">
                         <label class="form-label">Microplastics Count (less than 5mm):</label>
-                        <input type="number" id="microplastics-count" name="microplastics_count" class="form-input" placeholder="count" min="0">
-                    </div>
-                    <div class="sample-amount-container amount-inline" id="microplastics-amount-container" style="display:none;">
-                        <div class="form-row">
-                            <label class="form-label">Amount of sample that has this microplastics count:</label>
-                            <div class="amount-input-group">
-                                <input type="number" step="0.001" name="microplastics_sample_amount" class="form-input amount-input" placeholder="Enter amount" min="0">
-                                <select name="microplastics_sample_unit" class="form-select unit-select">
-                                    <option value="">-- Select Unit --</option>
-                                    <!-- Water sample units -->
-                                    <option value="L" class="water-unit">Liters (L)</option>
-                                    <!-- Sediment/Soil sample units -->
-                                    <option value="g" class="soil-unit">Mass - dry weight (g)</option>
-                                    <option value="km2" class="soil-unit area-unit">Area (km²)</option>
-                                </select>
-                            </div>
-                        </div>
+                        <input type="number" id="microplastics-count" name="microplastics_count" class="form-input" placeholder="count" min="0" data-target-table="MicroplasticsInSample" data-target-column="Micro5mmAndSmaller_Count">
                     </div>
                 </div>
 
-                <!-- Fragments Count and Sample Amount -->
                 <div class="count-section">
                     <div class="form-row">
-                        <label class="form-label">Fragments Count (greater than 5mm):</label>
-                        <input type="number" id="fragments-count" name="fragments_count" class="form-input" placeholder="count" min="0">
-                    </div>
-                    <div class="sample-amount-container amount-inline" id="fragments-amount-container" style="display:none;">
-                        <div class="form-row">
-                            <label class="form-label">Amount of sample that has this fragments count:</label>
-                            <div class="amount-input-group">
-                                <input type="number" step="0.001" name="fragments_sample_amount" class="form-input amount-input" placeholder="Enter amount" min="0">
-                                <select name="fragments_sample_unit" class="form-select unit-select">
-                                    <option value="">-- Select Unit --</option>
-                                    <!-- Water sample units -->
-                                    <option value="L" class="water-unit">Liters (L)</option>
-                                    <!-- Sediment/Soil sample units -->
-                                    <option value="g" class="soil-unit">Mass - dry weight (g)</option>
-                                    <option value="km2" class="soil-unit area-unit">Area (km²)</option>
-                                </select>
-                            </div>
-                        </div>
+                        <label class="form-label">Fragments Count (greater than 5mm, purpose unknown):</label>
+                        <input type="number" id="fragments-count" name="fragments_count" class="form-input" placeholder="count" min="0" data-target-table="FragmentsInSample" data-target-column="PurposeUnknown_Count">
                     </div>
                 </div>
 
-                <!-- Whole Packaging Count and Sample Amount -->
                 <div class="count-section">
                     <div class="form-row">
-                        <label class="form-label">Whole packaging Count:</label>
-                        <input type="number" id="packaging-count" name="packaging_count" class="form-input" placeholder="count" min="0">
+                        <label class="form-label">Whole packaging Count (purpose known):</label>
+                        <input type="number" id="packaging-count" name="packaging_count" class="form-input" placeholder="count" min="0" data-target-table="FragmentsInSample" data-target-column="PurposeKnown_Count">
                     </div>
-                    <div class="sample-amount-container amount-inline" id="packaging-amount-container" style="display:none;">
-                        <div class="form-row">
-                            <label class="form-label">Amount of sample that has this whole packaging count:</label>
-                            <div class="amount-input-group">
-                                <input type="number" step="0.001" name="packaging_sample_amount" class="form-input amount-input" placeholder="Enter amount" min="0">
-                                <select name="packaging_sample_unit" class="form-select unit-select">
-                                    <option value="">-- Select Unit --</option>
-                                    <!-- Water sample units -->
-                                    <option value="L" class="water-unit">Liters (L)</option>
-                                    <!-- Sediment/Soil sample units -->
-                                    <option value="g" class="soil-unit">Mass - dry weight (g)</option>
-                                    <option value="km2" class="soil-unit area-unit">Area (km²)</option>
-                                </select>
-                            </div>
-                        </div>
+                </div>
+
+                <div id="legacy-sample-amounts" style="display:none;">
+                    <div class="sample-amount-container amount-inline" id="microplastics-amount-container">
+                        <input type="number" step="0.001" name="microplastics_sample_amount" class="form-input amount-input" min="0">
+                        <select name="microplastics_sample_unit" class="form-select unit-select">
+                            <option value="">-- Select Unit --</option>
+                            <option value="L" class="water-unit">Liters (L)</option>
+                            <option value="g" class="soil-unit">Mass - dry weight (g)</option>
+                            <option value="km2" class="soil-unit area-unit">Area (km²)</option>
+                        </select>
+                    </div>
+                    <div class="sample-amount-container amount-inline" id="fragments-amount-container">
+                        <input type="number" step="0.001" name="fragments_sample_amount" class="form-input amount-input" min="0">
+                        <select name="fragments_sample_unit" class="form-select unit-select">
+                            <option value="">-- Select Unit --</option>
+                            <option value="L" class="water-unit">Liters (L)</option>
+                            <option value="g" class="soil-unit">Mass - dry weight (g)</option>
+                            <option value="km2" class="soil-unit area-unit">Area (km²)</option>
+                        </select>
+                    </div>
+                    <div class="sample-amount-container amount-inline" id="packaging-amount-container">
+                        <input type="number" step="0.001" name="packaging_sample_amount" class="form-input amount-input" min="0">
+                        <select name="packaging_sample_unit" class="form-select unit-select">
+                            <option value="">-- Select Unit --</option>
+                            <option value="L" class="water-unit">Liters (L)</option>
+                            <option value="g" class="soil-unit">Mass - dry weight (g)</option>
+                            <option value="km2" class="soil-unit area-unit">Area (km²)</option>
+                        </select>
                     </div>
                 </div>
             </div>
@@ -146,70 +139,52 @@
             <!-- Microplastics Details Section -->
             <div id="microplastics-details" class="form-section details-section" style="display:none;">
                 <h3>Microplastics Details</h3>
-                <p>Please enter this information about your microplastics sample:</p>
                 <div class="details-form">
-                    <div class="form-section-title">1. Size: Percentage of particles estimated to be in each size</div>
                     <div class="form-row">
-                        <label class="form-label">&lt; 1 μm:</label>
-                        <input type="number" name="mp_size_lt_1um" class="form-input" placeholder="percentage" min="0" max="100">
+                        <label class="form-label">Total Microplastics Mass (g):</label>
+                        <input type="number" step="0.001" name="micro_mass_mp_total" class="form-input" placeholder="mass" min="0">
                     </div>
                     <div class="form-row">
-                        <label class="form-label">1 - 20 μm:</label>
-                        <input type="number" name="mp_size_1_20um" class="form-input" placeholder="percentage" min="0" max="100">
+                        <label class="form-label">Polymer ID Method:</label>
+                        <select name="micro_method_polymer_num" class="form-select method-polymer-select" data-method-type="Polymer" data-applies-to="MP">
+                            <option value="">-- Select Method --</option>
+                        </select>
+                    </div>
+                    <div class="form-row method-other-row" data-method-other-for="micro_method_polymer_num" style="display:none;">
+                        <label class="form-label">Other polymer ID method:</label>
+                        <input type="text" name="micro_method_polymer_other" class="form-input">
                     </div>
                     <div class="form-row">
-                        <label class="form-label">20 - 100 μm:</label>
-                        <input type="number" name="mp_size_20_100um" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">100 μm - 1 mm:</label>
-                        <input type="number" name="mp_size_100um_1mm" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">1 - 5 mm:</label>
-                        <input type="number" name="mp_size_1_5mm" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-
-                    <div class="form-section-title">2. Color type: Percentage of particles estimated to be in each color type</div>
-                    <div class="form-row">
-                        <label class="form-label">Clear:</label>
-                        <input type="number" name="mp_color_clear" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Opaque - Light:</label>
-                        <input type="number" name="mp_color_opaque_light" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Opaque - Dark:</label>
-                        <input type="number" name="mp_color_opaque_dark" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Mixed:</label>
-                        <input type="number" name="mp_color_mixed" class="form-input" placeholder="percentage" min="0" max="100">
+                        <label class="form-label">How were percentages estimated?</label>
+                        <select name="micro_method_percent_estimate" class="form-select percent-method-select" data-method-type="Percent" data-applies-to="MP">
+                            <option value="">-- Select Method --</option>
+                        </select>
                     </div>
 
-                    <div class="form-section-title">3. Form: Percentage of particles estimated to be each form</div>
-                    <div class="form-row">
-                        <label class="form-label">Fiber:</label>
-                        <input type="number" name="mp_form_fiber" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Pellet:</label>
-                        <input type="number" name="mp_form_pellet" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Fragment:</label>
-                        <input type="number" name="mp_form_fragment" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
+                    <%- include('../partials/detail_percent_rows', { tableId: 'micro_size_details', sectionLabel: 'Size Classes', fieldPrefix: 'micro_size', refKey: 'sizes', masterMethodField: 'micro_method_percent_estimate' }) %>
+                    <%- include('../partials/detail_percent_rows', { tableId: 'micro_color_details', sectionLabel: 'Color Types', fieldPrefix: 'micro_color', refKey: 'colors', masterMethodField: 'micro_method_percent_estimate' }) %>
+                    <%- include('../partials/detail_percent_rows', { tableId: 'micro_opacity_details', sectionLabel: 'Opacity Types', fieldPrefix: 'micro_opacity', refKey: 'opacities', masterMethodField: 'micro_method_percent_estimate' }) %>
+                    <%- include('../partials/detail_percent_rows', { tableId: 'micro_shape_details', sectionLabel: 'Shapes', fieldPrefix: 'micro_shape', refKey: 'forms_mp_shape', masterMethodField: 'micro_method_percent_estimate' }) %>
+                    <%- include('../partials/detail_percent_rows', { tableId: 'micro_texture_details', sectionLabel: 'Textures', fieldPrefix: 'micro_texture', refKey: 'forms_texture', masterMethodField: 'micro_method_percent_estimate' }) %>
 
-                    <div class="form-section-title">4. Polymer type: Percentage of particles estimated to be each polymer type</div>
-                    
-                        <div id="mp-polymer-dynamic-container">
+                    <div class="form-section-title">Polymer type: Percentage of particles estimated to be each polymer type</div>
+                    <div id="mp-polymer-dynamic-container">
                         <div class="polymer-loading-indicator">Loading polymer options...</div>
                     </div>
 
-                    <div class="form-section-title">5. Describe Method you used to estimate percentage:</div>
-                    <div class="form-row">
+                    <div id="legacy-micro-column-percentages" style="display:none;">
+                        <input type="number" name="mp_size_lt_1um" class="form-input" min="0" max="100">
+                        <input type="number" name="mp_size_1_20um" class="form-input" min="0" max="100">
+                        <input type="number" name="mp_size_20_100um" class="form-input" min="0" max="100">
+                        <input type="number" name="mp_size_100um_1mm" class="form-input" min="0" max="100">
+                        <input type="number" name="mp_size_1_5mm" class="form-input" min="0" max="100">
+                        <input type="number" name="mp_color_clear" class="form-input" min="0" max="100">
+                        <input type="number" name="mp_color_opaque_light" class="form-input" min="0" max="100">
+                        <input type="number" name="mp_color_opaque_dark" class="form-input" min="0" max="100">
+                        <input type="number" name="mp_color_mixed" class="form-input" min="0" max="100">
+                        <input type="number" name="mp_form_fiber" class="form-input" min="0" max="100">
+                        <input type="number" name="mp_form_pellet" class="form-input" min="0" max="100">
+                        <input type="number" name="mp_form_fragment" class="form-input" min="0" max="100">
                         <textarea name="mp_estimate_method" class="form-textarea" rows="3"></textarea>
                     </div>
                 </div>
@@ -218,71 +193,60 @@
             <!-- Fragments Details Section -->
             <div id="fragments-details" class="form-section details-section" style="display:none;">
                 <h3>Fragments Details</h3>
-                <p>Please enter this information about your fragments &gt;5mm:</p>
                 <div class="details-form">
-                    <div class="form-section-title">1. Color type: Percentage of particles estimated to be in each color type</div>
                     <div class="form-row">
-                        <label class="form-label">Clear:</label>
-                        <input type="number" name="fragment_color_clear" class="form-input" placeholder="percentage" min="0" max="100">
+                        <label class="form-label">Total Fragments Mass (g):</label>
+                        <input type="number" step="0.01" name="fragments_mass_debris_total" class="form-input" placeholder="mass" min="0">
                     </div>
                     <div class="form-row">
-                        <label class="form-label">Opaque - Light:</label>
-                        <input type="number" name="fragment_color_opaque_light" class="form-input" placeholder="percentage" min="0" max="100">
+                        <label class="form-label">Polymer ID Method:</label>
+                        <select name="fragments_method_polymer_num" class="form-select method-polymer-select" data-method-type="Polymer" data-applies-to="Debris">
+                            <option value="">-- Select Method --</option>
+                        </select>
+                    </div>
+                    <div class="form-row method-other-row" data-method-other-for="fragments_method_polymer_num" style="display:none;">
+                        <label class="form-label">Other polymer ID method:</label>
+                        <input type="text" name="fragments_method_polymer_other" class="form-input">
                     </div>
                     <div class="form-row">
-                        <label class="form-label">Opaque - Dark:</label>
-                        <input type="number" name="fragment_color_opaque_dark" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Mixed:</label>
-                        <input type="number" name="fragment_color_mixed" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-
-                    <div class="form-section-title">2. Form: Percentage of particles estimated to be each form</div>
-
-                    <div class="form-row">
-                        <label class="form-label">Fiber:</label>
-                        <input type="number" name="fragment_form_fiber" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Pellet:</label>
-                        <input type="number" name="fragment_form_pellet" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Film/Bag/Wrap:</label>
-                        <input type="number" name="fragment_form_film" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Foam:</label>
-                        <input type="number" name="fragment_form_foam" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">HardPlastic:</label>
-                        <input type="number" name="fragment_form_hardplastic" class="form-input" placeholder="percentage" min="0" max="100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Other:</label>
-                        <input type="number" name="fragment_form_other" class="form-input" placeholder="percentage" min="0" max="100">
+                        <label class="form-label">How were percentages estimated?</label>
+                        <select name="fragments_method_percent_estimate" class="form-select percent-method-select" data-method-type="Percent" data-applies-to="Debris">
+                            <option value="">-- Select Method --</option>
+                        </select>
                     </div>
 
-                    <div class="form-section-title">3. Polymer type: Percentage of particles estimated to be each polymer type</div>
-                    
+                    <%- include('../partials/detail_percent_rows', { tableId: 'fragments_color_details', sectionLabel: 'Color Types', fieldPrefix: 'fragments_color', refKey: 'colors', masterMethodField: 'fragments_method_percent_estimate' }) %>
+                    <%- include('../partials/detail_percent_rows', { tableId: 'fragments_form_details', sectionLabel: 'Textures', fieldPrefix: 'fragments_form', refKey: 'forms_texture', masterMethodField: 'fragments_method_percent_estimate' }) %>
+                    <%- include('../partials/detail_percent_rows', { tableId: 'fragments_opacity_details', sectionLabel: 'Opacity Types', fieldPrefix: 'fragments_opacity', refKey: 'opacities', masterMethodField: 'fragments_method_percent_estimate' }) %>
+                    <%- include('../partials/detail_percent_rows', { tableId: 'fragments_purpose_details', sectionLabel: 'Purposes', fieldPrefix: 'fragments_purpose', refKey: 'purposes', masterMethodField: 'fragments_method_percent_estimate' }) %>
+
+                    <div class="form-section-title">Polymer type: Percentage of particles estimated to be each polymer type</div>
                     <div id="fragment-polymer-dynamic-container">
                         <div class="polymer-loading-indicator">Loading polymer options...</div>
                     </div>
 
-                    <div class="form-section-title">4. Describe Method you used to estimate percentage:</div>
-                    <div class="form-row">
+                    <div id="legacy-fragments-column-percentages" style="display:none;">
+                        <input type="number" name="fragment_color_clear" class="form-input" min="0" max="100">
+                        <input type="number" name="fragment_color_opaque_light" class="form-input" min="0" max="100">
+                        <input type="number" name="fragment_color_opaque_dark" class="form-input" min="0" max="100">
+                        <input type="number" name="fragment_color_mixed" class="form-input" min="0" max="100">
+                        <input type="number" name="fragment_form_fiber" class="form-input" min="0" max="100">
+                        <input type="number" name="fragment_form_pellet" class="form-input" min="0" max="100">
+                        <input type="number" name="fragment_form_film" class="form-input" min="0" max="100">
+                        <input type="number" name="fragment_form_foam" class="form-input" min="0" max="100">
+                        <input type="number" name="fragment_form_hardplastic" class="form-input" min="0" max="100">
+                        <input type="number" name="fragment_form_other" class="form-input" min="0" max="100">
                         <textarea name="fragment_estimate_method" class="form-textarea" rows="3"></textarea>
                     </div>
                 </div>
             </div>
 
             <!-- Whole Packaging Details Section -->
+            <div id="legacy-package-validation" style="display:none;">
             <div id="packaging-details" class="form-section details-section" style="display:none;">
                 <h3>Whole Packaging Details</h3>
                 <p class="instruction">Note: First provide the number of items in each category, then provide details for each category as needed, making sure each column total matches the number you enter.</p>
-                
+
                 <!-- Purpose Categories with Inline Details -->
                 <div class="purpose-overview">
                     <h4>Number of Items by Purpose Category</h4>
@@ -660,6 +624,7 @@
                 </div>
 
             </div>
+            </div>
 
             <div class="form-navigation">
                 <button type="button" class="btn-continue" data-next="6">Continue</button>
@@ -758,7 +723,7 @@
             const response = await fetch('/api/references');
             if (!response.ok) throw new Error('Network response was not ok');
             const result = await response.json();
-            
+
             if (result.success && result.data && result.data.polymers) {
                 const polymers = result.data.polymers;
                 renderPolymerInputs('mp', polymers);
