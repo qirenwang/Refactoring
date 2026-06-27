@@ -111,6 +111,7 @@
                     <div>Location</div>
                     <div>Collection Date</div>
                     <div>Sample Type</div>
+                    <div>Sample Amount</div>
                     <div>Coordinates</div>
                     <div>Actions</div>
                 </div>
@@ -361,8 +362,9 @@ class MySamplesManager {
         const collectionDate = sample.collection_date ? 
             new Date(sample.collection_date).toLocaleDateString() : 'N/A';
         
-        const coordinates = sample.latitude && sample.longitude ? 
+        const coordinates = sample.latitude && sample.longitude ?
             `${parseFloat(sample.latitude).toFixed(4)}, ${parseFloat(sample.longitude).toFixed(4)}` : 'N/A';
+        const sampleAmount = this.formatSampleAmount(sample);
 
         card.innerHTML = `
             <div class="sample-card-header">
@@ -385,6 +387,11 @@ class MySamplesManager {
                         <i class="fas fa-globe"></i>
                         <span>${coordinates}</span>
                     </div>
+                    ${sampleAmount !== 'N/A' ? `
+                    <div class="sample-info-item">
+                        <i class="fas fa-weight-hanging"></i>
+                        <span>${this.escapeHtml(sampleAmount)}</span>
+                    </div>` : ''}
                     ${sample.notes ? `
                     <div class="sample-info-item">
                         <i class="fas fa-sticky-note"></i>
@@ -420,8 +427,9 @@ class MySamplesManager {
         const collectionDate = sample.collection_date ? 
             new Date(sample.collection_date).toLocaleDateString() : 'N/A';
         
-        const coordinates = sample.latitude && sample.longitude ? 
+        const coordinates = sample.latitude && sample.longitude ?
             `${parseFloat(sample.latitude).toFixed(4)}, ${parseFloat(sample.longitude).toFixed(4)}` : 'N/A';
+        const sampleAmount = this.formatSampleAmount(sample);
 
         row.innerHTML = `
             <div>Sample #${sample.id}</div>
@@ -432,6 +440,7 @@ class MySamplesManager {
                     ${sample.sample_type || 'Unknown'}
                 </span>
             </div>
+            <div>${this.escapeHtml(sampleAmount)}</div>
             <div class="text-muted">${coordinates}</div>
             <div class="sample-actions">
                 <button class="action-btn view" onclick="viewSample(${sample.id})" title="View Details">
@@ -447,6 +456,19 @@ class MySamplesManager {
         `;
         
         return row;
+    }
+
+    formatSampleAmount(sample) {
+        if (sample.total_sample_amount === null || sample.total_sample_amount === undefined || sample.total_sample_amount === '') {
+            return 'N/A';
+        }
+
+        const rawAmount = Number(sample.total_sample_amount);
+        const amount = Number.isFinite(rawAmount) ? rawAmount.toLocaleString(undefined, {
+            maximumFractionDigits: 3
+        }) : String(sample.total_sample_amount);
+        const unit = sample.sample_unit ? ` ${sample.sample_unit}` : '';
+        return `${amount}${unit}`;
     }
 
     getSampleTypeBadgeClass(sampleType) {
@@ -517,6 +539,7 @@ class MySamplesManager {
                         <h4>Sample #${sample.id}</h4>
                         <p><strong>Location:</strong> ${sample.location_name || 'Unknown'}</p>
                         <p><strong>Type:</strong> ${sample.sample_type || 'Unknown'}</p>
+                        <p><strong>Amount:</strong> ${this.formatSampleAmount(sample)}</p>
                         <p><strong>Date:</strong> ${sample.collection_date ? new Date(sample.collection_date).toLocaleDateString() : 'N/A'}</p>
                         <div class="popup-actions">
                             <button onclick="viewSample(${sample.id})" class="btn btn-sm">View</button>
@@ -540,6 +563,7 @@ class MySamplesManager {
                 </div>
                 <div class="sidebar-item-content">
                     <p><i class="fas fa-map-marker-alt"></i> ${sample.location_name || 'Unknown'}</p>
+                    <p><i class="fas fa-weight-hanging"></i> ${this.formatSampleAmount(sample)}</p>
                     <p><i class="fas fa-calendar"></i> ${sample.collection_date ? new Date(sample.collection_date).toLocaleDateString() : 'N/A'}</p>
                 </div>
             `;

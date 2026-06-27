@@ -20,12 +20,12 @@
                     </label>
                 </div>
             </div>
-            
+
             <!-- Additional information sections - initially hidden -->
             <div id="additional-info-sections" style="display: none;">
 
-                
-                
+
+
                 <!-- In Water section - Only shown when media type is water -->
                 <div class="info-section media-specific-section" id="water-section" data-media-type="water" style="display: none;">
                     <h3 class="section-subtitle">In Water</h3>
@@ -79,7 +79,7 @@
                         <textarea name="water_additional_notes" class="form-textarea" rows="3" placeholder="Enter any additional information that could help interpret the data..."></textarea>
                     </div>
                 </div>
-                
+
                 <!-- In Aquatic Sediment section - Only shown when media type is soil_sediment -->
                 <div class="info-section media-specific-section" id="sediment-section" data-media-type="soil_sediment" style="display: none;">
                     <h3 class="section-subtitle">In Aquatic Sediment</h3>
@@ -96,6 +96,19 @@
                         <input type="number" step="0.01" name="sediment_organic_matter" class="form-input" placeholder="Enter organic matter">
                     </div>
                     <div class="form-row">
+                        <label class="form-label">Soil Texture Classification:</label>
+                        <select name="soil_texture" class="form-select soil-texture-select">
+                            <option value="">-- Select Soil Texture --</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Soil Texture Method:</label>
+                        <select name="soil_texture_method" class="form-select soil-texture-method-select" data-method-type="SoilTexture" data-applies-to="SoilType">
+                            <option value="">-- Select Method --</option>
+                        </select>
+                    </div>
+                    <div id="legacy-sediment-fields" style="display:none;">
+                    <div class="form-row">
                         <label class="form-label">Sediment sample moisture content (%):</label>
                         <input type="number" step="0.01" name="sediment_moisture" class="form-input" placeholder="Enter moisture content">
                     </div>
@@ -111,12 +124,13 @@
                         <label class="form-label">Sediment texture % clay:</label>
                         <input type="number" step="0.01" name="sediment_clay" class="form-input" placeholder="Enter % clay">
                     </div>
+                    </div>
                     <div class="form-row">
                         <label class="form-label">Additional Notes:</label>
                         <textarea name="sediment_additional_notes" class="form-textarea" rows="3" placeholder="Enter any additional information that could help interpret the data..."></textarea>
                     </div>
                 </div>
-                
+
                 <!-- In Terrestrial Soil section - Only shown when media type is in_soil -->
                 <div class="info-section media-specific-section" id="terrestrial-soil-section" data-media-type="in_soil" style="display: none;">
                     <h3 class="section-subtitle">In Terrestrial Soil</h3>
@@ -133,6 +147,19 @@
                         <input type="number" step="0.01" name="soil_organic_matter" class="form-input" placeholder="Enter organic matter">
                     </div>
                     <div class="form-row">
+                        <label class="form-label">Soil Texture Classification:</label>
+                        <select name="soil_texture" class="form-select soil-texture-select">
+                            <option value="">-- Select Soil Texture --</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Soil Texture Method:</label>
+                        <select name="soil_texture_method" class="form-select soil-texture-method-select" data-method-type="SoilTexture" data-applies-to="SoilType">
+                            <option value="">-- Select Method --</option>
+                        </select>
+                    </div>
+                    <div id="legacy-soil-fields" style="display:none;">
+                    <div class="form-row">
                         <label class="form-label">Soil sample moisture content (%):</label>
                         <input type="number" step="0.01" name="soil_moisture" class="form-input" placeholder="Enter moisture content">
                     </div>
@@ -148,18 +175,19 @@
                         <label class="form-label">Soil texture % clay:</label>
                         <input type="number" step="0.01" name="soil_clay" class="form-input" placeholder="Enter % clay">
                     </div>
+                    </div>
                     <div class="form-row">
                         <label class="form-label">Additional Notes:</label>
                         <textarea name="soil_additional_notes" class="form-textarea" rows="3" placeholder="Enter any additional information that could help interpret the data..."></textarea>
                     </div>
                 </div>
-                
+
                 <!-- On Soil or Land Surface section - Only shown when media type is soil_litter -->
                 <div class="info-section media-specific-section" id="surface-section" data-media-type="soil_litter" style="display: none;">
                     <h3 class="section-subtitle">On Soil or Land Surface</h3>
                     <div class="form-row">
                         <label class="form-label">Area sampled (km²):</label>
-                        <input type="number" step="0.0001" name="surface_area_sampled" class="form-input" placeholder="Enter area in km²">
+                        <input type="number" step="any" name="surface_area_sampled" class="form-input" placeholder="Enter area in km²" min="0">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Permeable surfaces (%):</label>
@@ -174,7 +202,7 @@
                         <textarea name="surface_additional_notes" class="form-textarea" rows="3" placeholder="Enter any additional information that could help interpret the data..."></textarea>
                     </div>
                 </div>
-                
+
                 <!-- Mixed Media section - Only shown when media type is mixed_composite -->
                 <div class="info-section media-specific-section" id="mixed-section" data-media-type="mixed_composite" style="display: none;">
                     <h3 class="section-subtitle">Mixed Media</h3>
@@ -184,7 +212,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="form-navigation">
                 <button type="button" id="page4-continue" class="btn-continue" data-next="5">Continue</button>
             </div>

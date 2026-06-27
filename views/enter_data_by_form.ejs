@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="/css/fancy-modal.css">
     <!-- Add Custom JS -->
     <script src="/js/common.js"></script>
-    
+
     <!-- Stagewise Toolbar for Development -->
     <% if (process.env.NODE_ENV !== 'production') { %>
         <script src="/js/stagewise-toolbar.js"></script>
@@ -23,7 +23,7 @@
 <body>
 <div class="container">
     <%- include('partials/header') %>
-    
+
     <div class="content">
         <%- include('partials/sidebar') %>
       <div class="main-content">
@@ -55,7 +55,7 @@
                 </div>
             </div>
         </div>
-        
+
         <!-- Form Pages Container -->
         <div class="form-pages-container">
             <!-- Page 1: Location Information - Initially visible -->
@@ -102,11 +102,12 @@
                                 <input type="text" id="location-description" name="location_description" class="form-input" placeholder="Enter location description">
                             </div>
 
+                            <div id="legacy-lulc" style="display:none;">
                             <div class="form-row">
-                                <label class="form-label">Land Use and Land Cover (LULC) (<span style="color: red;">*</span>):</label>
+                                <label class="form-label">Land Use and Land Cover (LULC):</label>
                             </div>
                             <div class="form-row">
-                                <select id="land-use-cover" name="land_use_cover" class="form-input" required>
+                                <select id="land-use-cover" name="land_use_cover" class="form-input">
                                     <option value="">-- Select Land Use and Land Cover --</option>
                                     <option value="water">Water</option>
                                     <option value="trees">Trees</option>
@@ -117,6 +118,7 @@
                                     <option value="snow_ice">Snow/Ice</option>
                                     <option value="rangeland">Rangeland</option>
                                 </select>
+                            </div>
                             </div>
 
                             <div class="instruction" style="margin-top: 10px;">
@@ -134,12 +136,12 @@
                                     <input type="text" id="longitude" name="longitude" class="coordinate-input" placeholder="Enter longitude">
                                 </div>
                             </div>
-                            
+
                             <div class="coordinate-hint">Click the map to set coordinates, drag the marker to refine them, or type latitude and longitude manually.</div>
-                            
+
                             <!-- Map container -->
                             <div id="map"></div>
-                            
+
                             <div class="form-row">
                                 <label class="form-label">Acres (if sampling a broad area):</label>
                                 <input type="text" id="acres" name="acres" class="form-input" placeholder="Enter area in acres">
@@ -158,7 +160,7 @@
                                 <button type="button" id="find-address-on-map" class="btn-continue" style="width: auto; padding: 8px 14px;">Find Address on Map</button>
                                 <div id="address-geocode-status" style="font-size: 13px; line-height: 1.4;"></div>
                             </div>
-                            
+
 
                             <span class="form-label">Or ZIP code only</span> (for confidential data or samples collected over a wide area):
                             <div class="coordinate-hint" style="margin-top: 6px;">ZIP code is kept for approximate area reporting only. It will not place a precise point on the map.</div>
@@ -236,7 +238,7 @@
                 </div>
             </template>
         </div>
-        
+
         <!-- Form data will be submitted through AJAX -->
         <form id="data-entry-form" style="display:none;">
             <input type="hidden" name="form_action" value="save_data">
@@ -261,11 +263,11 @@
 // Clear all form cache and initialize form data storage on page load
 document.addEventListener('DOMContentLoaded', function() {
     console.log('=== EJS DOMContentLoaded event triggered ===');
-    
+
     // Clear all cached form data to start fresh
     console.log('Clearing all form cache...');
     sessionStorage.removeItem('microplastics_form_data');
-    
+
     // Also clear any other potential form-related cache keys
     const keysToRemove = [];
     for (let i = 0; i < sessionStorage.length; i++) {
@@ -275,23 +277,23 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     keysToRemove.forEach(key => sessionStorage.removeItem(key));
-    
+
     // Initialize fresh session storage for form data
     sessionStorage.setItem('microplastics_form_data', JSON.stringify({}));
     console.log('Form cache cleared and reinitialized.');
-    
+
     // Clear all form fields in the visible page
     clearAllFormFields();
-    
+
     // Function to clear all form fields
     function clearAllFormFields() {
         console.log('Clearing all form fields...');
-        
+
         // Clear all input fields
         const inputs = document.querySelectorAll('input');
         inputs.forEach(input => {
-            if (input.type === 'text' || input.type === 'number' || input.type === 'email' || 
-                input.type === 'date' || input.type === 'password' || input.type === 'tel' || 
+            if (input.type === 'text' || input.type === 'number' || input.type === 'email' ||
+                input.type === 'date' || input.type === 'password' || input.type === 'tel' ||
                 input.type === 'url' || input.type === 'search') {
                 input.value = '';
             } else if (input.type === 'checkbox' || input.type === 'radio') {
@@ -303,39 +305,39 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         });
-        
+
         // Clear all select fields
         const selects = document.querySelectorAll('select');
         selects.forEach(select => {
             select.selectedIndex = 0; // Reset to first option (usually empty option)
         });
-        
+
         // Clear all textarea fields
         const textareas = document.querySelectorAll('textarea');
         textareas.forEach(textarea => {
             textarea.value = '';
         });
-        
+
         console.log('All form fields cleared.');
     }
-    
+
     // Also disable browser autofill to prevent refilling after we clear
     const formElements = document.querySelectorAll('input, select, textarea');
     formElements.forEach(element => {
         element.setAttribute('autocomplete', 'off');
     });
-    
+
     // Force clear any browser-cached values after a short delay
     setTimeout(() => {
         clearAllFormFields();
         console.log('Second pass form field clearing completed.');
     }, 100);
-    
+
     // Additional cleanup when page is fully loaded
     window.addEventListener('load', function() {
         console.log('Page fully loaded, performing final cache cleanup...');
         clearAllFormFields();
-        
+
         // Clear any localStorage items that might interfere
         const localStorageKeysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
@@ -346,7 +348,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         localStorageKeysToRemove.forEach(key => localStorage.removeItem(key));
           console.log('Final cleanup completed.');
-        
+
         // Reset the initial page load flag to ensure proper behavior on refresh
         if (typeof window.isPageInitialLoad !== 'undefined') {
             window.isPageInitialLoad = true;
@@ -369,18 +371,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // document.querySelector('.form-pages-container').addEventListener('click', function(event) {
     //     if (event.target.classList.contains('btn-continue')) {
     //         const nextPage = parseInt(event.target.dataset.next);
-    //         
+    //
     //         // Save current form data before moving to next page
     //         saveCurrentFormData();
-    //         
+    //
     //         // Load the next page
     //         loadNextPage(nextPage);
-    //         
+    //
     //         // Update progress indicator
     //         updateProgressSteps(nextPage);
     //     }
     // });
-    
+
     // Set up event listeners for media type selection changes
     document.addEventListener('change', function(event) {
         if (event.target.name === 'media_type') {
@@ -394,7 +396,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-        
+
         if (event.target.classList.contains('toggle-additional-info')) {
             const additionalInfoSections = document.getElementById('additional-info-sections');
             if (event.target.value === 'yes') {
@@ -403,7 +405,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 additionalInfoSections.style.display = 'none';
             }
         }
-        
+
         if (event.target.name === 'has_quantitative_data') {
             const quantitativeContainer = document.getElementById('quantitative-counts-container');
             if (quantitativeContainer) {
@@ -423,7 +425,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-    
+
     // Set up event listeners for particle count inputs
     document.addEventListener('input', function(event) {
         if (event.target.id === 'microplastics-count') {
@@ -441,7 +443,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 detailsSection.style.display = count > 0 ? 'block' : 'none';
             }
         }
-        
+
         if (event.target.id === 'packaging-count') {
             const count = parseInt(event.target.value) || 0;
             const detailsSection = document.getElementById('packaging-details');
@@ -475,19 +477,19 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-    
+
     // Set up save button - DISABLED, now handled by form-handler.js
     // document.addEventListener('click', function(event) {
     //     if (event.target.id === 'save-button') {
     //         submitFormData();
     //     }
     // });
-    
+
     // Function to save current form data to session storage
     function saveCurrentFormData() {
         const currentFormData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
         const formElements = document.querySelectorAll('.form-pages-container input, .form-pages-container select, .form-pages-container textarea');
-        
+
         formElements.forEach(element => {
             if (element.name) {
                 if (element.type === 'checkbox' || element.type === 'radio') {
@@ -499,26 +501,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         });
-        
+
         sessionStorage.setItem('microplastics_form_data', JSON.stringify(currentFormData));
     }
-    
+
     // Function to load the next form page
     function loadNextPage(pageNumber) {
         // Get the template content
         const template = document.getElementById('template-form-page' + pageNumber);
         if (!template) return;
-        
+
         // Clone the template content
         const pageContent = template.content.cloneNode(true);
-        
+
         // Append to the form pages container
         document.querySelector('.form-pages-container').appendChild(pageContent);
-        
+
         // Pre-fill the newly added page with any existing data
         const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
         const newPage = document.getElementById('form-page' + pageNumber);
-        
+
         if (newPage) {
             const formElements = newPage.querySelectorAll('input, select, textarea');
             formElements.forEach(element => {
@@ -531,11 +533,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-        
+
         // Scroll to the new page
         newPage.scrollIntoView({ behavior: 'smooth' });
     }
-    
+
     // Function to update progress steps
     function updateProgressSteps(activeStep) {
         const steps = document.querySelectorAll('.progress-step');
@@ -546,7 +548,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-    
+
     // Function to submit the form data
     function submitFormData() {
         // Display a loading indicator
@@ -554,10 +556,10 @@ document.addEventListener('DOMContentLoaded', function() {
         loadingIndicator.className = 'loading-indicator';
         loadingIndicator.innerHTML = '<div class="spinner"></div><p>Saving data...</p>';
         document.body.appendChild(loadingIndicator);
-        
+
         // Get all form data from session storage
         const formData = JSON.parse(sessionStorage.getItem('microplastics_form_data'));
-        
+
         // Submit via AJAX
         fetch('/api/save-form-data', {
             method: 'POST',
@@ -570,11 +572,11 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             // Remove loading indicator
             document.body.removeChild(loadingIndicator);
-            
+
             if (data.success) {
                 // Clear session storage
                 sessionStorage.removeItem('microplastics_form_data');
-                
+
                 // Show success message and redirect
                 alert('Data saved successfully!');
                 window.location.href = '/review';
@@ -589,7 +591,7 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Error saving data. Please try again.');
         });
     }
-    
+
     // Add CSS for loading indicator and other form styles
     const style = document.createElement('style');
     style.textContent = `

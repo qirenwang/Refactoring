@@ -43,11 +43,12 @@
                     <input type="text" id="location-description" name="location_description" class="form-input" placeholder="Enter location description">
                 </div>
 
+                <div id="legacy-lulc" style="display:none;">
                 <div class="form-row">
-                    <label class="form-label">Land Use and Land Cover (LULC) (<span style="color: red;">*</span>):</label>
+                    <label class="form-label">Land Use and Land Cover (LULC):</label>
                 </div>
                 <div class="form-row">
-                    <select id="land-use-cover" name="land_use_cover" class="form-input" required>
+                    <select id="land-use-cover" name="land_use_cover" class="form-input">
                         <option value="">-- Select Land Use and Land Cover --</option>
                         <option value="water">Water</option>
                         <option value="trees">Trees</option>
@@ -59,15 +60,16 @@
                         <option value="rangeland">Rangeland</option>
                     </select>
                 </div>
+                </div>
 
-                
+
 
                 <div class="instruction">
                     For new locations, use <span class="bold">latitude/longitude</span> for precise outdoor sampling points, <span class="bold">full address + Find Address on Map</span> for indoor samples, or <span class="bold">ZIP code</span> when you can only share an approximate area.
                 </div>
 
-                
-                
+
+
                 <span class="form-label"><span class="bold">For outdoor:</span></span>
                 <div class="coordinates-container">
                     <div class="coordinate-field">
@@ -79,16 +81,16 @@
                         <input type="text" id="longitude" name="longitude" class="coordinate-input" placeholder="Enter longitude">
                     </div>
                 </div>
-                
+
                 <div class="coordinate-hint">Click the map to set coordinates, drag the marker to refine them, or type latitude and longitude manually.</div>
-                
+
                 <!-- Map container -->
                 <div id="map"></div>
 
                 <span class="form-label">Or ZIP code</span> (for confidential data or samples collected over a wide area):
                 <div class="coordinate-hint" style="margin-top: 6px;">ZIP code is kept for approximate area reporting only. It will not place a precise point on the map.</div>
                 <input type="text" name="zip_code" class="input-field" placeholder="zip code">
-                
+
                 <div class="form-row">
                     <label class="form-label">Square kilometer (km²) if sampling a broad area:</label>
                     <input type="text" id="acres" name="acres" class="form-input" placeholder="Enter area in km²">
@@ -110,15 +112,15 @@
                     <button type="button" id="find-address-on-map" class="btn-continue" style="width: auto; padding: 8px 14px;">Find Address on Map</button>
                     <div id="address-geocode-status" style="font-size: 13px; line-height: 1.4;"></div>
                 </div>
-                
 
-                
+
+
             </div>
 
-            
+
         </div>
 
-        
+
     </div>
     <div class="form-navigation">
         <button type="button" id="page1-continue" class="btn-continue" data-next="2">Continue</button>

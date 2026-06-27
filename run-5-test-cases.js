@@ -264,9 +264,9 @@ async function runTestCases() {
                 const [locResult] = await connection.execute(`
                     INSERT INTO Location (
                         UserLocID_txt, LocationName, Location_Desc,
-                        \`Lat-DecimalDegree\`, \`Long-DecimalDegree\`,
+                        \`Lat_DecimalDegree\`, \`Long_DecimalDegree\`,
                         City, State, Country, ZipCode,
-                        \`Env-Indoor_SelectID\`, UserCreated
+                        \`Env_Indoor_SelectID\`, UserCreated
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 `, [
                     tc.locationData.locationShortCode,
@@ -293,7 +293,7 @@ async function runTestCases() {
                 await connection.execute(`
                     INSERT INTO SamplingEvent (
                         SamplingEventUniqueID, LocationID_Num, SamplingDate,
-                        UserSamplingID, \`AirTemp-C\`, DeviceInstallationPeriod
+                        UserSamplingID, \`AirTemp_C\`, DeviceInstallationPeriod
                     ) VALUES (?, ?, ?, ?, ?, 'no')
                 `, [
                     samplingEventId,
@@ -322,7 +322,7 @@ async function runTestCases() {
                     INSERT INTO SampleDetails (
                         SampleUniqueID, SamplingEvent_Num, MediaType_SelectID,
                         WholePkg_Count, FragLargerThan5mm_Count, Micro5mmAndSmaller_Count,
-                        \`SoilMoisture%\`, StorageLocation, MixedMediaDescription
+                        \`SoilMoisture_Percent\`, StorageLocation, MixedMediaDescription
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
                 `, [
                     sampleId,
@@ -347,8 +347,8 @@ async function runTestCases() {
                     await connection.execute(`
                         INSERT INTO MicroplasticsInSample (
                             Micro_UniqueID, SampleDetails_Num,
-                            \`PercentSize_<1um\`, \`PercentSize_1-20um\`,
-                            \`PercentSize_20-100um\`, \`PercentSize_100um-1mm\`, \`PercentSize_1-5mm\`,
+                            \`PercentSize_LessThan1um\`, \`PercentSize_1_20um\`,
+                            \`PercentSize_20_100um\`, \`PercentSize_100um_1mm\`, \`PercentSize_1_5mm\`,
                             PercentForm_fiber, PercentForm_Pellet, PercentForm_Fragment,
                             PercentColor_Clear, PercentColor_OpaqueLight, PercentColor_OpaqueDark, PercentColor_Mixed
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -381,7 +381,7 @@ async function runTestCases() {
                     await connection.execute(`
                         INSERT INTO FragmentsInSample (
                             Fragment_UniqueID, SampleDetails_Num,
-                            PercentColor_Clear, \`PercentColor_Op-Color\`, \`PercentColor_Op-Dk\`, PercentColor_Mixed,
+                            PercentColor_Clear, \`PercentColor_Op_Color\`, \`PercentColor_Op_Dk\`, PercentColor_Mixed,
                             PercentForm_Fiber, PercentForm_Pellet, PercentForm_Film,
                             PercentForm_Foam, PercentForm_HardPlastic, PercentForm_Other
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

@@ -49,11 +49,11 @@ router.get('/php/get_map_data.php', async (req, res) => {
     try {
         // Build the SQL query with optional filters (similar to PHP version)
         let sql = `
-            SELECT 
+            SELECT
                 s.id as SampleUniqueID,
                 s.location_name as location,
                 CONCAT(s.city, ' ', s.state) as zipCode,
-                s.latitude as lat, 
+                s.latitude as lat,
                 s.longitude as lng,
                 st.type_name as sampleType,
                 DATE(s.collection_date) as date,
@@ -63,28 +63,28 @@ router.get('/php/get_map_data.php', async (req, res) => {
             LEFT JOIN sample_types_ref st ON s.sample_type = st.id
             WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
         `;
-        
+
         const params = [];
-        
+
         // Apply ZIP code filter if provided (search in city or state)
         if (req.query.zipcode && req.query.zipcode.trim()) {
             sql += " AND (s.city LIKE ? OR s.state LIKE ?)";
             const zipFilter = `%${req.query.zipcode.trim()}%`;
             params.push(zipFilter, zipFilter);
         }
-        
+
         // Apply plastic type filter if provided (search in media_type)
         if (req.query.plastic_type && req.query.plastic_type.trim()) {
             sql += " AND s.media_type LIKE ?";
             params.push(`%${req.query.plastic_type.trim()}%`);
         }
-        
+
         // Order by collection date (most recent first)
         sql += " ORDER BY s.collection_date DESC";
-        
+
         // Execute the query
         const [rows] = await pool.execute(sql, params);
-        
+
         // Format the data to match the PHP response format
         const formattedData = rows.map(row => ({
             SampleUniqueID: row.SampleUniqueID,
@@ -97,7 +97,7 @@ router.get('/php/get_map_data.php', async (req, res) => {
             plasticTypes: row.plasticTypes || 'N/A',
             particleCount: row.particleCount || 0
         }));
-        
+
         // Return the data as JSON (matching PHP response format)
         res.json({
             success: true,
@@ -105,7 +105,7 @@ router.get('/php/get_map_data.php', async (req, res) => {
             data: formattedData,
             timestamp: new Date().toISOString().slice(0, 19).replace('T', ' ') // MySQL datetime format
         });
-        
+
     } catch (error) {
         console.error('Error fetching map data:', error);
         res.json({
@@ -119,7 +119,7 @@ router.get('/php/get_map_data.php', async (req, res) => {
 router.get('/map-data', async (req, res) => {
     try {
         const [rows] = await pool.execute(`
-            SELECT 
+            SELECT
                 id,
                 latitude,
                 longitude,
@@ -127,8 +127,8 @@ router.get('/map-data', async (req, res) => {
                 location_name,
                 collection_date,
                 created_by
-            FROM sample_data 
-            WHERE latitude IS NOT NULL 
+            FROM sample_data
+            WHERE latitude IS NOT NULL
             AND longitude IS NOT NULL
             ORDER BY collection_date DESC
         `);
@@ -147,7 +147,7 @@ router.get('/map-data', async (req, res) => {
 });
 
 // Save form data
-router.post('/save-form-data', 
+router.post('/save-form-data',
     requireAuth,
     [
         body('latitude').optional({ values: 'falsy' }).isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
@@ -233,7 +233,7 @@ router.post('/upload-file-data',
 
             // Process the uploaded file based on its type
             const fileExtension = req.file.originalname.split('.').pop().toLowerCase();
-            
+
             if (!['csv', 'xlsx', 'json'].includes(fileExtension)) {
                 return res.status(400).json({
                     success: false,
@@ -268,7 +268,7 @@ router.get('/my-samples', requireAuth, async (req, res) => {
         const offset = (page - 1) * limit;
 
         const [rows] = await pool.execute(`
-            SELECT 
+            SELECT
                 id,
                 latitude,
                 longitude,
@@ -277,15 +277,15 @@ router.get('/my-samples', requireAuth, async (req, res) => {
                 collection_date,
                 notes,
                 created_at
-            FROM sample_data 
+            FROM sample_data
             WHERE created_by = ?
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
         `, [req.session.user_id, limit, offset]);
 
         const [countResult] = await pool.execute(`
-            SELECT COUNT(*) as total 
-            FROM sample_data 
+            SELECT COUNT(*) as total
+            FROM sample_data
             WHERE created_by = ?
         `, [req.session.user_id]);
 
@@ -315,7 +315,7 @@ router.get('/my-samples', requireAuth, async (req, res) => {
 });
 
 // Update sample data
-router.put('/sample/:id', 
+router.put('/sample/:id',
     requireAuth,
     [
         body('latitude').optional({ values: 'falsy' }).isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
@@ -444,7 +444,7 @@ router.get('/check-session', (req, res) => {
         const sessionTimeout = parseInt(process.env.SESSION_TIMEOUT) * 1000 || 1800000; // 30 minutes default
         const now = Date.now();
         const lastActivity = req.session.last_activity || req.session.cookie.expires;
-        
+
         if (lastActivity && (now - lastActivity) > sessionTimeout) {
             return res.json({
                 logged_in: true,
@@ -475,7 +475,7 @@ router.get('/check-session', (req, res) => {
 router.get('/check-location-exists', async (req, res) => {
     try {
         const { name } = req.query;
-        
+
         if (!name || !name.trim()) {
             return res.json({
                 success: true,
@@ -483,15 +483,15 @@ router.get('/check-location-exists', async (req, res) => {
                 message: 'No location name provided'
             });
         }
-        
+
         // Check only in Location table
         const [locationRows] = await pool.execute(
             'SELECT COUNT(*) as count FROM Location WHERE LocationName = ?',
             [name.trim()]
         );
-        
+
         const existsInLocation = locationRows[0].count > 0;
-        
+
         res.json({
             success: true,
             exists: existsInLocation,
@@ -500,7 +500,7 @@ router.get('/check-location-exists', async (req, res) => {
                 locationCount: locationRows[0].count
             }
         });
-        
+
     } catch (error) {
         console.error('Error checking location existence:', error);
         res.status(500).json({
@@ -515,7 +515,7 @@ router.get('/check-location-exists', async (req, res) => {
 router.get('/locations', async (req, res) => {
     try {        // Query the location table from database_init.sql
         const [rows] = await pool.execute(`
-            SELECT 
+            SELECT
                 Loc_UniqueID as id,
                 UserLocID_txt as userLocId,
                 LocationName as name,
@@ -523,9 +523,9 @@ router.get('/locations', async (req, res) => {
                 City as city,
                 State as state,
                 ZipCode as zipCode,
-                \`Lat-DecimalDegree\` as latitude,
-                \`Long-DecimalDegree\` as longitude
-            FROM Location 
+                \`Lat_DecimalDegree\` as latitude,
+                \`Long_DecimalDegree\` as longitude
+            FROM Location
             ORDER BY LocationName ASC
         `);
 
@@ -545,7 +545,7 @@ router.get('/locations', async (req, res) => {
 });
 
 // Create new location
-router.post('/locations', 
+router.post('/locations',
     requireAuth,    [        body('locationName').notEmpty().withMessage('Location name is required').isLength({ max: 255 }).withMessage('Location name too long'),
         body('locationShortCode').notEmpty().withMessage('Location short code is required').isLength({ max: 50 }).withMessage('Location short code too long'),
         body('locationDescription').notEmpty().withMessage('Location description is required').isLength({ max: 500 }).withMessage('Location description too long'),
@@ -593,14 +593,14 @@ router.post('/locations',
                     UserLocID_txt,
                     LocationName,
                     Location_Desc,
-                    \`Lat-DecimalDegree\`,
-                    \`Long-DecimalDegree\`,
+                    \`Lat_DecimalDegree\`,
+                    \`Long_DecimalDegree\`,
                     StreetAddress,
                     City,
                     State,
                     Country,
                     ZipCode,
-                    \`Env-Indoor_SelectID\`,
+                    \`Env_Indoor_SelectID\`,
                     UserCreated
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
@@ -633,7 +633,7 @@ router.post('/locations',
                     message: 'A location with this name already exists'
                 });
             }
-            
+
             res.status(500).json({
                 success: false,
                 message: 'Error creating location'
@@ -649,7 +649,7 @@ router.get('/my-locations', requireAuth, async (req, res) => {
     try {
         const userId = req.session.user_id;
         const username = req.session.username;
-        
+
         // Check if user is authenticated
         if (!userId || !username) {
             return res.status(401).json({
@@ -657,9 +657,9 @@ router.get('/my-locations', requireAuth, async (req, res) => {
                 message: 'User not authenticated'
             });
         }
-        
+
         const query = `
-            SELECT 
+            SELECT
                 Loc_UniqueID as id,
                 UserLocID_txt as userLocId,
                 LocationName as name,
@@ -669,17 +669,17 @@ router.get('/my-locations', requireAuth, async (req, res) => {
                 Country as country,
                 StreetAddress as streetAddress,
                 ZipCode as zipCode,
-                \`Lat-DecimalDegree\` as latitude,
-                \`Long-DecimalDegree\` as longitude,
+                \`Lat_DecimalDegree\` as latitude,
+                \`Long_DecimalDegree\` as longitude,
                 UserCreated as userCreated,
                 0 as sample_count
-            FROM Location 
+            FROM Location
             WHERE UserCreated = ?
             ORDER BY Loc_UniqueID DESC
         `;
-        
+
         const [locations] = await pool.execute(query, [username]);
-        
+
         res.json({
             success: true,
             locations: locations,
@@ -699,9 +699,9 @@ router.get('/locations/:id', requireAuth, async (req, res) => {
     try {
         const userId = req.session.user_id;
         const locationId = req.params.id;
-        
+
         const query = `
-            SELECT 
+            SELECT
                 l.*,
                 COUNT(s.id) as sample_count
             FROM locations l
@@ -709,16 +709,16 @@ router.get('/locations/:id', requireAuth, async (req, res) => {
             WHERE l.id = ? AND l.user_id = ?
             GROUP BY l.id
         `;
-        
+
         const [locations] = await pool.execute(query, [locationId, userId]);
-        
+
         if (locations.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Location not found'
             });
         }
-        
+
         res.json(locations[0]);
     } catch (error) {
         console.error('Error fetching location:', error);
@@ -768,7 +768,7 @@ router.post('/locations', requireAuth, [
 
         const query = `
             INSERT INTO locations (
-                user_id, name, latitude, longitude, type, 
+                user_id, name, latitude, longitude, type,
                 streetaddress, city, state, country, zip_code, description,
                 created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
@@ -776,7 +776,7 @@ router.post('/locations', requireAuth, [
 
         const [result] = await pool.execute(query, [
             userId, name, latitude, longitude, type,
-            streetaddress || null, city || null, state || null, 
+            streetaddress || null, city || null, state || null,
             country || null, zip_code || null, description || null
         ]);
 
@@ -795,14 +795,14 @@ router.post('/locations', requireAuth, [
 
     } catch (error) {
         console.error('Error creating location:', error);
-        
+
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(400).json({
                 success: false,
                 message: 'A location with this name already exists'
             });
         }
-        
+
         res.status(500).json({
             success: false,
             message: 'Error creating location'
@@ -862,9 +862,9 @@ router.put('/locations/:id', requireAuth, [
         }
 
         const query = `
-            UPDATE locations SET 
+            UPDATE locations SET
                 name = ?, latitude = ?, longitude = ?, type = ?,
-                streetaddress = ?, city = ?, state = ?, country = ?, 
+                streetaddress = ?, city = ?, state = ?, country = ?,
                 zip_code = ?, description = ?, updated_at = NOW()
             WHERE id = ? AND user_id = ?
         `;
@@ -878,7 +878,7 @@ router.put('/locations/:id', requireAuth, [
 
         // Fetch the updated location with sample count
         const [updatedLocation] = await pool.execute(`
-            SELECT 
+            SELECT
                 l.*,
                 COUNT(s.id) as sample_count
             FROM Locations l
@@ -895,14 +895,14 @@ router.put('/locations/:id', requireAuth, [
 
     } catch (error) {
         console.error('Error updating location:', error);
-        
+
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(400).json({
                 success: false,
                 message: 'A location with this name already exists'
             });
         }
-        
+
         res.status(500).json({
             success: false,
             message: 'Error updating location'

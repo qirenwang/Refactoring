@@ -801,25 +801,25 @@ body {
         text-align: center;
         gap: 10px;
     }
-    
+
     .intro-header h2 {
         font-size: 1.6rem;
     }
-    
+
     .intro-card {
         padding: 20px;
     }
-    
+
     .card-header {
         flex-direction: column;
         text-align: center;
         gap: 8px;
     }
-    
+
     .action-buttons {
         flex-direction: column;
     }
-    
+
     .btn {
         justify-content: center;
     }
@@ -1755,7 +1755,7 @@ body {
     .next-steps-buttons {
         flex-direction: column;
     }
-    
+
     .btn-option {
         min-width: 100%;
         margin-bottom: 10px;
@@ -2064,17 +2064,17 @@ body {
     .summary-item {
         flex-direction: column;
     }
-    
+
     .summary-label,
     .summary-value {
         width: 100%;
     }
-    
+
     .summary-label {
         margin-bottom: 5px;
         padding-right: 0;
     }
-    
+
     .btn-edit-section {
         position: static;
         transform: none;
@@ -2082,7 +2082,7 @@ body {
         margin-top: 10px;
         align-self: flex-start;
     }
-    
+
     #summary-container h4 {
         padding-right: 0;
     }
@@ -2356,40 +2356,40 @@ body {
     .media-option {
         flex: 1 1 100%;
     }
-    
+
     /* New vertical media options mobile adjustments */
     .media-option-header {
         padding: 15px;
         flex-wrap: wrap;
     }
-    
+
     .media-option-header .media-icon {
         font-size: 28px;
         margin-right: 10px;
     }
-    
+
     .media-option-header .media-label {
         font-size: 16px;
     }
-    
+
     .suboption-group {
         grid-template-columns: 1fr;
         gap: 10px;
     }
-    
+
     .suboption-item {
         padding: 12px;
         font-size: 15px;
     }
-    
+
     .mixed-description-input {
         font-size: 16px; /* Prevent zoom on iOS */
     }
-    
+
     .other-description-input {
         font-size: 16px; /* Prevent zoom on iOS */
     }
-    
+
     .form-navigation {
         flex-direction: column;
         gap: 10px;
@@ -2460,16 +2460,16 @@ body {
         padding: 15px;
         margin-bottom: 20px;
     }
-    
+
     .polymer-category-title {
         font-size: 15px;
     }
-    
+
     .polymer-category .form-input {
         max-width: 100px;
         margin-left: 5px;
     }
-    
+
     .polymer-category .form-label {
         font-size: 13px;
         line-height: 1.4;
@@ -2711,7 +2711,7 @@ select {
         flex-direction: column;
         gap: 15px;
     }
-    
+
     .date-range-field {
         min-width: auto;
     }
@@ -2899,29 +2899,29 @@ select {
     .profile-container {
         padding: 10px;
     }
-    
+
     .profile-header {
         padding: 20px;
     }
-    
+
     .profile-header h1 {
         font-size: 1.6rem;
     }
-    
+
     .profile-section {
         padding: 20px;
     }
-    
+
     .form-row {
         flex-direction: column;
         gap: 0;
     }
-    
+
     .btn-group {
         flex-direction: column;
         align-items: stretch;
     }
-    
+
     .btn-group .btn {
         text-align: center;
     }
@@ -3101,30 +3101,30 @@ select {
         flex-direction: column;
         gap: 0;
     }
-    
+
     .form-row .form-group {
         margin-bottom: 20px;
     }
-    
+
     .form-actions {
         flex-direction: column;
         align-items: stretch;
     }
-    
+
     .form-actions .btn {
         text-align: center;
         margin-bottom: 10px;
     }
-    
+
     .contact-description {
         font-size: 14px;
     }
-    
+
     .checkbox-label {
         align-items: flex-start;
         gap: 8px;
     }
-    
+
     .checkbox-text {
         font-size: 13px;
         line-height: 1.4;
@@ -3306,4 +3306,90 @@ button:disabled[title*="包装"]:hover {
 
 .form-navigation .btn {
     margin: 0;
+}
+
+/* Reusable percent detail rows */
+.sample-amount-unified,
+.detail-percent-section {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px;
+    margin: 14px 0;
+    background: #fff;
+}
+
+.detail-percent-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.detail-percent-header h4 {
+    margin: 0;
+    font-size: 16px;
+    color: var(--accent-color);
+}
+
+.detail-percent-total {
+    font-weight: 700;
+    color: #dc3545;
+}
+
+.detail-percent-total.valid {
+    color: #198754;
+}
+
+.detail-percent-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 120px 40px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.detail-percent-row select,
+.detail-percent-row input {
+    min-width: 0;
+}
+
+.detail-add-row,
+.detail-method-override-toggle,
+.detail-remove-row {
+    border: 1px solid var(--border-color);
+    background: #fff;
+    color: var(--text-color);
+    border-radius: 6px;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+
+.detail-add-row {
+    background: var(--secondary-color);
+    border-color: var(--primary-color);
+    color: var(--accent-color);
+    font-weight: 600;
+}
+
+.detail-remove-row {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    color: #dc3545;
+    font-weight: 700;
+}
+
+.detail-method-override {
+    margin-top: 10px;
+}
+
+@media (max-width: 640px) {
+    .detail-percent-row {
+        grid-template-columns: 1fr;
+    }
+
+    .detail-remove-row {
+        width: 100%;
+    }
 }

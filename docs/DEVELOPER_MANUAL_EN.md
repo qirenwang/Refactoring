@@ -2,8 +2,8 @@
 
 ## 1. Project Overview
 
-**Project Name**: MicroPlastics Data Entry System (mp-data-entry-nodejs)  
-**Version**: 1.0.0  
+**Project Name**: MicroPlastics Data Entry System (mp-data-entry-nodejs)
+**Version**: 1.0.0
 **Description**: A web application for collecting and managing microplastics sampling data. Refactored from PHP to Node.js, it supports multi-step form data entry, map visualization, user authentication, file upload, and more.
 
 ### Tech Stack
@@ -400,8 +400,8 @@ This is the system's most critical API, performing multi-table inserts within a 
 6. Insert SampleDetails record
 7. Insert MicroplasticsInSample record (if applicable)
 8. Insert FragmentsInSample record (if applicable)
-9. Insert PackagesInSample records one by one (if applicable)
-10. Insert RamanDetails record (if applicable)
+9. Insert row-based microplastics/fragments detail records (if applicable)
+10. Insert package detail records (if applicable)
 11. Commit transaction (COMMIT)
 12. Rollback on failure (ROLLBACK)
 ```
@@ -508,9 +508,9 @@ Exports:
 | UserLocID_txt | TEXT | User-defined location ID |
 | LocationName | VARCHAR(255) UNIQUE | Location name |
 | Location_Desc | TEXT | Location description |
-| Env-Indoor_SelectID | INT | Environment type (indoor/outdoor) |
-| Lat-DecimalDegree | DECIMAL(10,6) | Latitude |
-| Long-DecimalDegree | DECIMAL(10,6) | Longitude |
+| Env_Indoor_SelectID | INT | Environment type (indoor/outdoor) |
+| Lat_DecimalDegree | DECIMAL(10,6) | Latitude |
+| Long_DecimalDegree | DECIMAL(10,6) | Longitude |
 | StreetAddress | TEXT | Street address |
 | City | TEXT | City |
 | State | TEXT | State/Province |
@@ -527,10 +527,10 @@ Exports:
 | LocationID_Num | INT | Associated location ID |
 | SamplingDate | DATE | Sampling date |
 | UserSamplingID | TEXT | User sampling ID |
-| AirTemp-C | DECIMAL(10,0) | Air temperature (°C) |
-| Weather-Current | INT | Current weather |
-| Weather-Precedent24 | INT | Weather in preceding 24 hours |
-| Rainfall-cm-Precedent24 | DECIMAL(10,0) | Rainfall in preceding 24 hours (cm) |
+| AirTemp_C | DECIMAL(10,0) | Air temperature (°C) |
+| Weather_Current | INT | Current weather |
+| Weather_Precedent24 | INT | Weather in preceding 24 hours |
+| Rainfall_cm_Precedent24 | DECIMAL(10,0) | Rainfall in preceding 24 hours (cm) |
 | SamplerNames | TEXT | Sampler names |
 | DeviceInstallationPeriod | ENUM('no','yes') | Device-based collection |
 | DeviceStartDate | DATE | Device start date |
@@ -549,7 +549,7 @@ Exports:
 | FragLargerThan5mm_Count | INT | Fragment >5mm count |
 | Micro5mmAndSmaller_Count | INT | Microplastic ≤5mm count |
 | WaterEnvType_SelectID | INT | Water environment type |
-| SoilMoisture% | INT | Soil moisture (%) |
+| SoilMoisture_Percent | INT | Soil moisture (%) |
 | StorageLocation | INT | Storage location |
 | MediaSubType | VARCHAR(100) | Media subtype |
 | VolumeSampled | DECIMAL(10,3) | Volume sampled |
@@ -562,11 +562,11 @@ Exports:
 |--------|------|-------------|
 | Micro_UniqueID | INT PK | Microplastic record ID |
 | SampleDetails_Num | INT | Associated sample ID |
-| PercentSize_<1um | INT | <1μm size percentage |
-| PercentSize_1-20um | INT | 1-20μm percentage |
-| PercentSize_20-100um | INT | 20-100μm percentage |
-| PercentSize_100um-1mm | INT | 100μm-1mm percentage |
-| PercentSize_1-5mm | INT | 1-5mm percentage |
+| PercentSize_LessThan1um | INT | <1μm size percentage |
+| PercentSize_1_20um | INT | 1-20μm percentage |
+| PercentSize_20_100um | INT | 20-100μm percentage |
+| PercentSize_100um_1mm | INT | 100μm-1mm percentage |
+| PercentSize_1_5mm | INT | 1-5mm percentage |
 | PercentForm_fiber | INT | Fiber form percentage |
 | PercentForm_Pellet | INT | Pellet form percentage |
 | PercentForm_Fragment | INT | Fragment form percentage |
@@ -574,7 +574,8 @@ Exports:
 | PercentColor_OpaqueLight | INT | Opaque light color percentage |
 | PercentColor_OpaqueDark | INT | Opaque dark color percentage |
 | PercentColor_Mixed | INT | Mixed color percentage |
-| Method_Desc | TEXT | Analysis method description |
+| Method_Polymer_Num | INT | Polymer identification method reference |
+| Method_Polymer_Other | TEXT | Other polymer identification method |
 
 #### FragmentsInSample
 
@@ -583,8 +584,8 @@ Exports:
 | Fragment_UniqueID | INT PK | Fragment record ID |
 | SampleDetails_Num | INT | Associated sample ID |
 | PercentColor_Clear | INT | Clear percentage |
-| PercentColor_Op-Color | INT | Opaque colored percentage |
-| PercentColor_Op-Dk | INT | Opaque dark percentage |
+| PercentColor_Op_Color | INT | Opaque colored percentage |
+| PercentColor_Op_Dk | INT | Opaque dark percentage |
 | PercentColor_Mixed | INT | Mixed percentage |
 | PercentForm_Fiber | INT | Fiber percentage |
 | PercentForm_Pellet | INT | Pellet percentage |
@@ -637,7 +638,6 @@ Exports:
 | WaterEnvType_Ref | Water environment type reference |
 | WeatherType_Ref | Weather type reference |
 | StorageLoc_Ref | Storage location reference |
-| Wavelength_Ref | Wavelength range reference |
 | LocType_Env-Indoor_Ref | Location environment type reference |
 | PolymerType_Ref | Polymer type reference |
 | Purpose_Ref | Package purpose reference |
@@ -836,7 +836,7 @@ All APIs use the following unified JSON response format:
 |------|-------------|
 | File naming | Use kebab-case (e.g., `form-handler.js`) |
 | Route naming | RESTful style |
-| Database fields | Maintain original naming conventions (includes hyphens, e.g., `AirTemp-C`) |
+| Database fields | Use the current underscore-based database field names; legacy hyphens and special characters have been removed. |
 | Error handling | Unified JSON response format |
 | Async operations | Use async/await |
 | Database operations | Use parameterized queries to prevent SQL injection |
@@ -930,10 +930,10 @@ Local development uses `PORT=3001`, the remote Docker container uses `3000`. If 
 
 ### Database Field Naming
 
-Due to migration from the legacy system, database field names contain hyphens (e.g., `AirTemp-C`, `Lat-DecimalDegree`). These must be wrapped in backticks in SQL queries:
+Legacy database field names with hyphens and special characters have been renamed to underscore-based names (for example, `AirTemp_C`, `Lat_DecimalDegree`, and `SoilMoisture_Percent`). Backticks are still safe in SQL queries but are no longer required solely because of hyphens:
 
 ```sql
-SELECT `AirTemp-C`, `Lat-DecimalDegree` FROM SamplingEvent;
+SELECT `AirTemp_C`, `Lat_DecimalDegree` FROM SamplingEvent;
 ```
 
 ---

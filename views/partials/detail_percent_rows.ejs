@@ -1,0 +1,34 @@
+<%
+    const detailTableId = typeof tableId !== 'undefined' ? tableId : '';
+    const detailLabel = typeof sectionLabel !== 'undefined' ? sectionLabel : 'Details';
+    const detailPrefix = typeof fieldPrefix !== 'undefined' ? fieldPrefix : detailTableId;
+    const detailRefKey = typeof refKey !== 'undefined' ? refKey : '';
+    const detailMasterMethod = typeof masterMethodField !== 'undefined' ? masterMethodField : '';
+    const incomingRefOptions = typeof refOptions !== 'undefined' ? refOptions : [];
+    const detailOptions = Array.isArray(incomingRefOptions) ? incomingRefOptions : [];
+%>
+<div class="detail-percent-section"
+     data-detail-section="<%= detailTableId %>"
+     data-ref-key="<%= detailRefKey %>"
+     data-field-prefix="<%= detailPrefix %>"
+     data-master-method-field="<%= detailMasterMethod %>">
+    <div class="detail-percent-header">
+        <h4><%= detailLabel %></h4>
+        <div class="detail-percent-total" data-total-for="<%= detailTableId %>">Total: 0%</div>
+    </div>
+    <div id="<%= detailTableId %>" class="detail-percent-rows">
+        <% detailOptions.forEach(option => { %>
+            <template data-ref-option>
+                <option value="<%= option.id %>" data-code="<%= option.code %>"><%= option.label || option.code %></option>
+            </template>
+        <% }) %>
+    </div>
+    <button type="button" class="detail-add-row" data-add-detail-row="<%= detailTableId %>">Add Row</button>
+    <button type="button" class="detail-method-override-toggle" data-override-for="<%= detailTableId %>">Override method for this section</button>
+    <div class="detail-method-override" data-method-override="<%= detailTableId %>" style="display:none;">
+        <label class="form-label">Section percent method:</label>
+        <select class="form-select detail-method-select" data-detail-method-select="<%= detailTableId %>">
+            <option value="">Use master method</option>
+        </select>
+    </div>
+</div>

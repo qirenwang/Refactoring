@@ -68,7 +68,7 @@ async function runTests() {
         `);
         if (microDetails.length > 0) {
             microDetails.forEach(m => {
-                console.log(`  Sample ${m.SampleDetails_Num}: Size<1um:${m['PercentSize_<1um']}% | Fiber:${m.PercentForm_fiber}% Pellet:${m.PercentForm_Pellet}% Fragment:${m.PercentForm_Fragment}%`);
+                console.log(`  Sample ${m.SampleDetails_Num}: Size<1um:${m['PercentSize_LessThan1um']}% | Fiber:${m.PercentForm_fiber}% Pellet:${m.PercentForm_Pellet}% Fragment:${m.PercentForm_Fragment}%`);
             });
         }
 
