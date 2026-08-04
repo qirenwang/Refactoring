@@ -35,6 +35,10 @@ body {
     overflow: hidden;
 }
 
+.signup-container {
+    max-width: 760px;
+}
+
 .header {
     background-color: #fff;
     padding: 20px;
@@ -102,6 +106,16 @@ body {
 
 .form-group {
     margin-bottom: 20px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+}
+
+.form-row .form-group {
+    min-width: 0;
 }
 
 .form-label {
@@ -255,6 +269,13 @@ body {
 
 .hidden {
     display: none;
+}
+
+@media (max-width: 640px) {
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
 }
 
 /* Bootstrap-compatible Alert Styles */

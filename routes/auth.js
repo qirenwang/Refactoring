@@ -5,9 +5,209 @@ const { body, validationResult } = require('express-validator');
 const canvas = require('@napi-rs/canvas');
 const { pool } = require('../config/database');
 const { redirectIfLoggedIn } = require('../middleware/auth');
-const { sendPasswordResetEmail, sendPasswordResetConfirmationEmail } = require('../services/emailService');
+const { sendPasswordResetConfirmationEmail } = require('../services/emailService');
+const {
+    GENERIC_RECOVERY_MESSAGE,
+    PASSWORD_REQUIREMENTS_MESSAGE,
+    encryptRecoveryPayload,
+    getResetTokenCandidates,
+    hashResetToken,
+    isStrongPassword,
+    normalizeAccountIdentifier,
+    resolveRecoveryEncryptionSecret,
+    resolvePublicBaseUrl
+} = require('../utils/account-recovery');
 
 const router = express.Router();
+const RECOVERY_IDENTIFIER_LIMIT = 5;
+const RECOVERY_RESPONSE_FLOOR_MS = 300;
+
+function sendGenericRecoveryResponse(res, requestStartedAt) {
+    const elapsed = Date.now() - requestStartedAt;
+    const remainingDelay = Math.max(0, RECOVERY_RESPONSE_FLOOR_MS - elapsed);
+
+    if (remainingDelay === 0) {
+        return res.json({
+            success: true,
+            message: GENERIC_RECOVERY_MESSAGE
+        });
+    }
+
+    return setTimeout(() => {
+        res.json({
+            success: true,
+            message: GENERIC_RECOVERY_MESSAGE
+        });
+    }, remainingDelay);
+}
+
+function createRecoveryCooldownKey(scope, value) {
+    const normalizedValue = String(value).normalize('NFKC').toLowerCase();
+    return crypto
+        .createHmac('sha256', resolveRecoveryEncryptionSecret())
+        .update(`account-recovery:${scope}\0${normalizedValue}`)
+        .digest();
+}
+
+async function consumeRecoveryCooldown(connection, scope, keyHash) {
+    await connection.execute(
+        `INSERT IGNORE INTO account_recovery_cooldowns (
+            scope, key_hash, window_started_at, attempt_count
+         ) VALUES (?, ?, CURRENT_TIMESTAMP(6), 0)`,
+        [scope, keyHash]
+    );
+
+    const [cooldownRows] = await connection.execute(
+        `SELECT
+            attempt_count,
+            window_started_at <= CURRENT_TIMESTAMP(6) - INTERVAL 15 MINUTE AS window_expired,
+            blocked_until IS NOT NULL
+                AND blocked_until > CURRENT_TIMESTAMP(6) AS currently_blocked
+         FROM account_recovery_cooldowns
+         WHERE scope = ? AND key_hash = ?
+         FOR UPDATE`,
+        [scope, keyHash]
+    );
+
+    if (cooldownRows.length === 0) {
+        throw new Error('Account recovery cooldown could not be created');
+    }
+
+    const cooldown = cooldownRows[0];
+    if (Number(cooldown.currently_blocked) === 1) {
+        return true;
+    }
+
+    if (Number(cooldown.window_expired) === 1) {
+        await connection.execute(
+            `UPDATE account_recovery_cooldowns
+             SET window_started_at = CURRENT_TIMESTAMP(6),
+                 attempt_count = 1,
+                 blocked_until = NULL
+             WHERE scope = ? AND key_hash = ?`,
+            [scope, keyHash]
+        );
+        return false;
+    }
+
+    const nextAttemptCount = Number(cooldown.attempt_count) + 1;
+    const isLimited = nextAttemptCount > RECOVERY_IDENTIFIER_LIMIT;
+
+    await connection.execute(
+        `UPDATE account_recovery_cooldowns
+         SET attempt_count = ?,
+             blocked_until = CASE
+                WHEN ? = 1 THEN CURRENT_TIMESTAMP(6) + INTERVAL 15 MINUTE
+                ELSE NULL
+             END
+         WHERE scope = ? AND key_hash = ?`,
+        [nextAttemptCount, isLimited ? 1 : 0, scope, keyHash]
+    );
+
+    return isLimited;
+}
+
+async function enqueueAccountRecoveryRequest(identifier, req) {
+    const connection = await pool.getConnection();
+    let transactionStarted = false;
+
+    try {
+        await connection.beginTransaction();
+        transactionStarted = true;
+
+        const identifierKey = createRecoveryCooldownKey('identifier', identifier);
+        if (await consumeRecoveryCooldown(connection, 'identifier', identifierKey)) {
+            await connection.commit();
+            transactionStarted = false;
+            return false;
+        }
+
+        const [users] = await connection.execute(
+            `SELECT User_UniqueID, username, email, first_name, last_name
+             FROM users
+             WHERE username = ? OR email = ?
+             LIMIT 1`,
+            [identifier, identifier]
+        );
+
+        if (users.length === 0) {
+            await connection.commit();
+            transactionStarted = false;
+            return false;
+        }
+
+        const user = users[0];
+        const accountKey = createRecoveryCooldownKey('account', user.User_UniqueID);
+        if (await consumeRecoveryCooldown(connection, 'account', accountKey)) {
+            await connection.commit();
+            transactionStarted = false;
+            return false;
+        }
+
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const storedTokenHash = hashResetToken(resetToken);
+        const eventId = crypto.randomUUID();
+        const publicBaseUrl = resolvePublicBaseUrl(req);
+        const encryptedPayload = encryptRecoveryPayload({
+            rawToken: resetToken,
+            publicBaseUrl,
+            to: user.email,
+            account: {
+                username: user.username,
+                email: user.email,
+                first_name: user.first_name,
+                last_name: user.last_name
+            }
+        });
+
+        const [tokenResult] = await connection.execute(
+            `INSERT INTO password_reset_tokens (user_id, email, token, expires_at)
+             VALUES (?, ?, ?, CURRENT_TIMESTAMP + INTERVAL 1 HOUR)`,
+            [user.User_UniqueID, user.email, storedTokenHash]
+        );
+
+        await connection.execute(
+            `INSERT INTO account_recovery_outbox (
+                event_id, user_id, reset_token_id, payload_ciphertext
+             ) VALUES (?, ?, ?, ?)`,
+            [eventId, user.User_UniqueID, tokenResult.insertId, encryptedPayload]
+        );
+
+        await connection.commit();
+        transactionStarted = false;
+        return true;
+    } catch (error) {
+        if (transactionStarted) {
+            try {
+                await connection.rollback();
+            } catch (rollbackError) {
+                console.error('Failed to roll back account recovery enqueue:', rollbackError);
+            }
+        }
+
+        throw error;
+    } finally {
+        connection.release();
+    }
+}
+
+function normalizeLocalReturnUrl(value) {
+    if (typeof value !== 'string'
+        || !value.startsWith('/')
+        || value.startsWith('//')
+        || value.includes('\\')) {
+        return '/home';
+    }
+
+    try {
+        const parsedUrl = new URL(value, 'http://local.invalid');
+        return parsedUrl.origin === 'http://local.invalid'
+            ? `${parsedUrl.pathname}${parsedUrl.search}`
+            : '/home';
+    } catch (error) {
+        return '/home';
+    }
+}
 
 // Helper function to generate captcha
 function generateCaptcha() {
@@ -80,7 +280,7 @@ router.post('/login',
                 });
             }
 
-            const { login, password, captcha, remember } = req.body;
+            const { login, password, captcha, remember, returnUrl } = req.body;
 
             // Check captcha
             if (!req.session.captcha_code) {
@@ -139,10 +339,13 @@ router.post('/login',
                 });
             }
 
+            const redirectUrl = normalizeLocalReturnUrl(returnUrl || req.session.returnUrl);
+            delete req.session.returnUrl;
+
             res.json({
                 success: true,
                 message: 'Login successful',
-                redirectUrl: '/home'
+                redirectUrl
             });
 
         } catch (error) {
@@ -159,8 +362,8 @@ router.post('/login',
 router.post('/signup',
     redirectIfLoggedIn,
     [
-        body('username').isLength({ min: 3 }).withMessage('Username must be at least 3 characters'),
-        body('email').isEmail().withMessage('Valid email is required'),
+        body('username').trim().isLength({ min: 3, max: 50 }).withMessage('Username must be between 3 and 50 characters'),
+        body('email').trim().isEmail().withMessage('Valid email is required'),
         body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
         body('confirm_password').custom((value, { req }) => {
             if (value !== req.body.password) {
@@ -168,6 +371,20 @@ router.post('/signup',
             }
             return true;
         }),
+        body('first_name').trim().notEmpty().withMessage('First name is required').bail()
+            .isLength({ max: 50 }).withMessage('First name is too long'),
+        body('last_name').trim().notEmpty().withMessage('Last name is required').bail()
+            .isLength({ max: 50 }).withMessage('Last name is too long'),
+        body('organization').trim().notEmpty().withMessage('Organization is required').bail()
+            .isLength({ max: 100 }).withMessage('Organization is too long'),
+        body('organization_type_num').notEmpty().withMessage('Organization type is required').bail()
+            .isInt({ min: 1 }).withMessage('Invalid organization type'),
+        body('organization_type_other').optional({ checkFalsy: true }).trim().isLength({ max: 255 }).withMessage('Other organization type is too long'),
+        body('job_title').trim().notEmpty().withMessage('Job / Position Title is required').bail()
+            .isLength({ max: 100 }).withMessage('Job / Position Title is too long'),
+        body('country_num').notEmpty().withMessage('Country is required').bail()
+            .isInt({ min: 1 }).withMessage('Invalid country'),
+        body('state_num').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid state'),
         body('captcha').notEmpty().withMessage('Verification code is required')
     ],
     async (req, res) => {
@@ -180,7 +397,27 @@ router.post('/signup',
                 });
             }
 
-            const { username, email, password, captcha } = req.body;
+            const {
+                username,
+                email,
+                password,
+                captcha,
+                first_name,
+                last_name,
+                organization,
+                organization_type_num,
+                organization_type_other,
+                job_title,
+                country_num,
+                state_num
+            } = req.body;
+
+            if (username.toLowerCase() === email.toLowerCase()) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Username and email must be different'
+                });
+            }
 
             // Check captcha
             if (!req.session.captcha_code) {
@@ -199,10 +436,111 @@ router.post('/signup',
             }
 
             // Clear captcha after use
-            delete req.session.captcha_code;            // Check if user already exists
+            delete req.session.captcha_code;
+
+            const optionalText = value => {
+                if (typeof value !== 'string') return null;
+                const trimmedValue = value.trim();
+                return trimmedValue || null;
+            };
+            const optionalId = value => value ? Number.parseInt(value, 10) : null;
+
+            const organizationTypeId = optionalId(organization_type_num);
+            const countryId = optionalId(country_num);
+            const stateId = optionalId(state_num);
+            let organizationTypeOther = optionalText(organization_type_other);
+
+            if (organizationTypeId) {
+                const [organizationTypeRows] = await pool.execute(
+                    `SELECT OrganizationType
+                     FROM OrganizationType_Ref
+                     WHERE OrganizationTypeUniqueID = ?`,
+                    [organizationTypeId]
+                );
+
+                if (organizationTypeRows.length === 0) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Invalid organization type'
+                    });
+                }
+
+                if (organizationTypeRows[0].OrganizationType === 'Other (please specify)') {
+                    if (!organizationTypeOther) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'Other organization type is required'
+                        });
+                    }
+                } else {
+                    organizationTypeOther = null;
+                }
+            } else {
+                organizationTypeOther = null;
+            }
+
+            let selectedCountry = null;
+            if (countryId) {
+                const [countryRows] = await pool.execute(
+                    'SELECT CountryUniqueID, ISOAlpha2 FROM Country_Ref WHERE CountryUniqueID = ?',
+                    [countryId]
+                );
+
+                if (countryRows.length === 0) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Invalid country'
+                    });
+                }
+
+                [selectedCountry] = countryRows;
+            }
+
+            if (stateId && !countryId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Select a country before selecting a state'
+                });
+            }
+
+            const isUnitedStates = selectedCountry && selectedCountry.ISOAlpha2 === 'US';
+            if (isUnitedStates && !stateId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'State is required when United States is selected'
+                });
+            }
+
+            if (!isUnitedStates && stateId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'State can only be selected for United States'
+                });
+            }
+
+            if (stateId) {
+                const [stateRows] = await pool.execute(
+                    `SELECT StateUniqueID
+                     FROM State_Ref
+                     WHERE StateUniqueID = ? AND Country_Num = ?`,
+                    [stateId, countryId]
+                );
+
+                if (stateRows.length === 0) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Invalid state for the selected country'
+                    });
+                }
+            }
+
+            // Check both login namespaces so username and email cannot conflict.
             const [existingUsers] = await pool.execute(
-                'SELECT User_UniqueID as id FROM users WHERE username = ? OR email = ?',
-                [username, email]
+                `SELECT User_UniqueID AS id
+                 FROM users
+                 WHERE username IN (?, ?) OR email IN (?, ?)
+                 LIMIT 1`,
+                [username, email, username, email]
             );
 
             if (existingUsers.length > 0) {
@@ -217,8 +555,24 @@ router.post('/signup',
 
             // Insert new user
             const [result] = await pool.execute(
-                'INSERT INTO users (username, email, password, created_at) VALUES (?, ?, ?, NOW())',
-                [username, email, hashedPassword]
+                `INSERT INTO users (
+                    username, email, password, first_name, last_name, organization,
+                    OrganizationType_Num, OrganizationTypeOther, job_title,
+                    Country_Num, State_Num, created_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+                [
+                    username,
+                    email,
+                    hashedPassword,
+                    optionalText(first_name),
+                    optionalText(last_name),
+                    optionalText(organization),
+                    organizationTypeId,
+                    organizationTypeOther,
+                    optionalText(job_title),
+                    countryId,
+                    stateId
+                ]
             );
 
             // Create session for new user
@@ -235,6 +589,21 @@ router.post('/signup',
 
         } catch (error) {
             console.error('Signup error:', error);
+
+            if (error.code === 'ER_DUP_ENTRY') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Username or email already exists'
+                });
+            }
+
+            if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'One of the selected signup options is invalid'
+                });
+            }
+
             res.status(500).json({
                 success: false,
                 message: 'An error occurred during signup'
@@ -301,14 +670,26 @@ router.get('/check-session', (req, res) => {
     });
 });
 
-// Password reset request route
-router.post('/reset-password-request', 
+// Account recovery request route. Accept the legacy "email" field for older clients.
+router.post('/reset-password-request',
     redirectIfLoggedIn,
+    (req, res, next) => {
+        req.body = req.body || {};
+        req.body.identifier =
+            normalizeAccountIdentifier(req.body.identifier)
+            || normalizeAccountIdentifier(req.body.email);
+        next();
+    },
     [
-        body('email').isEmail().withMessage('Please enter a valid email address'),
-        body('captcha').notEmpty().withMessage('Verification code is required')
+        body('identifier')
+            .isLength({ min: 1, max: 100 })
+            .withMessage('Please enter your username or email address'),
+        body('captcha').trim().notEmpty().withMessage('Verification code is required')
     ],
     async (req, res) => {
+        const requestStartedAt = Date.now();
+        let requestPassedCaptcha = false;
+
         try {
             const errors = validationResult(req);
             if (!errors.isEmpty()) {
@@ -318,9 +699,8 @@ router.post('/reset-password-request',
                 });
             }
 
-            const { email, captcha } = req.body;
+            const { identifier, captcha } = req.body;
 
-            // Check captcha
             if (!req.session.captcha_code) {
                 return res.status(400).json({
                     success: false,
@@ -336,62 +716,24 @@ router.post('/reset-password-request',
                 });
             }
 
-            // Clear captcha after use
             delete req.session.captcha_code;
+            requestPassedCaptcha = true;
 
-            // Check if email exists in users table
-            const [users] = await pool.execute(
-                'SELECT User_UniqueID, username, email FROM users WHERE email = ?',
-                [email]
-            );
+            // Cooldown consumption, account lookup, token creation, and the
+            // durable email job are committed atomically.
+            await enqueueAccountRecoveryRequest(identifier, req);
 
-            if (users.length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'This email address is not registered in our system.'
-                });
-            }
-
-            const user = users[0];
-
-            // Generate a secure random token
-            const resetToken = crypto.randomBytes(32).toString('hex');
-            
-            // Set expiration time (1 hour from now)
-            const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-
-            // Delete any existing tokens for this user
-            await pool.execute(
-                'DELETE FROM password_reset_tokens WHERE user_id = ? OR email = ?',
-                [user.User_UniqueID, email]
-            );
-
-            // Store the reset token in database
-            await pool.execute(
-                'INSERT INTO password_reset_tokens (user_id, email, token, expires_at) VALUES (?, ?, ?, ?)',
-                [user.User_UniqueID, email, resetToken, expiresAt]
-            );            // Generate reset link
-            const resetLink = `${req.protocol}://${req.get('host')}/reset-password?token=${resetToken}`;
-
-            // Send password reset email
-            const emailResult = await sendPasswordResetEmail(email, resetLink, user.username);
-
-            if (!emailResult.success) {
-                console.error('Failed to send password reset email:', emailResult.error);
-                return res.status(500).json({
-                    success: false,
-                    message: 'Failed to send password reset email. Please try again later.'
-                });
-            }
-
-            res.json({
-                success: true,
-                message: 'Password reset instructions have been sent to your email address.'
-            });
-
+            return sendGenericRecoveryResponse(res, requestStartedAt);
         } catch (error) {
             console.error('Error in password reset request:', error);
-            res.status(500).json({
+
+            // Once CAPTCHA succeeds, status and body must not reveal whether
+            // the identifier exists or which internal operation failed.
+            if (requestPassedCaptcha) {
+                return sendGenericRecoveryResponse(res, requestStartedAt);
+            }
+
+            return res.status(500).json({
                 success: false,
                 message: 'An error occurred while processing your request. Please try again.'
             });
@@ -402,61 +744,76 @@ router.post('/reset-password-request',
 // Password reset form route (GET)
 router.get('/reset-password', redirectIfLoggedIn, async (req, res) => {
     try {
-        const { token } = req.query;
-          if (!token) {
+        const token = normalizeAccountIdentifier(req.query.token);
+
+        // No token is the normal entry point for requesting account recovery.
+        if (!token) {
             return res.render('reset_password', {
-                title: 'Password Reset',
-                error: 'Invalid or missing reset token.',
+                title: 'Account Recovery',
+                error: null,
                 token: null
             });
         }
-        
-        // Verify token exists and get its details
-        const [tokens] = await pool.execute(
-            'SELECT * FROM password_reset_tokens WHERE token = ?',
-            [token]
-        );        if (tokens.length === 0) {
-            return res.redirect('/reset-password-expired');
-        }
-        
-        const tokenData = tokens[0];
-        const currentTime = new Date();
-        const expiresAt = new Date(tokenData.expires_at);
-        const isExpired = currentTime > expiresAt;
-        const isUsed = tokenData.used === 1;        if (isExpired || isUsed) {
+
+        if (!/^[a-f0-9]{64}$/i.test(token)) {
             return res.redirect('/reset-password-expired');
         }
 
-        res.render('reset_password', {
+        const [hashedToken, legacyRawToken] = getResetTokenCandidates(token);
+        const [tokens] = await pool.execute(
+            `SELECT id
+             FROM password_reset_tokens
+             WHERE token IN (?, ?)
+               AND used = 0
+               AND expires_at > CURRENT_TIMESTAMP
+             LIMIT 1`,
+            [hashedToken, legacyRawToken]
+        );
+
+        if (tokens.length === 0) {
+            return res.redirect('/reset-password-expired');
+        }
+
+        return res.render('reset_password', {
             title: 'Reset Password',
-            token: token,
+            token,
             error: null
         });
-
     } catch (error) {
         console.error('Error in password reset form:', error);
-        res.render('reset_password', {
-            title: 'Password Reset',
-            error: 'An error occurred. Please try again.',
+        return res.status(500).render('reset_password', {
+            title: 'Account Recovery',
+            error: 'We could not load account recovery right now. Please try again.',
             token: null
         });
     }
 });
 
 // Password reset submit route (POST)
-router.post('/reset-password', 
+router.post('/reset-password',
     redirectIfLoggedIn,
     [
-        body('token').notEmpty().withMessage('Reset token is required'),
-        body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+        body('token')
+            .matches(/^[a-f0-9]{64}$/i)
+            .withMessage('Reset token is invalid'),
+        body('password').custom(value => {
+            if (!isStrongPassword(value)) {
+                throw new Error(PASSWORD_REQUIREMENTS_MESSAGE);
+            }
+            return true;
+        }),
         body('confirmPassword').custom((value, { req }) => {
             if (value !== req.body.password) {
                 throw new Error('Password confirmation does not match password');
             }
             return true;
         })
-        // Note: No captcha required for password reset since user already proved email access
-    ],    async (req, res) => {
+        // No captcha is required here because the user has proved email access.
+    ],
+    async (req, res) => {
+        let connection;
+        let transactionStarted = false;
+
         try {
             const errors = validationResult(req);
             if (!errors.isEmpty()) {
@@ -467,14 +824,28 @@ router.post('/reset-password',
             }
 
             const { token, password } = req.body;
+            const [hashedToken, legacyRawToken] = getResetTokenCandidates(token);
 
-            // No captcha check needed for password reset - user already verified email access// Verify token exists and get its details
-            const [tokens] = await pool.execute(
-                'SELECT * FROM password_reset_tokens WHERE token = ?',
-                [token]
+            connection = await pool.getConnection();
+            await connection.beginTransaction();
+            transactionStarted = true;
+
+            // Resolve the owner first without a lock, then consistently lock the
+            // user row before the token row. This serializes concurrent reset
+            // attempts for one account and avoids cross-token lock inversion.
+            const [candidateTokens] = await connection.execute(
+                `SELECT user_id
+                 FROM password_reset_tokens
+                 WHERE token IN (?, ?)
+                   AND used = 0
+                   AND expires_at > CURRENT_TIMESTAMP
+                 LIMIT 1`,
+                [hashedToken, legacyRawToken]
             );
 
-            if (tokens.length === 0) {
+            if (candidateTokens.length === 0) {
+                await connection.rollback();
+                transactionStarted = false;
                 return res.status(400).json({
                     success: false,
                     message: 'This password reset link has expired or has already been used.',
@@ -482,68 +853,103 @@ router.post('/reset-password',
                 });
             }
 
-            const tokenData = tokens[0];
-            const currentTime = new Date();
-            const expiresAt = new Date(tokenData.expires_at);
-            const isExpired = currentTime > expiresAt;
-            const isUsed = tokenData.used === 1;
-
-            if (isExpired || isUsed) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'This password reset link has expired or has already been used.',
-                    redirect: '/reset-password-expired'
-                });
-            }
-
-            const resetRecord = tokens[0];
-
-            // Get user information
-            const [users] = await pool.execute(
-                'SELECT User_UniqueID, username, email FROM users WHERE User_UniqueID = ?',
-                [resetRecord.user_id]
+            const [users] = await connection.execute(
+                `SELECT User_UniqueID AS user_id, username, email, first_name, last_name
+                 FROM users
+                 WHERE User_UniqueID = ?
+                 LIMIT 1
+                 FOR UPDATE`,
+                [candidateTokens[0].user_id]
             );
 
             if (users.length === 0) {
+                await connection.rollback();
+                transactionStarted = false;
                 return res.status(400).json({
                     success: false,
-                    message: 'User not found.'
+                    message: 'This password reset link has expired or has already been used.',
+                    redirect: '/reset-password-expired'
                 });
             }
 
             const user = users[0];
+            const [tokens] = await connection.execute(
+                `SELECT id
+                 FROM password_reset_tokens
+                 WHERE user_id = ?
+                   AND token IN (?, ?)
+                   AND used = 0
+                   AND expires_at > CURRENT_TIMESTAMP
+                 LIMIT 1
+                 FOR UPDATE`,
+                [user.user_id, hashedToken, legacyRawToken]
+            );
 
-            // Hash the new password
-            const saltRounds = 10;
-            const hashedPassword = await bcrypt.hash(password, saltRounds);
+            if (tokens.length === 0) {
+                await connection.rollback();
+                transactionStarted = false;
+                return res.status(400).json({
+                    success: false,
+                    message: 'This password reset link has expired or has already been used.',
+                    redirect: '/reset-password-expired'
+                });
+            }
 
-            // Update user's password
-            await pool.execute(
+            const hashedPassword = await bcrypt.hash(password, 12);
+
+            await connection.execute(
                 'UPDATE users SET password = ? WHERE User_UniqueID = ?',
-                [hashedPassword, user.User_UniqueID]
+                [hashedPassword, user.user_id]
             );
 
-            // Mark token as used
-            await pool.execute(
-                'UPDATE password_reset_tokens SET used = 1 WHERE token = ?',
-                [token]
+            const [tokenUpdate] = await connection.execute(
+                'UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND used = 0',
+                [user.user_id]
             );
 
-            // Send confirmation email
-            await sendPasswordResetConfirmationEmail(user.email, user.username);
+            if (tokenUpdate.affectedRows < 1) {
+                throw new Error('Password reset token could not be consumed');
+            }
 
-            res.json({
+            await connection.commit();
+            transactionStarted = false;
+
+            let confirmationEmailSent = false;
+            try {
+                const confirmationResult = await sendPasswordResetConfirmationEmail(user.email, user);
+                confirmationEmailSent = Boolean(confirmationResult && confirmationResult.success);
+
+                if (!confirmationEmailSent) {
+                    console.error('Failed to send password reset confirmation email:', confirmationResult && confirmationResult.error);
+                }
+            } catch (emailError) {
+                console.error('Failed to send password reset confirmation email:', emailError);
+            }
+
+            return res.json({
                 success: true,
                 message: 'Your password has been reset successfully. You can now log in with your new password.',
-                redirectUrl: '/login'
+                redirectUrl: '/login',
+                confirmationEmailSent
             });
-
         } catch (error) {
+            if (connection && transactionStarted) {
+                try {
+                    await connection.rollback();
+                } catch (rollbackError) {
+                    console.error('Error rolling back password reset:', rollbackError);
+                }
+            }
+
             console.error('Error resetting password:', error);
-            res.status(500).json({
+            return res.status(500).json({
                 success: false,
                 message: 'An error occurred while resetting your password. Please try again.'
             });
+        } finally {
+            if (connection) {
+                connection.release();
+            }
         }
     }
 );

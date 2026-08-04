@@ -49,6 +49,24 @@
                         </div>
                     <% } %>
                     
+                    <% if (locals.profileEditable === false) { %>
+                        <div class="profile-section" role="status">
+                            <p>Your saved account information has not been changed.</p>
+                            <dl class="account-info">
+                                <dt>Username</dt>
+                                <dd><%= user.username || '' %></dd>
+                                <dt>Email</dt>
+                                <dd><%= user.email || '' %></dd>
+                                <dt>Name</dt>
+                                <dd><%= [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Not provided' %></dd>
+                                <dt>Organization</dt>
+                                <dd><%= user.organization || 'Not provided' %></dd>
+                                <dt>Job / Position Title</dt>
+                                <dd><%= user.job_title || 'Not provided' %></dd>
+                            </dl>
+                            <a class="btn-primary" href="/my-profile">Retry loading profile</a>
+                        </div>
+                    <% } else { %>
                     <form id="profile-form" method="POST" action="/my-profile">
                         <!-- Basic Information Section -->
                         <div class="profile-section">
@@ -56,6 +74,9 @@
                                 <i class="fas fa-user-circle"></i>
                                 Basic Information
                             </h2>
+                            <p class="form-help">
+                                All profile fields are required. State is required only for United States.
+                            </p>
                             
                             <div class="form-grid">
                                 <div class="form-group">
@@ -67,91 +88,120 @@
                                            value="<%= user.username %>" readonly>
                                     <small class="form-help">Username cannot be changed</small>
                                 </div>
-                                
-                                <div class="form-group">
-                                    <label for="full_name" class="form-label">
-                                        <i class="fas fa-id-card"></i>
-                                        Full Name *
-                                    </label>
-                                    <input type="text" id="full_name" name="full_name" class="form-input" 
-                                           value="<%= user.full_name || '' %>" required>
-                                </div>
-                                
+
                                 <div class="form-group">
                                     <label for="email" class="form-label">
                                         <i class="fas fa-envelope"></i>
                                         Email Address *
                                     </label>
-                                    <input type="email" id="email" name="email" class="form-input" 
-                                           value="<%= user.email %>" required>
+                                    <input type="email" id="email" name="email" class="form-input"
+                                           value="<%= user.email || '' %>" maxlength="100"
+                                           autocomplete="email" required>
                                 </div>
-                                
+
                                 <div class="form-group">
-                                    <label for="cell_phone" class="form-label">
-                                        <i class="fas fa-mobile-alt"></i>
-                                        Cell Phone
+                                    <label for="first_name" class="form-label">
+                                        <i class="fas fa-id-card"></i>
+                                        First Name *
                                     </label>
-                                    <input type="tel" id="cell_phone" name="cell_phone" class="form-input" 
-                                           value="<%= user.cell_phone || '' %>" 
-                                           placeholder="(xxx) xxx-xxxx">
-                                    <small class="form-help">Used for password reset purposes</small>
+                                    <input type="text" id="first_name" name="first_name" class="form-input"
+                                           value="<%= user.first_name || '' %>" maxlength="50"
+                                           autocomplete="given-name" required>
                                 </div>
-                                
+
                                 <div class="form-group">
-                                    <label for="institution" class="form-label">
+                                    <label for="last_name" class="form-label">
+                                        <i class="fas fa-id-card"></i>
+                                        Last Name *
+                                    </label>
+                                    <input type="text" id="last_name" name="last_name" class="form-input"
+                                           value="<%= user.last_name || '' %>" maxlength="50"
+                                           autocomplete="family-name" required>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="organization" class="form-label">
                                         <i class="fas fa-university"></i>
-                                        Institution/Organization *
+                                        Organization *
                                     </label>
-                                    <input type="text" id="institution" name="institution" class="form-input" 
-                                           value="<%= user.institution || '' %>" required>
+                                    <input type="text" id="organization" name="organization" class="form-input"
+                                           value="<%= user.organization || '' %>" maxlength="100"
+                                           autocomplete="organization" required>
                                 </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Sample Preferences Section -->
-                        <div class="profile-section">
-                            <h2 class="section-title">
-                                <i class="fas fa-cog"></i>
-                                Sample Preferences
-                            </h2>
-                            
-                            <div class="form-grid">
+
                                 <div class="form-group">
-                                    <label for="sample_confidentiality" class="form-label">
-                                        <i class="fas fa-shield-alt"></i>
-                                        Sample Data Confidentiality
+                                    <label for="organization_type_num" class="form-label">
+                                        <i class="fas fa-building"></i>
+                                        Organization Type *
                                     </label>
-                                    <select id="sample_confidentiality" name="sample_confidentiality" class="form-select">
-                                        <option value="public" <%= (user.sample_confidentiality || 'public') === 'public' ? 'selected' : '' %>>
-                                            Public - Data can be shared openly
-                                        </option>
-                                        <option value="restricted" <%= user.sample_confidentiality === 'restricted' ? 'selected' : '' %>>
-                                            Restricted - Data requires permission to access
-                                        </option>
-                                        <option value="private" <%= user.sample_confidentiality === 'private' ? 'selected' : '' %>>
-                                            Private - Data is confidential
-                                        </option>
+                                    <select id="organization_type_num" name="organization_type_num" class="form-select" required>
+                                        <option value="">Select the best fit</option>
+                                        <% (organizationTypes || []).forEach(function(type) { %>
+                                            <option
+                                                value="<%= type.OrganizationTypeUniqueID %>"
+                                                data-is-other="<%= type.OrganizationType === 'Other (please specify)' ? 'true' : 'false' %>"
+                                                <%= user.OrganizationType_Num == type.OrganizationTypeUniqueID ? 'selected' : '' %>>
+                                                <%= type.OrganizationType %>
+                                            </option>
+                                        <% }); %>
                                     </select>
-                                    <small class="form-help">Default confidentiality setting for new samples</small>
                                 </div>
-                                
-                                <div class="form-group">
-                                    <label for="sample_storage_location" class="form-label">
-                                        <i class="fas fa-warehouse"></i>
-                                        Default Sample Storage Location
+
+                                <div id="organization-type-other-group"
+                                     class="form-group <%= user.OrganizationTypeOther ? '' : 'hidden' %>">
+                                    <label for="organization_type_other" class="form-label">
+                                        <i class="fas fa-pen"></i>
+                                        Other Organization Type
                                     </label>
-                                    <select id="sample_storage_location" name="sample_storage_location" class="form-select">
-                                        <option value="">-- Select Storage Location --</option>
-                                        <% if (typeof storageLocations !== 'undefined' && storageLocations) { %>
-                                            <% storageLocations.forEach(location => { %>
-                                                <option value="<%= location.StorageLocUniqueID %>" 
-                                                        <%= user.sample_storage_location == location.StorageLocUniqueID ? 'selected' : '' %>>
-                                                    <%= location.StorageLoc_Desc %>
-                                                </option>
-                                            <% }); %>
-                                        <% } %>
+                                    <input type="text" id="organization_type_other" name="organization_type_other"
+                                           class="form-input" value="<%= user.OrganizationTypeOther || '' %>"
+                                           maxlength="255" <%= user.OrganizationTypeOther ? '' : 'disabled' %>
+                                           aria-required="false">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="job_title" class="form-label">
+                                        <i class="fas fa-briefcase"></i>
+                                        Job / Position Title *
+                                    </label>
+                                    <input type="text" id="job_title" name="job_title" class="form-input"
+                                           value="<%= user.job_title || '' %>" maxlength="100"
+                                           autocomplete="organization-title" required>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="country_num" class="form-label">
+                                        <i class="fas fa-globe"></i>
+                                        Country *
+                                    </label>
+                                    <select id="country_num" name="country_num" class="form-select" required>
+                                        <option value="">Select country</option>
+                                        <% (countries || []).forEach(function(country) { %>
+                                            <option value="<%= country.CountryUniqueID %>"
+                                                data-country-code="<%= country.ISOAlpha2 %>"
+                                                <%= user.Country_Num == country.CountryUniqueID ? 'selected' : '' %>>
+                                                <%= country.ISOAlpha2 === 'US' ? 'United States' : country.Country %>
+                                            </option>
+                                        <% }); %>
                                     </select>
-                                    <small class="form-help">Default storage location for new samples</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="state_num" class="form-label">
+                                        <i class="fas fa-map-marker-alt"></i>
+                                        State (United States only)
+                                    </label>
+                                    <select id="state_num" name="state_num" class="form-select"
+                                            disabled aria-required="false">
+                                        <option value="">Not applicable</option>
+                                        <% (states || []).forEach(function(state) { %>
+                                            <option value="<%= state.StateUniqueID %>"
+                                                    data-country-num="<%= state.Country_Num %>"
+                                                    <%= user.State_Num == state.StateUniqueID ? 'selected' : '' %>>
+                                                <%= state.State %>
+                                            </option>
+                                        <% }); %>
+                                    </select>
                                 </div>
                             </div>
                         </div>
@@ -178,8 +228,12 @@
                                         <i class="fas fa-lock"></i>
                                         New Password
                                     </label>
-                                    <input type="password" id="new_password" name="new_password" class="form-input">
-                                    <small class="form-help">Leave blank to keep current password</small>
+                                    <input type="password" id="new_password" name="new_password" class="form-input"
+                                           minlength="8" autocomplete="new-password">
+                                    <small class="form-help">
+                                        Leave blank to keep the current password. New passwords require 8 characters,
+                                        uppercase, lowercase, number, and special character.
+                                    </small>
                                 </div>
                                 
                                 <div class="form-group">
@@ -187,7 +241,8 @@
                                         <i class="fas fa-lock"></i>
                                         Confirm New Password
                                     </label>
-                                    <input type="password" id="confirm_password" name="confirm_password" class="form-input">
+                                    <input type="password" id="confirm_password" name="confirm_password" class="form-input"
+                                           autocomplete="new-password">
                                 </div>
                             </div>
                         </div>
@@ -200,10 +255,12 @@
                             </h2>
                             
                             <div class="account-info">
-                                <div class="info-item">
-                                    <span class="info-label">Account Created:</span>
-                                    <span class="info-value"><%= new Date(user.created_at).toLocaleDateString() %></span>
-                                </div>
+                                <% if (user.created_at) { %>
+                                    <div class="info-item">
+                                        <span class="info-label">Account Created:</span>
+                                        <span class="info-value"><%= new Date(user.created_at).toLocaleDateString() %></span>
+                                    </div>
+                                <% } %>
                                 <% if (user.updated_at && user.updated_at !== user.created_at) { %>
                                 <div class="info-item">
                                     <span class="info-label">Last Updated:</span>
@@ -225,6 +282,7 @@
                             </button>
                         </div>
                     </form>
+                    <% } %>
                 </div>
             </div>
         </div>
@@ -242,27 +300,98 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Phone number formatting
-    const phoneInput = document.getElementById('cell_phone');
-    if (phoneInput) {
-        phoneInput.addEventListener('input', function(e) {
-            let value = e.target.value.replace(/\D/g, '');
-            if (value.length >= 6) {
-                value = value.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
-            } else if (value.length >= 3) {
-                value = value.replace(/(\d{3})(\d{0,3})/, '($1) $2');
-            }
-            e.target.value = value;
-        });
+    const organizationTypeSelect = document.getElementById('organization_type_num');
+    const organizationTypeOtherGroup = document.getElementById('organization-type-other-group');
+    const organizationTypeOtherInput = document.getElementById('organization_type_other');
+    const countrySelect = document.getElementById('country_num');
+    const stateSelect = document.getElementById('state_num');
+
+    if (!organizationTypeSelect
+        || !organizationTypeOtherGroup
+        || !organizationTypeOtherInput
+        || !countrySelect
+        || !stateSelect) {
+        return;
     }
-    
+
+    function updateOrganizationTypeOther() {
+        const selectedOption = organizationTypeSelect.options[organizationTypeSelect.selectedIndex];
+        const showOther = selectedOption && selectedOption.dataset.isOther === 'true';
+
+        organizationTypeOtherGroup.classList.toggle('hidden', !showOther);
+        organizationTypeOtherGroup.setAttribute('aria-hidden', showOther ? 'false' : 'true');
+        organizationTypeOtherInput.disabled = !showOther;
+        organizationTypeOtherInput.required = showOther;
+        organizationTypeOtherInput.setAttribute('aria-required', showOther ? 'true' : 'false');
+
+        if (!showOther) {
+            organizationTypeOtherInput.value = '';
+        }
+    }
+
+    function updateStateOptions(preserveSelection) {
+        const selectedCountryId = countrySelect.value;
+        const selectedCountryOption = countrySelect.options[countrySelect.selectedIndex];
+        const isUnitedStates = selectedCountryOption
+            && selectedCountryOption.dataset.countryCode === 'US';
+        const previousStateId = preserveSelection ? stateSelect.value : '';
+
+        Array.from(stateSelect.options).forEach(option => {
+            if (!option.value) {
+                option.hidden = false;
+                return;
+            }
+
+            const matchesCountry = isUnitedStates
+                && option.dataset.countryNum === selectedCountryId;
+            option.hidden = !matchesCountry;
+        });
+
+        stateSelect.disabled = !isUnitedStates;
+        stateSelect.required = isUnitedStates;
+        stateSelect.setAttribute('aria-required', isUnitedStates ? 'true' : 'false');
+        stateSelect.value = previousStateId
+            && Array.from(stateSelect.options).some(option => option.value === previousStateId && !option.hidden)
+            ? previousStateId
+            : '';
+
+        const placeholderOption = stateSelect.querySelector('option[value=""]');
+        if (placeholderOption) {
+            placeholderOption.textContent = isUnitedStates
+                ? 'Select state'
+                : 'Not applicable';
+        }
+    }
+
+    organizationTypeSelect.addEventListener('change', updateOrganizationTypeOther);
+    countrySelect.addEventListener('change', () => updateStateOptions(false));
+    updateOrganizationTypeOther();
+    updateStateOptions(true);
+
     // Password validation
     const newPassword = document.getElementById('new_password');
     const confirmPassword = document.getElementById('confirm_password');
     const currentPassword = document.getElementById('current_password');
-    
+
+    function isStrongPassword(value) {
+        return value.length >= 8
+            && /[a-z]/.test(value)
+            && /[A-Z]/.test(value)
+            && /\d/.test(value)
+            && /[^A-Za-z0-9]/.test(value);
+    }
+
     function validatePasswords() {
         if (newPassword.value || confirmPassword.value) {
+            if (!isStrongPassword(newPassword.value)) {
+                newPassword.setCustomValidity(
+                    'Password must be at least 8 characters and include uppercase, lowercase, number, and special character.'
+                );
+                return false;
+            } else {
+                newPassword.setCustomValidity('');
+            }
+
             if (newPassword.value !== confirmPassword.value) {
                 confirmPassword.setCustomValidity('Passwords do not match');
                 return false;
@@ -277,6 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 currentPassword.setCustomValidity('');
             }
         } else {
+            newPassword.setCustomValidity('');
             confirmPassword.setCustomValidity('');
             currentPassword.setCustomValidity('');
         }

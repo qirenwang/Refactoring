@@ -1,0 +1,373 @@
+
+----- Location -----
+Location LOC002 (Milwaukee Outer Harbor)                     DIFF  -> Loc#95; location_type_environment: excel='Lake' db=None
+Location LOC003 (Lake Erie)                                  DIFF  -> Loc#97; location_type_environment: excel='Lake' db=None
+Location LOC004 (Lake Erie Site 2)                           DIFF  -> Loc#98; location_type_environment: excel='Lake' db=None
+Location LOC005 (Lake Erie Site 3)                           DIFF  -> Loc#99; location_type_environment: excel='Lake' db=None
+Location LOC006 (Lake Huron Site 1)                          DIFF  -> Loc#101; location_type_environment: excel='Lake' db=None
+Location LOC007 (White River)                                DIFF  -> Loc#102; location_type_environment: excel='River' db=None
+Location LOC008 (South Pond, Lincoln Park)                   DIFF  -> Loc#103; location_type_environment: excel='Pond' db=None
+Location LOC009 (Ash Township groundwater well)              DIFF  -> Loc#104; description: excel='USGS ID 420300083182501 - 75-ft-deep groundwater monitoring well in Monroe County' db='USGS ID 420300083182501'; location_type_environment: excel='Groundwater' db=None
+Location LOC010 (Jones Island Water Reclamation Facility)    DIFF  -> Loc#105; location_type_environment: excel='Wastewater Influent' db=None
+Location LOC011 (Allen Creek Stormwater Outlet)              DIFF  -> Loc#106; location_type_environment: excel='Stormwater' db=None
+Location LOC012 (Jones Island Wastewater Effluent)           DIFF  -> Loc#107; location_type_environment: excel='wastewater effluent/Discharge' db=None
+Location LOC013 (Harrison–Dever Water Intake Crib)           DIFF  -> Loc#108; location_type_environment: excel='Drinking water (Raw)' db=None
+Location LOC014 (Jardine Water Purification Plant)           DIFF  -> Loc#109; location_type_environment: excel='Drinking water (Treated)' db=None
+Location LOC015 (White River Site 2)                         DIFF  -> Loc#110; description: excel='Riverbed sediment from the White River in Blue Lake Townshi' db='Riverbed sediment from the White River in Blue Lake Township'; location_type_environment: excel='River' db=None
+Location LOC016 (South Pond Lincoln Park)                    DIFF  -> Loc#111; location_type_environment: excel='Pond' db=None
+Location LOC017 (White Lake near Whitehall)                  DIFF  -> Loc#112; location_type_environment: excel='Lake' db=None
+Location LOC018 (Ash Township monitoring well)               DIFF  -> Loc#113; location_type_environment: excel='Groundwater' db=None
+Location LOC019 (Allen Creek stormwater outlet sediment)     DIFF  -> Loc#114; location_type_environment: excel='Stormwater' db=None
+Location LOC020 (Jones Island WRRF)                          DIFF  -> Loc#115; location_type_environment: excel='Sludge (Wastewater Treatment)' db=None
+Location LOC021 (Jardine Water Purification Plant Sediment)  DIFF  -> Loc#116; location_type_environment: excel='Sludge (Water Treatment)' db=None
+Location LOC022 (Kellog Biological Station)                  DIFF  -> Loc#117; location_type_environment: excel='In Terrestrial Soil' db=None
+Location LOC023 (Commercia Park)                             DIFF  -> Loc#118; location_type_environment: excel='On Soil or Land Surface' db=None
+Location DB Loc#96 (Lake Erie Site 1)                        EXTRA_IN_DB  lat=41.900000 long=83.050000 created=2026-07-22 18:25:27
+
+----- Publication -----
+Publication PUB002                                           OK  -> Pub#29 [doi/url not storable: no DB columns]
+Publication PUB003                                           OK  -> Pub#30 [doi/url not storable: no DB columns]
+
+----- SamplingEvent -----
+SamplingEvent EVT002 (loc LOC002)                            DIFF  -> Event#170; description: excel='Samples collected from a boat using a 33'... db(SamplerNames)=None; user_sampling_id 'OUH-AW-0': not stored anywhere (no DB field)
+SamplingEvent EVT003 (loc LOC002)                            DIFF  -> Event#171; description: excel='Samples collected from a boat using a 33'... db(SamplerNames)=None; user_sampling_id 'OUH_AW-1': not stored anywhere (no DB field)
+SamplingEvent EVT004 (loc LOC002)                            DIFF  -> Event#172; description: excel='Samples collected from a boat using a 33'... db(SamplerNames)=None; user_sampling_id 'OUH_AW-2': not stored anywhere (no DB field)
+SamplingEvent EVT005 (loc LOC002)                            DIFF  -> Event#173; description: excel='Samples collected from a boat using a 33'... db(SamplerNames)=None; user_sampling_id 'OUH_AW-3': not stored anywhere (no DB field)
+SamplingEvent EVT006 (loc LOC002)                            DIFF  -> Event#174; description: excel='Samples collected from a boat using a 33'... db(SamplerNames)=None; user_sampling_id 'OUH-CW-0': not stored anywhere (no DB field)
+SamplingEvent EVT007 (loc LOC002)                            DIFF  -> Event#175; description: excel='Samples collected from a boat using a 33'... db(SamplerNames)=None; user_sampling_id 'OUH-CW-1': not stored anywhere (no DB field)
+SamplingEvent EVT008 (loc LOC002)                            DIFF  -> Event#176; description: excel='Samples collected from a boat using a 33'... db(SamplerNames)=None; user_sampling_id 'OUH-CW-2': not stored anywhere (no DB field)
+SamplingEvent EVT009 (loc LOC002)                            DIFF  -> Event#177; description: excel='Samples collected from a boat using a 33'... db(SamplerNames)=None; user_sampling_id 'OUH-CW-3': not stored anywhere (no DB field)
+SamplingEvent EVT010 (loc LOC002)                            DIFF  -> Event#178; description: excel='Samples collected from a boat using a 33'... db(SamplerNames)=None; user_sampling_id 'OUH-CW-4': not stored anywhere (no DB field)
+SamplingEvent EVT011 (loc LOC003)                            DIFF  -> Event#179; description: excel='Samples collected with Manta Trawl'... db(SamplerNames)=None; user_sampling_id 'GL12#14': not stored anywhere (no DB field)
+SamplingEvent EVT012 (loc LOC004)                            DIFF  -> Event#180; description: excel='Samples collected with Manta Trawl'... db(SamplerNames)=None; user_sampling_id 'GL12#15': not stored anywhere (no DB field)
+SamplingEvent EVT013 (loc LOC005)                            DIFF  -> Event#181; description: excel='Samples collected with Manta Trawl'... db(SamplerNames)=None; user_sampling_id 'GL12#16': not stored anywhere (no DB field)
+SamplingEvent EVT014 (loc LOC006)                            OK  -> Event#183
+SamplingEvent EVT015 (loc LOC007)                            NOT_IN_DB  date=2022-1-5 [start date taken from device_start_date (no sampling_date)]
+SamplingEvent EVT016 (loc LOC008)                            DIFF  -> Event#184; air_temp: excel=23 db=None; weather_current: excel='Raining' db=None; rainfall: excel=2.5 db=None (column rounds to whole cm); additional_notes: excel='16:45:00' db=None (value equals DB SampleTime — likely entered as sample time)
+SamplingEvent EVT017 (loc LOC009)                            DIFF  -> Event#185; sampling_date YEAR mismatch: excel=2022 db=2025 (month/day match); air_temp: excel=25 db=None; weather_current: excel='Cloudy' db=None
+SamplingEvent EVT018 (loc LOC010)                            DIFF  -> Event#186; sampling_date day not entered: excel=2026-1-1 db=2026-1-(no day); additional_notes: excel='16:00:00' db=None (value equals DB SampleTime — likely entered as sample time)
+SamplingEvent EVT019 (loc LOC011)                            OK  -> Event#187 [start date taken from device_start_date (no sampling_date)]
+SamplingEvent EVT020 (loc LOC012)                            NOT_IN_DB  date=2023-3-14
+SamplingEvent EVT021 (loc LOC013)                            DIFF  -> Event#188; sampling_date day not entered: excel=2024-11-1 db=2024-11-(no day)
+SamplingEvent EVT022 (loc LOC014)                            OK  -> Event#189
+SamplingEvent EVT023 (loc LOC015)                            NOT_IN_DB  date=2022-9-6
+SamplingEvent EVT024 (loc LOC016)                            OK  -> Event#190
+SamplingEvent EVT025 (loc LOC017)                            DIFF  -> Event#191; air_temp: excel=10 db=None; weather_current: excel='Sunny' db=None
+SamplingEvent EVT026 (loc LOC018)                            OK  -> Event#192
+SamplingEvent EVT027 (loc LOC019)                            DIFF  -> Event#193; sampling_date day not entered: excel=2019-1-1 db=2019-1-(no day)
+SamplingEvent EVT028 (loc LOC020)                            NOT_IN_DB  date=2017-2-1
+SamplingEvent EVT029 (loc LOC021)                            OK  -> Event#194 [Excel cell shows 1905-07-14 = serial 2022; treated as year-only 2022]
+SamplingEvent EVT030 (loc LOC022)                            OK  -> Event#195
+SamplingEvent EVT031 (loc LOC023)                            OK  -> Event#196
+
+----- SampleDetails -----
+SampleDetails SMP002 (evt EVT002)                            OK  -> Sample#174
+SampleDetails SMP003 (evt EVT003)                            DIFF  -> Sample#175; frag>5mm count: excel=0 stored as NULL
+SampleDetails SMP004 (evt EVT004)                            DIFF  -> Sample#176; frag>5mm count: excel=0 stored as NULL
+SampleDetails SMP005 (evt EVT005)                            DIFF  -> Sample#177; frag>5mm count: excel=0 stored as NULL
+SampleDetails SMP006 (evt EVT006)                            OK  -> Sample#178
+SampleDetails SMP007 (evt EVT007)                            DIFF  -> Sample#179; frag>5mm count: excel=0 stored as NULL
+SampleDetails SMP008 (evt EVT008)                            DIFF  -> Sample#180; frag>5mm count: excel=0 stored as NULL
+SampleDetails SMP009 (evt EVT009)                            DIFF  -> Sample#181; frag>5mm count: excel=0 stored as NULL
+SampleDetails SMP010 (evt EVT010)                            DIFF  -> Sample#182; frag>5mm count: excel=0 stored as NULL
+SampleDetails SMP011 (evt EVT011)                            DIFF  -> Sample#183; notes: excel='surface area sampled was calculated usin' db(MediaAdditionalNotes)=None
+SampleDetails SMP012 (evt EVT012)                            DIFF  -> Sample#184; notes: excel='surface area sampled was calculated usin' db(MediaAdditionalNotes)=None
+SampleDetails SMP013 (evt EVT013)                            DIFF  -> Sample#185; notes: excel='surface area sampled was calculated usin' db(MediaAdditionalNotes)=None
+SampleDetails SMP014 (evt EVT014)                            DIFF  -> Sample#187; total_sample_amount: excel=20.0 db=2.0; microplastics_sample_amount: excel=1.0g db=2.0 (backend copies total_sample_amount into this column)
+SampleDetails SMP015 (evt EVT015)                            NOT_IN_DB  event not in DB
+SampleDetails SMP016 (evt EVT016)                            DIFF  -> Sample#188; microplastics_sample_amount: excel=5.0g db=3.0 (backend copies total_sample_amount into this column); fragments_sample_amount: excel=6.0g db=3.0 (backend copies total_sample_amount into this column)
+SampleDetails SMP017 (evt EVT017)                            DIFF  -> Sample#189; micro count cell ambiguous in excel: '25 ( (should be 20 or 25)'; micro count: excel=25 db=20; total_sample_amount: excel=0.5 db=None; sample_unit: excel='L' db=None; microplastics_sample_amount: excel=0.8g db=None (backend copies total_sample_amount into this column); fragments_sample_amount: excel=1.0g db=None (backend copies total_sample_amount into this column)
+SampleDetails SMP018 (evt EVT018)                            DIFF  -> Sample#190; microplastics_sample_amount: excel=4.0g db=2.0 (backend copies total_sample_amount into this column); fragments_sample_amount: excel=5.0g db=2.0 (backend copies total_sample_amount into this column)
+SampleDetails SMP019 (evt EVT019)                            DIFF  -> Sample#191; water_depth_m: excel=0.0 db=None; sample_water_depth_m: excel=0.0 db=None; flow_velocity_m_s: excel=0.0 db=None; conductivity_us_cm: excel=0.0 db=None; turbidity_ntu: excel=0.0 db=None; dissolved_oxygen_mg_l: excel=0.0 db=None; fragments_sample_amount: excel=2.0g db=1.0 (backend copies total_sample_amount into this column)
+SampleDetails SMP020 (evt EVT020)                            NOT_IN_DB  event not in DB
+SampleDetails SMP021 (evt EVT021)                            DIFF  -> Sample#192; frag>5mm count: excel=0 stored as NULL; microplastics_sample_amount: excel=2.0g db=10.0 (backend copies total_sample_amount into this column)
+SampleDetails SMP022 (evt EVT022)                            DIFF  -> Sample#193; microplastics_sample_amount: excel=0.5g db=2.0 (backend copies total_sample_amount into this column)
+SampleDetails SMP023 (evt EVT023)                            NOT_IN_DB  event not in DB
+SampleDetails SMP024 (evt EVT024)                            DIFF  -> Sample#194; sampling_depth_m: excel=0.05 db=None; soil_dry_weight_g: excel=85.0 db=None; soil_organic_matter_percent: excel=8.5 db=None; soil_texture: excel='Silt loam' db=None; notes: excel='Soil texture method - Jar test' db(MediaAdditionalNotes)=None
+SampleDetails SMP025 (evt EVT025)                            DIFF  -> Sample#195; sampling_depth_m: excel=0.07 db=None; soil_dry_weight_g: excel=100.0 db=None; soil_organic_matter_percent: excel=4.2 db=None; soil_texture: excel='Sily clay loam' db=None; microplastics_sample_amount: excel=3.0g db=300.0 (backend copies total_sample_amount into this column); notes: excel='Soil texture method - Jar test' db(MediaAdditionalNotes)=None
+SampleDetails SMP026 (evt EVT026)                            DIFF  -> Sample#196; sampling_depth_m: excel=0.1 db=None; soil_dry_weight_g: excel=100.0 db=None; soil_organic_matter_percent: excel=0.8 db=None; soil_texture: excel='Sand' db=None; notes: excel='Soil texture method - Jar test' db(MediaAdditionalNotes)=None
+SampleDetails SMP027 (evt EVT027)                            DIFF  -> Sample#197; microplastics_sample_amount: excel=2.0g db=250.0 (backend copies total_sample_amount into this column); fragments_sample_amount: excel=3.0g db=250.0 (backend copies total_sample_amount into this column)
+SampleDetails SMP028 (evt EVT028)                            NOT_IN_DB  event not in DB
+SampleDetails SMP029 (evt EVT029)                            DIFF  -> Sample#198; sampling_depth_m: excel=0.2 db=None; soil_dry_weight_g: excel=100.0 db=None; soil_organic_matter_percent: excel=20.0 db=None
+SampleDetails SMP030 (evt EVT030)                            OK  -> Sample#199
+SampleDetails SMP031 (evt EVT031)                            DIFF  -> Sample#200; media_env: excel='Land' db(MediaSubType)=None; fragments_sample_amount: excel=10.0g db=0.05 (backend copies total_sample_amount into this column)
+
+----- MP_Results -----
+MP_Results SMP002                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP003                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP004                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP005                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP006                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP007                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP008                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP009                                            DIFF  count_method: excel='Magnified_Count' db=None; polymer_method: excel='FTIR' db=None
+MP_Results SMP010                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP011                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP012                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP013                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP014                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP015                                            NOT_IN_DB  sample not in DB
+MP_Results SMP016                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP017                                            DIFF  total_quantity cell ambiguous: '25 (should be 20 or 25)'; total_quantity: excel=25.0 db=20; count_method: excel='Magnified_Count' db=None
+MP_Results SMP018                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP019                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP020                                            NOT_IN_DB  sample not in DB
+MP_Results SMP021                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP022                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP023                                            NOT_IN_DB  sample not in DB
+MP_Results SMP024                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP025                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP026                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP027                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP028                                            NOT_IN_DB  sample not in DB
+MP_Results SMP029                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP030                                            DIFF  count_method: excel='Magnified_Count' db=None
+
+----- Frag_Results -----
+Frag_Results SMP002                                          DIFF  count_method: excel='Magnified_Count' db=None
+Frag_Results SMP006                                          DIFF  count_method: excel='Magnified_Count' db=None
+Frag_Results SMP014                                          DIFF  count_method: excel='Magnified_Count' db=None
+Frag_Results SMP015                                          NOT_IN_DB  sample not in DB
+Frag_Results SMP016                                          DIFF  count_method: excel='Magnified_Count' db=None
+Frag_Results SMP017                                          OK
+Frag_Results SMP018                                          OK
+Frag_Results SMP019                                          OK
+Frag_Results SMP020                                          NOT_IN_DB  sample not in DB
+Frag_Results SMP023                                          NOT_IN_DB  sample not in DB
+Frag_Results SMP024                                          OK
+Frag_Results SMP026                                          OK
+Frag_Results SMP027                                          OK
+Frag_Results SMP028                                          NOT_IN_DB  sample not in DB
+Frag_Results SMP030                                          OK
+Frag_Results SMP031                                          OK
+
+----- MP_Polymer -----
+MP_Polymer SMP019                                            EXCEL_AMBIGUOUS  unrecognized code(s) ['PVS'] in 'PVS'
+MP_Polymer SMP003                                            OK  2 rows
+MP_Polymer SMP004                                            OK  3 rows
+MP_Polymer SMP005                                            OK  5 rows
+MP_Polymer SMP006                                            OK  4 rows
+MP_Polymer SMP007                                            OK  2 rows
+MP_Polymer SMP008                                            OK  2 rows
+MP_Polymer SMP010                                            OK  2 rows
+MP_Polymer SMP014                                            OK  20 rows
+MP_Polymer SMP015                                            NOT_IN_DB  20 expected rows; sample not in DB
+MP_Polymer SMP016                                            OK  4 rows
+MP_Polymer SMP017                                            OK  20 rows
+MP_Polymer SMP018                                            OK  3 rows
+MP_Polymer SMP019                                            DIFF  4 rows; extra in DB: pvc=9.0
+MP_Polymer SMP020                                            NOT_IN_DB  5 expected rows; sample not in DB
+MP_Polymer SMP021                                            OK  5 rows
+MP_Polymer SMP022                                            OK  3 rows
+MP_Polymer SMP023                                            NOT_IN_DB  4 expected rows; sample not in DB
+MP_Polymer SMP024                                            OK  3 rows
+MP_Polymer SMP025                                            DIFF  7 rows; LDPE: excel=12.0 db=10.0; HDPE: excel=10.0 db=12.0
+MP_Polymer SMP026                                            OK  2 rows
+MP_Polymer SMP027                                            OK  5 rows
+MP_Polymer SMP028                                            NOT_IN_DB  1 expected rows; sample not in DB
+MP_Polymer SMP029                                            OK  5 rows
+MP_Polymer SMP030                                            OK  4 rows
+
+----- MP_Form -----
+MP_Form ?                                                    EXCEL_AMBIGUOUS  stray row with pct=4 (no sample id/code)
+MP_Form SMP002                                               OK  4 rows
+MP_Form SMP003                                               OK  2 rows
+MP_Form SMP004                                               OK  2 rows
+MP_Form SMP005                                               OK  4 rows
+MP_Form SMP006                                               OK  3 rows
+MP_Form SMP007                                               OK  2 rows
+MP_Form SMP008                                               OK  1 rows
+MP_Form SMP009                                               OK  1 rows
+MP_Form SMP010                                               OK  2 rows
+MP_Form SMP011                                               OK  3 rows
+MP_Form SMP012                                               OK  3 rows
+MP_Form SMP013                                               OK  3 rows
+MP_Form SMP014                                               OK  4 rows
+MP_Form SMP015                                               NOT_IN_DB  4 expected rows; sample not in DB
+MP_Form SMP016                                               OK  4 rows
+MP_Form SMP017                                               OK  2 rows
+MP_Form SMP018                                               OK  2 rows
+MP_Form SMP019                                               OK  1 rows
+MP_Form SMP020                                               NOT_IN_DB  3 expected rows; sample not in DB
+MP_Form SMP021                                               OK  2 rows
+MP_Form SMP022                                               OK  2 rows
+MP_Form SMP023                                               NOT_IN_DB  2 expected rows; sample not in DB
+MP_Form SMP024                                               OK  2 rows
+MP_Form SMP025                                               OK  2 rows
+MP_Form SMP026                                               OK  1 rows
+MP_Form SMP027                                               OK  3 rows
+MP_Form SMP028                                               NOT_IN_DB  2 expected rows; sample not in DB
+MP_Form SMP029                                               OK  3 rows
+MP_Form SMP030                                               DIFF  2 rows; Pellet: excel=96.0 db=4.0
+
+----- MP_Color -----
+MP_Color SMP014                                              OK  13 rows
+MP_Color SMP015                                              NOT_IN_DB  13 expected rows; sample not in DB
+MP_Color SMP016                                              OK  2 rows
+MP_Color SMP017                                              OK  3 rows
+MP_Color SMP018                                              OK  4 rows
+MP_Color SMP019                                              OK  4 rows
+MP_Color SMP020                                              NOT_IN_DB  2 expected rows; sample not in DB
+MP_Color SMP021                                              OK  4 rows
+MP_Color SMP022                                              OK  2 rows
+MP_Color SMP023                                              NOT_IN_DB  2 expected rows; sample not in DB
+MP_Color SMP024                                              OK  4 rows
+MP_Color SMP025                                              OK  2 rows
+MP_Color SMP026                                              OK  2 rows
+MP_Color SMP027                                              OK  4 rows
+MP_Color SMP028                                              NOT_IN_DB  2 expected rows; sample not in DB
+MP_Color SMP029                                              OK  3 rows
+MP_Color SMP030                                              OK  2 rows
+
+----- MP_Size -----
+MP_Size SMP002                                               OK  2 rows
+MP_Size SMP003                                               OK  1 rows
+MP_Size SMP004                                               OK  2 rows
+MP_Size SMP005                                               OK  2 rows
+MP_Size SMP006                                               OK  2 rows
+MP_Size SMP007                                               OK  1 rows
+MP_Size SMP008                                               OK  1 rows
+MP_Size SMP009                                               OK  1 rows
+MP_Size SMP010                                               OK  2 rows
+MP_Size SMP014                                               OK  5 rows
+MP_Size SMP015                                               NOT_IN_DB  5 expected rows; sample not in DB
+MP_Size SMP016                                               OK  5 rows
+MP_Size SMP017                                               OK  2 rows
+MP_Size SMP018                                               OK  2 rows
+MP_Size SMP019                                               OK  2 rows
+MP_Size SMP020                                               NOT_IN_DB  1 expected rows; sample not in DB
+MP_Size SMP021                                               OK  2 rows
+MP_Size SMP022                                               OK  2 rows
+MP_Size SMP023                                               NOT_IN_DB  2 expected rows; sample not in DB
+MP_Size SMP024                                               OK  2 rows
+MP_Size SMP025                                               OK  1 rows
+MP_Size SMP026                                               OK  1 rows
+MP_Size SMP027                                               DIFF  2 rows; 20_100um: excel=10.0 db=60.0
+MP_Size SMP028                                               NOT_IN_DB  1 expected rows; sample not in DB
+MP_Size SMP029                                               OK  2 rows
+MP_Size SMP030                                               OK  2 rows
+
+----- MP_Opacity -----
+MP_Opacity SMP014                                            OK  4 rows
+MP_Opacity SMP015                                            NOT_IN_DB  4 expected rows; sample not in DB
+MP_Opacity SMP016                                            OK  4 rows
+MP_Opacity SMP017                                            OK  2 rows
+MP_Opacity SMP018                                            OK  2 rows
+MP_Opacity SMP019                                            OK  1 rows
+MP_Opacity SMP020                                            NOT_IN_DB  1 expected rows; sample not in DB
+MP_Opacity SMP021                                            OK  2 rows
+MP_Opacity SMP023                                            NOT_IN_DB  2 expected rows; sample not in DB
+MP_Opacity SMP024                                            OK  2 rows
+MP_Opacity SMP025                                            OK  1 rows
+MP_Opacity SMP026                                            OK  2 rows
+MP_Opacity SMP027                                            OK  2 rows
+MP_Opacity SMP028                                            NOT_IN_DB  1 expected rows; sample not in DB
+MP_Opacity SMP029                                            OK  2 rows
+MP_Opacity SMP030                                            OK  2 rows
+
+----- MP_Texture -----
+MP_Texture SMP015                                            NOT_IN_DB  5 expected rows; sample not in DB
+MP_Texture SMP016                                            OK  5 rows
+MP_Texture SMP017                                            OK  2 rows
+MP_Texture SMP018                                            OK  2 rows
+MP_Texture SMP019                                            OK  1 rows
+MP_Texture SMP020                                            NOT_IN_DB  2 expected rows; sample not in DB
+MP_Texture SMP021                                            OK  2 rows
+MP_Texture SMP023                                            NOT_IN_DB  2 expected rows; sample not in DB
+MP_Texture SMP024                                            OK  1 rows
+MP_Texture SMP026                                            OK  1 rows
+MP_Texture SMP027                                            OK  2 rows
+MP_Texture SMP028                                            NOT_IN_DB  1 expected rows; sample not in DB
+MP_Texture SMP029                                            OK  2 rows
+MP_Texture SMP030                                            OK  2 rows
+
+----- Frag_Purpose -----
+Frag_Purpose SMP024                                          EXCEL_AMBIGUOUS  row with blank code, pct=75
+Frag_Purpose SMP014                                          OK  7 rows
+Frag_Purpose SMP015                                          NOT_IN_DB  7 expected rows; sample not in DB
+Frag_Purpose SMP016                                          OK  4 rows
+Frag_Purpose SMP017                                          OK  2 rows
+Frag_Purpose SMP018                                          OK  1 rows
+Frag_Purpose SMP019                                          OK  2 rows
+Frag_Purpose SMP020                                          NOT_IN_DB  1 expected rows; sample not in DB
+Frag_Purpose SMP023                                          NOT_IN_DB  2 expected rows; sample not in DB
+Frag_Purpose SMP024                                          DIFF  1 rows; extra in DB: multiuse=75.0
+Frag_Purpose SMP026                                          OK  1 rows
+Frag_Purpose SMP027                                          OK  2 rows
+Frag_Purpose SMP028                                          NOT_IN_DB  1 expected rows; sample not in DB
+Frag_Purpose SMP030                                          OK  1 rows
+Frag_Purpose SMP031                                          OK  2 rows
+
+----- Frag_Polymer -----
+Frag_Polymer SMP014                                          OK  20 rows
+Frag_Polymer SMP015                                          NOT_IN_DB  20 expected rows; sample not in DB
+Frag_Polymer SMP016                                          DIFF  5 rows; ABS: excel=25.0 db=20.0; EVA: excel=25.0 db=20.0; HIPS: excel=25.0 db=20.0; LDPE: excel=25.0 db=20.0; Other: excel=25.0 db=20.0
+Frag_Polymer SMP017                                          OK  3 rows
+Frag_Polymer SMP018                                          OK  4 rows
+Frag_Polymer SMP019                                          OK  4 rows
+Frag_Polymer SMP020                                          NOT_IN_DB  2 expected rows; sample not in DB
+Frag_Polymer SMP023                                          NOT_IN_DB  3 expected rows; sample not in DB
+Frag_Polymer SMP024                                          OK  2 rows
+Frag_Polymer SMP026                                          OK  1 rows
+Frag_Polymer SMP027                                          OK  2 rows
+Frag_Polymer SMP028                                          NOT_IN_DB  2 expected rows; sample not in DB
+Frag_Polymer SMP030                                          OK  1 rows
+Frag_Polymer SMP031                                          OK  2 rows
+
+----- Frag_Texture -----
+Frag_Texture SMP002                                          OK  1 rows
+Frag_Texture SMP006                                          OK  2 rows
+Frag_Texture SMP014                                          OK  5 rows
+Frag_Texture SMP015                                          NOT_IN_DB  5 expected rows; sample not in DB
+Frag_Texture SMP016                                          OK  5 rows
+Frag_Texture SMP017                                          OK  2 rows
+Frag_Texture SMP018                                          DIFF  3 rows; HardPlastic: excel=33.3 db=33.33; Fabric: excel=33.3 db=33.33; Foam: excel=33.3 db=33.34
+Frag_Texture SMP019                                          OK  1 rows
+Frag_Texture SMP020                                          NOT_IN_DB  2 expected rows; sample not in DB
+Frag_Texture SMP023                                          NOT_IN_DB  1 expected rows; sample not in DB
+Frag_Texture SMP024                                          OK  3 rows
+Frag_Texture SMP026                                          OK  1 rows
+Frag_Texture SMP027                                          OK  2 rows
+Frag_Texture SMP028                                          NOT_IN_DB  2 expected rows; sample not in DB
+Frag_Texture SMP030                                          OK  1 rows
+Frag_Texture SMP031                                          OK  3 rows
+
+----- Frag_Color -----
+Frag_Color SMP014                                            OK  13 rows
+Frag_Color SMP015                                            NOT_IN_DB  13 expected rows; sample not in DB
+Frag_Color SMP016                                            OK  2 rows
+Frag_Color SMP017                                            OK  2 rows
+Frag_Color SMP018                                            OK  2 rows
+Frag_Color SMP019                                            OK  2 rows
+Frag_Color SMP020                                            NOT_IN_DB  3 expected rows; sample not in DB
+Frag_Color SMP023                                            NOT_IN_DB  2 expected rows; sample not in DB
+Frag_Color SMP024                                            OK  4 rows
+Frag_Color SMP026                                            OK  1 rows
+Frag_Color SMP027                                            OK  3 rows
+Frag_Color SMP028                                            NOT_IN_DB  2 expected rows; sample not in DB
+Frag_Color SMP030                                            OK  2 rows
+Frag_Color SMP031                                            OK  2 rows
+
+----- Frag_Opacity -----
+Frag_Opacity SMP014                                          OK  4 rows
+Frag_Opacity SMP015                                          NOT_IN_DB  4 expected rows; sample not in DB
+Frag_Opacity SMP016                                          OK  2 rows
+Frag_Opacity SMP017                                          OK  2 rows
+Frag_Opacity SMP018                                          OK  1 rows
+Frag_Opacity SMP019                                          OK  2 rows
+Frag_Opacity SMP020                                          NOT_IN_DB  1 expected rows; sample not in DB
+Frag_Opacity SMP021                                          DIFF  1 rows; missing Transparent_Clear (15.0%)
+Frag_Opacity SMP023                                          NOT_IN_DB  2 expected rows; sample not in DB
+Frag_Opacity SMP024                                          OK  1 rows
+Frag_Opacity SMP026                                          OK  1 rows
+Frag_Opacity SMP027                                          OK  2 rows
+Frag_Opacity SMP028                                          NOT_IN_DB  1 expected rows; sample not in DB
+Frag_Opacity SMP030                                          OK  1 rows
+Frag_Opacity SMP031                                          OK  2 rows
+
+===== SUMMARY =====
+DIFF: 100
+EXCEL_AMBIGUOUS: 3
+EXTRA_IN_DB: 1
+NOT_IN_DB: 60
+OK: 168

@@ -100,7 +100,7 @@ function renderSamplesGrid(samples) {
             <tr>
                 <th data-sort="sample_id">Sample ID <i class="fas fa-sort"></i></th>
                 <th data-sort="location_name">Location <i class="fas fa-sort"></i></th>
-                <th data-sort="sample_date">Date <i class="fas fa-sort"></i></th>
+                <th data-sort="start_year">Date <i class="fas fa-sort"></i></th>
                 <th data-sort="media_type">Media Type <i class="fas fa-sort"></i></th>
                 <th data-sort="sample_type">Sample Type <i class="fas fa-sort"></i></th>
                 <th>Actions</th>
@@ -116,7 +116,7 @@ function renderSamplesGrid(samples) {
         row.innerHTML = `
             <td><strong>${sample.sample_id || 'N/A'}</strong></td>
             <td>${sample.location_name || 'N/A'}</td>
-            <td>${formatDate(sample.sample_date)}</td>
+            <td>${formatSampleDate(sample)}</td>
             <td>
                 <span class="badge badge-primary">${sample.media_type || 'N/A'}</span>
             </td>
@@ -354,7 +354,7 @@ function renderRecentSamples(samples) {
         item.innerHTML = `
             <div>
                 <strong>${sample.sample_id || 'N/A'}</strong><br>
-                <small class="text-muted">${sample.location_name} - ${formatDate(sample.sample_date)}</small>
+                <small class="text-muted">${sample.location_name} - ${formatSampleDate(sample)}</small>
             </div>
             <span class="badge badge-primary">${sample.media_type}</span>
         `;
@@ -407,10 +407,20 @@ function getCurrentPage() {
 }
 
 // Utility functions
-function formatDate(dateString) {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
+function formatSampleDate(sample = {}) {
+    if (typeof sample.collection_date_display === 'string' &&
+        sample.collection_date_display.trim()) {
+        return sample.collection_date_display.trim();
+    }
+
+    const parts = {
+        year: sample.collection_year ?? sample.start_year,
+        month: sample.collection_month ?? sample.start_month,
+        day: sample.collection_day ?? sample.start_day
+    };
+    return window.PartialDateUtils?.formatPartialDate(parts) ||
+        sample.collection_date_key ||
+        'N/A';
 }
 
 function showError(message) {

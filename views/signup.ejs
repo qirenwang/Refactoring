@@ -7,7 +7,7 @@
     <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">    <link rel="stylesheet" href="/css/auth-pages.css">
 </head>
 <body>
-    <div class="container">
+    <div class="container signup-container">
         <div class="header">
             <div class="logo-container">
                 <a href="/home">
@@ -26,33 +26,111 @@
             <% } %>
             
             <form id="signupForm" action="/auth/signup" method="POST">
-                <div class="form-group">
-                    <label class="form-label" for="username">Username:</label>
-                    <input type="text" id="username" name="username" class="form-input" required minlength="3">
-                    <div class="password-requirements">Minimum 3 characters</div>
+                <p class="input-help signup-required-note">
+                    All fields are required. State is required only when United States is selected.
+                </p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="username">Username:</label>
+                        <input type="text" id="username" name="username" class="form-input" required minlength="3" maxlength="50" autocomplete="username">
+                        <div class="input-help">Minimum 3 characters; separate from your email</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="email">Email:</label>
+                        <input type="email" id="email" name="email" class="form-input" required maxlength="100" autocomplete="email">
+                    </div>
                 </div>
-                
-                <div class="form-group">
-                    <label class="form-label" for="email">Email:</label>
-                    <input type="email" id="email" name="email" class="form-input" required>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="password">Password:</label>
+                        <input type="password" id="password" name="password" class="form-input" required minlength="6" autocomplete="new-password">
+                        <div class="password-requirements">Minimum 6 characters</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="confirm_password">Confirm Password:</label>
+                        <input type="password" id="confirm_password" name="confirm_password" class="form-input" required autocomplete="new-password">
+                    </div>
                 </div>
-                
-                <div class="form-group">
-                    <label class="form-label" for="password">Password:</label>
-                    <input type="password" id="password" name="password" class="form-input" required minlength="6">
-                    <div class="password-requirements">Minimum 6 characters</div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="first_name">First Name:</label>
+                        <input type="text" id="first_name" name="first_name" class="form-input" required maxlength="50" autocomplete="given-name">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="last_name">Last Name:</label>
+                        <input type="text" id="last_name" name="last_name" class="form-input" required maxlength="50" autocomplete="family-name">
+                    </div>
                 </div>
-                
+
                 <div class="form-group">
-                    <label class="form-label" for="confirm_password">Confirm Password:</label>
-                    <input type="password" id="confirm_password" name="confirm_password" class="form-input" required>
+                    <label class="form-label" for="organization">Organization:</label>
+                    <input type="text" id="organization" name="organization" class="form-input" required maxlength="100" autocomplete="organization">
                 </div>
-                
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="organization_type_num">Organization Type:</label>
+                        <select id="organization_type_num" name="organization_type_num" class="form-input" required>
+                            <option value="">Select the best fit</option>
+                            <% organizationTypes.forEach(function(type) { %>
+                                <option
+                                    value="<%= type.OrganizationTypeUniqueID %>"
+                                    data-is-other="<%= type.OrganizationType === 'Other (please specify)' ? 'true' : 'false' %>">
+                                    <%= type.OrganizationType %>
+                                </option>
+                            <% }); %>
+                        </select>
+                    </div>
+
+                    <div id="organization-type-other-group" class="form-group hidden" aria-hidden="true">
+                        <label class="form-label" for="organization_type_other">Other Organization Type:</label>
+                        <input type="text" id="organization_type_other" name="organization_type_other" class="form-input" maxlength="255" disabled>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="job_title">Job / Position Title:</label>
+                    <input type="text" id="job_title" name="job_title" class="form-input" required maxlength="100" autocomplete="organization-title">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="country_num">Country:</label>
+                        <select id="country_num" name="country_num" class="form-input" required>
+                            <option value="">Select country</option>
+                            <% countries.forEach(function(country) { %>
+                                <option
+                                    value="<%= country.CountryUniqueID %>"
+                                    data-country-code="<%= country.ISOAlpha2 %>">
+                                    <%= country.ISOAlpha2 === 'US' ? 'United States' : country.Country %>
+                                </option>
+                            <% }); %>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="state_num">State (United States only):</label>
+                        <select id="state_num" name="state_num" class="form-input" disabled aria-required="false">
+                            <option value="">Not applicable</option>
+                            <% states.forEach(function(state) { %>
+                                <option value="<%= state.StateUniqueID %>" data-country-num="<%= state.Country_Num %>">
+                                    <%= state.State %>
+                                </option>
+                            <% }); %>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label class="form-label" for="captcha">Verification Code:</label>
                     <div class="captcha-container">
-                        <img id="captcha-image" src="/auth/captcha" alt="Captcha" class="captcha-image" 
-                             onclick="refreshCaptcha()" title="Click to refresh">
+                        <img id="captcha-image" src="/auth/captcha" alt="Captcha" class="captcha-image"
+                             title="Click to refresh">
                         <input type="text" id="captcha" name="captcha" class="form-input captcha-input" 
                                placeholder="Enter code" required>
                     </div>

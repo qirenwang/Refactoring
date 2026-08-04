@@ -1,0 +1,372 @@
+
+----- Location -----
+Location LOC002 (Milwaukee Outer Harbor)                     DIFF  -> Loc#95; location_type_environment: excel='Lake' db=None
+Location LOC003 (Lake Erie)                                  DIFF  -> Loc#97; location_type_environment: excel='Lake' db=None
+Location LOC004 (Lake Erie Site 2)                           DIFF  -> Loc#98; location_type_environment: excel='Lake' db=None
+Location LOC005 (Lake Erie Site 3)                           DIFF  -> Loc#99; location_type_environment: excel='Lake' db=None
+Location LOC006 (Lake Huron Site 1)                          DIFF  -> Loc#101; location_type_environment: excel='Lake' db=None
+Location LOC007 (White River)                                DIFF  -> Loc#102; location_type_environment: excel='River' db=None
+Location LOC008 (South Pond, Lincoln Park)                   DIFF  -> Loc#103; location_type_environment: excel='Pond' db=None
+Location LOC009 (Ash Township groundwater well)              DIFF  -> Loc#104; description: excel='USGS ID 420300083182501 - 75-ft-deep groundwater monitoring well in Monroe County' db='USGS ID 420300083182501'; location_type_environment: excel='Groundwater' db=None
+Location LOC010 (Jones Island Water Reclamation Facility)    DIFF  -> Loc#105; location_type_environment: excel='Wastewater Influent' db=None
+Location LOC011 (Allen Creek Stormwater Outlet)              DIFF  -> Loc#106; location_type_environment: excel='Stormwater' db=None
+Location LOC012 (Jones Island Wastewater Effluent)           DIFF  -> Loc#107; location_type_environment: excel='wastewater effluent/Discharge' db=None
+Location LOC013 (Harrison–Dever Water Intake Crib)           DIFF  -> Loc#108; location_type_environment: excel='Drinking water (Raw)' db=None
+Location LOC014 (Jardine Water Purification Plant)           DIFF  -> Loc#109; location_type_environment: excel='Drinking water (Treated)' db=None
+Location LOC015 (White River Site 2)                         DIFF  -> Loc#110; description: excel='Riverbed sediment from the White River in Blue Lake Townshi' db='Riverbed sediment from the White River in Blue Lake Township'; location_type_environment: excel='River' db=None
+Location LOC016 (South Pond Lincoln Park)                    DIFF  -> Loc#111; location_type_environment: excel='Pond' db=None
+Location LOC017 (White Lake near Whitehall)                  DIFF  -> Loc#112; location_type_environment: excel='Lake' db=None
+Location LOC018 (Ash Township monitoring well)               DIFF  -> Loc#113; location_type_environment: excel='Groundwater' db=None
+Location LOC019 (Allen Creek stormwater outlet sediment)     DIFF  -> Loc#114; location_type_environment: excel='Stormwater' db=None
+Location LOC020 (Jones Island WRRF)                          DIFF  -> Loc#115; location_type_environment: excel='Sludge (Wastewater Treatment)' db=None
+Location LOC021 (Jardine Water Purification Plant Sediment)  DIFF  -> Loc#116; location_type_environment: excel='Sludge (Water Treatment)' db=None
+Location LOC022 (Kellog Biological Station)                  DIFF  -> Loc#117; location_type_environment: excel='In Terrestrial Soil' db=None
+Location LOC023 (Commercia Park)                             DIFF  -> Loc#118; location_type_environment: excel='On Soil or Land Surface' db=None
+Location DB Loc#96 (Lake Erie Site 1)                        EXTRA_IN_DB  lat=41.900000 long=83.050000 created=2026-07-22 18:25:27
+
+----- Publication -----
+Publication PUB002                                           OK  -> Pub#29 [doi/url not storable: no DB columns]
+Publication PUB003                                           OK  -> Pub#30 [doi/url not storable: no DB columns]
+
+----- SamplingEvent -----
+SamplingEvent EVT002 (loc LOC002)                            DIFF  -> Event#170; user_sampling_id 'OUH-AW-0': not stored anywhere (no DB field)
+SamplingEvent EVT003 (loc LOC002)                            DIFF  -> Event#171; user_sampling_id 'OUH_AW-1': not stored anywhere (no DB field)
+SamplingEvent EVT004 (loc LOC002)                            DIFF  -> Event#172; user_sampling_id 'OUH_AW-2': not stored anywhere (no DB field)
+SamplingEvent EVT005 (loc LOC002)                            DIFF  -> Event#173; user_sampling_id 'OUH_AW-3': not stored anywhere (no DB field)
+SamplingEvent EVT006 (loc LOC002)                            DIFF  -> Event#174; user_sampling_id 'OUH-CW-0': not stored anywhere (no DB field)
+SamplingEvent EVT007 (loc LOC002)                            DIFF  -> Event#175; user_sampling_id 'OUH-CW-1': not stored anywhere (no DB field)
+SamplingEvent EVT008 (loc LOC002)                            DIFF  -> Event#176; user_sampling_id 'OUH-CW-2': not stored anywhere (no DB field)
+SamplingEvent EVT009 (loc LOC002)                            DIFF  -> Event#177; user_sampling_id 'OUH-CW-3': not stored anywhere (no DB field)
+SamplingEvent EVT010 (loc LOC002)                            DIFF  -> Event#178; user_sampling_id 'OUH-CW-4': not stored anywhere (no DB field)
+SamplingEvent EVT011 (loc LOC003)                            DIFF  -> Event#179; user_sampling_id 'GL12#14': not stored anywhere (no DB field)
+SamplingEvent EVT012 (loc LOC004)                            DIFF  -> Event#180; user_sampling_id 'GL12#15': not stored anywhere (no DB field)
+SamplingEvent EVT013 (loc LOC005)                            DIFF  -> Event#181; user_sampling_id 'GL12#16': not stored anywhere (no DB field)
+SamplingEvent EVT014 (loc LOC006)                            OK  -> Event#183
+SamplingEvent EVT015 (loc LOC007)                            DIFF  -> Event#197; additional_notes: excel='13:00:00' db=None (value equals DB SampleTime — likely entered as sample time) [start date taken from device_start_date (no sampling_date)]
+SamplingEvent EVT016 (loc LOC008)                            DIFF  -> Event#184; rainfall: excel=2.5 db=3.0 (column rounds to whole cm); additional_notes: excel='16:45:00' db=None (value equals DB SampleTime — likely entered as sample time)
+SamplingEvent EVT017 (loc LOC009)                            OK  -> Event#185
+SamplingEvent EVT018 (loc LOC010)                            DIFF  -> Event#186; additional_notes: excel='16:00:00' db=None (value equals DB SampleTime — likely entered as sample time)
+SamplingEvent EVT019 (loc LOC011)                            OK  -> Event#187 [start date taken from device_start_date (no sampling_date)]
+SamplingEvent EVT020 (loc LOC012)                            OK  -> Event#198
+SamplingEvent EVT021 (loc LOC013)                            OK  -> Event#188
+SamplingEvent EVT022 (loc LOC014)                            OK  -> Event#189
+SamplingEvent EVT023 (loc LOC015)                            DIFF  -> Event#199; additional_notes: excel='14:30:00' db=None (value equals DB SampleTime — likely entered as sample time)
+SamplingEvent EVT024 (loc LOC016)                            OK  -> Event#190
+SamplingEvent EVT025 (loc LOC017)                            OK  -> Event#191
+SamplingEvent EVT026 (loc LOC018)                            OK  -> Event#192
+SamplingEvent EVT027 (loc LOC019)                            OK  -> Event#193
+SamplingEvent EVT028 (loc LOC020)                            OK  -> Event#200
+SamplingEvent EVT029 (loc LOC021)                            OK  -> Event#194 [Excel cell shows 1905-07-14 = serial 2022; treated as year-only 2022]
+SamplingEvent EVT030 (loc LOC022)                            OK  -> Event#195
+SamplingEvent EVT031 (loc LOC023)                            OK  -> Event#196
+
+----- SampleDetails -----
+SampleDetails SMP002 (evt EVT002)                            OK  -> Sample#174
+SampleDetails SMP003 (evt EVT003)                            OK  -> Sample#175
+SampleDetails SMP004 (evt EVT004)                            OK  -> Sample#176
+SampleDetails SMP005 (evt EVT005)                            OK  -> Sample#177
+SampleDetails SMP006 (evt EVT006)                            OK  -> Sample#178
+SampleDetails SMP007 (evt EVT007)                            OK  -> Sample#179
+SampleDetails SMP008 (evt EVT008)                            OK  -> Sample#180
+SampleDetails SMP009 (evt EVT009)                            OK  -> Sample#181
+SampleDetails SMP010 (evt EVT010)                            OK  -> Sample#182
+SampleDetails SMP011 (evt EVT011)                            OK  -> Sample#183
+SampleDetails SMP012 (evt EVT012)                            OK  -> Sample#184
+SampleDetails SMP013 (evt EVT013)                            OK  -> Sample#185
+SampleDetails SMP014 (evt EVT014)                            OK  -> Sample#187
+SampleDetails SMP015 (evt EVT015)                            OK  -> Sample#201
+SampleDetails SMP016 (evt EVT016)                            OK  -> Sample#188
+SampleDetails SMP017 (evt EVT017)                            DIFF  -> Sample#189; micro count cell ambiguous in excel: '25 ( (should be 20 or 25)'; micro count: excel=25 db=20
+SampleDetails SMP018 (evt EVT018)                            OK  -> Sample#190
+SampleDetails SMP019 (evt EVT019)                            OK  -> Sample#191
+SampleDetails SMP020 (evt EVT020)                            OK  -> Sample#202
+SampleDetails SMP021 (evt EVT021)                            OK  -> Sample#192
+SampleDetails SMP022 (evt EVT022)                            OK  -> Sample#193
+SampleDetails SMP023 (evt EVT023)                            DIFF  -> Sample#203; notes: excel='Soil texture method - Jar test' db(MediaAdditionalNotes)=None
+SampleDetails SMP024 (evt EVT024)                            DIFF  -> Sample#194; notes: excel='Soil texture method - Jar test' db(MediaAdditionalNotes)=None
+SampleDetails SMP025 (evt EVT025)                            DIFF  -> Sample#195; notes: excel='Soil texture method - Jar test' db(MediaAdditionalNotes)=None
+SampleDetails SMP026 (evt EVT026)                            DIFF  -> Sample#196; notes: excel='Soil texture method - Jar test' db(MediaAdditionalNotes)=None
+SampleDetails SMP027 (evt EVT027)                            OK  -> Sample#197
+SampleDetails SMP028 (evt EVT028)                            OK  -> Sample#204
+SampleDetails SMP029 (evt EVT029)                            OK  -> Sample#198
+SampleDetails SMP030 (evt EVT030)                            OK  -> Sample#199
+SampleDetails SMP031 (evt EVT031)                            DIFF  -> Sample#200; media_env: excel='Land' db(MediaSubType)=None
+
+----- MP_Results -----
+MP_Results SMP002                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP003                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP004                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP005                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP006                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP007                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP008                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP009                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP010                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP011                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP012                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP013                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP014                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP015                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP016                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP017                                            DIFF  total_quantity cell ambiguous: '25 (should be 20 or 25)'; total_quantity: excel=25.0 db=20; count_method: excel='Magnified_Count' db=None
+MP_Results SMP018                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP019                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP020                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP021                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP022                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP023                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP024                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP025                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP026                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP027                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP028                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP029                                            DIFF  count_method: excel='Magnified_Count' db=None
+MP_Results SMP030                                            DIFF  count_method: excel='Magnified_Count' db=None
+
+----- Frag_Results -----
+Frag_Results SMP002                                          DIFF  count_method: excel='Magnified_Count' db=None
+Frag_Results SMP006                                          DIFF  count_method: excel='Magnified_Count' db=None
+Frag_Results SMP014                                          DIFF  count_method: excel='Magnified_Count' db=None
+Frag_Results SMP015                                          DIFF  count_method: excel='Magnified_Count' db=None
+Frag_Results SMP016                                          DIFF  count_method: excel='Magnified_Count' db=None
+Frag_Results SMP017                                          OK
+Frag_Results SMP018                                          OK
+Frag_Results SMP019                                          OK
+Frag_Results SMP020                                          OK
+Frag_Results SMP023                                          OK
+Frag_Results SMP024                                          OK
+Frag_Results SMP026                                          OK
+Frag_Results SMP027                                          OK
+Frag_Results SMP028                                          OK
+Frag_Results SMP030                                          OK
+Frag_Results SMP031                                          OK
+
+----- MP_Polymer -----
+MP_Polymer SMP019                                            EXCEL_AMBIGUOUS  unrecognized code(s) ['PVS'] in 'PVS'
+MP_Polymer SMP003                                            OK  2 rows
+MP_Polymer SMP004                                            OK  3 rows
+MP_Polymer SMP005                                            OK  5 rows
+MP_Polymer SMP006                                            OK  4 rows
+MP_Polymer SMP007                                            OK  2 rows
+MP_Polymer SMP008                                            OK  2 rows
+MP_Polymer SMP010                                            OK  2 rows
+MP_Polymer SMP014                                            OK  20 rows
+MP_Polymer SMP015                                            OK  20 rows
+MP_Polymer SMP016                                            OK  4 rows
+MP_Polymer SMP017                                            OK  20 rows
+MP_Polymer SMP018                                            OK  3 rows
+MP_Polymer SMP019                                            DIFF  4 rows; extra in DB: pvc=9.0
+MP_Polymer SMP020                                            OK  5 rows
+MP_Polymer SMP021                                            OK  5 rows
+MP_Polymer SMP022                                            OK  3 rows
+MP_Polymer SMP023                                            OK  4 rows
+MP_Polymer SMP024                                            OK  3 rows
+MP_Polymer SMP025                                            OK  7 rows
+MP_Polymer SMP026                                            OK  2 rows
+MP_Polymer SMP027                                            OK  5 rows
+MP_Polymer SMP028                                            OK  1 rows
+MP_Polymer SMP029                                            OK  5 rows
+MP_Polymer SMP030                                            OK  4 rows
+
+----- MP_Form -----
+MP_Form ?                                                    EXCEL_AMBIGUOUS  stray row with pct=4 (no sample id/code)
+MP_Form SMP002                                               OK  4 rows
+MP_Form SMP003                                               OK  2 rows
+MP_Form SMP004                                               OK  2 rows
+MP_Form SMP005                                               OK  4 rows
+MP_Form SMP006                                               OK  3 rows
+MP_Form SMP007                                               OK  2 rows
+MP_Form SMP008                                               OK  1 rows
+MP_Form SMP009                                               OK  1 rows
+MP_Form SMP010                                               OK  2 rows
+MP_Form SMP011                                               OK  3 rows
+MP_Form SMP012                                               OK  3 rows
+MP_Form SMP013                                               OK  3 rows
+MP_Form SMP014                                               OK  4 rows
+MP_Form SMP015                                               OK  4 rows
+MP_Form SMP016                                               OK  4 rows
+MP_Form SMP017                                               OK  2 rows
+MP_Form SMP018                                               OK  2 rows
+MP_Form SMP019                                               OK  1 rows
+MP_Form SMP020                                               OK  3 rows
+MP_Form SMP021                                               OK  2 rows
+MP_Form SMP022                                               OK  2 rows
+MP_Form SMP023                                               OK  2 rows
+MP_Form SMP024                                               OK  2 rows
+MP_Form SMP025                                               OK  2 rows
+MP_Form SMP026                                               OK  1 rows
+MP_Form SMP027                                               OK  3 rows
+MP_Form SMP028                                               OK  2 rows
+MP_Form SMP029                                               OK  3 rows
+MP_Form SMP030                                               DIFF  2 rows; Pellet: excel=96.0 db=4.0
+
+----- MP_Color -----
+MP_Color SMP014                                              OK  13 rows
+MP_Color SMP015                                              OK  13 rows
+MP_Color SMP016                                              OK  2 rows
+MP_Color SMP017                                              OK  3 rows
+MP_Color SMP018                                              OK  4 rows
+MP_Color SMP019                                              OK  4 rows
+MP_Color SMP020                                              OK  2 rows
+MP_Color SMP021                                              OK  4 rows
+MP_Color SMP022                                              OK  2 rows
+MP_Color SMP023                                              OK  2 rows
+MP_Color SMP024                                              OK  4 rows
+MP_Color SMP025                                              OK  2 rows
+MP_Color SMP026                                              OK  2 rows
+MP_Color SMP027                                              OK  4 rows
+MP_Color SMP028                                              OK  2 rows
+MP_Color SMP029                                              OK  3 rows
+MP_Color SMP030                                              OK  2 rows
+
+----- MP_Size -----
+MP_Size SMP002                                               OK  2 rows
+MP_Size SMP003                                               OK  1 rows
+MP_Size SMP004                                               OK  2 rows
+MP_Size SMP005                                               OK  2 rows
+MP_Size SMP006                                               OK  2 rows
+MP_Size SMP007                                               OK  1 rows
+MP_Size SMP008                                               OK  1 rows
+MP_Size SMP009                                               OK  1 rows
+MP_Size SMP010                                               OK  2 rows
+MP_Size SMP014                                               OK  5 rows
+MP_Size SMP015                                               OK  5 rows
+MP_Size SMP016                                               OK  5 rows
+MP_Size SMP017                                               OK  2 rows
+MP_Size SMP018                                               OK  2 rows
+MP_Size SMP019                                               OK  2 rows
+MP_Size SMP020                                               OK  1 rows
+MP_Size SMP021                                               OK  2 rows
+MP_Size SMP022                                               OK  2 rows
+MP_Size SMP023                                               OK  2 rows
+MP_Size SMP024                                               OK  2 rows
+MP_Size SMP025                                               OK  1 rows
+MP_Size SMP026                                               OK  1 rows
+MP_Size SMP027                                               DIFF  2 rows; 20_100um: excel=10.0 db=60.0
+MP_Size SMP028                                               OK  1 rows
+MP_Size SMP029                                               OK  2 rows
+MP_Size SMP030                                               OK  2 rows
+
+----- MP_Opacity -----
+MP_Opacity SMP014                                            OK  4 rows
+MP_Opacity SMP015                                            OK  4 rows
+MP_Opacity SMP016                                            OK  4 rows
+MP_Opacity SMP017                                            OK  2 rows
+MP_Opacity SMP018                                            OK  2 rows
+MP_Opacity SMP019                                            OK  1 rows
+MP_Opacity SMP020                                            OK  1 rows
+MP_Opacity SMP021                                            OK  2 rows
+MP_Opacity SMP023                                            OK  2 rows
+MP_Opacity SMP024                                            OK  2 rows
+MP_Opacity SMP025                                            OK  1 rows
+MP_Opacity SMP026                                            OK  2 rows
+MP_Opacity SMP027                                            OK  2 rows
+MP_Opacity SMP028                                            OK  1 rows
+MP_Opacity SMP029                                            OK  2 rows
+MP_Opacity SMP030                                            OK  2 rows
+
+----- MP_Texture -----
+MP_Texture SMP015                                            OK  5 rows
+MP_Texture SMP016                                            OK  5 rows
+MP_Texture SMP017                                            OK  2 rows
+MP_Texture SMP018                                            OK  2 rows
+MP_Texture SMP019                                            OK  1 rows
+MP_Texture SMP020                                            OK  2 rows
+MP_Texture SMP021                                            OK  2 rows
+MP_Texture SMP023                                            OK  2 rows
+MP_Texture SMP024                                            OK  1 rows
+MP_Texture SMP026                                            OK  1 rows
+MP_Texture SMP027                                            OK  2 rows
+MP_Texture SMP028                                            OK  1 rows
+MP_Texture SMP029                                            OK  2 rows
+MP_Texture SMP030                                            OK  2 rows
+
+----- Frag_Purpose -----
+Frag_Purpose SMP024                                          EXCEL_AMBIGUOUS  row with blank code, pct=75
+Frag_Purpose SMP014                                          OK  7 rows
+Frag_Purpose SMP015                                          OK  7 rows
+Frag_Purpose SMP016                                          OK  4 rows
+Frag_Purpose SMP017                                          OK  2 rows
+Frag_Purpose SMP018                                          OK  1 rows
+Frag_Purpose SMP019                                          OK  2 rows
+Frag_Purpose SMP020                                          OK  1 rows
+Frag_Purpose SMP023                                          OK  2 rows
+Frag_Purpose SMP024                                          DIFF  1 rows; extra in DB: multiuse=75.0
+Frag_Purpose SMP026                                          OK  1 rows
+Frag_Purpose SMP027                                          OK  2 rows
+Frag_Purpose SMP028                                          OK  1 rows
+Frag_Purpose SMP030                                          OK  1 rows
+Frag_Purpose SMP031                                          OK  2 rows
+
+----- Frag_Polymer -----
+Frag_Polymer SMP014                                          OK  20 rows
+Frag_Polymer SMP015                                          OK  20 rows
+Frag_Polymer SMP016                                          DIFF  5 rows; ABS: excel=25.0 db=20.0; EVA: excel=25.0 db=20.0; HIPS: excel=25.0 db=20.0; LDPE: excel=25.0 db=20.0; Other: excel=25.0 db=20.0
+Frag_Polymer SMP017                                          OK  3 rows
+Frag_Polymer SMP018                                          OK  4 rows
+Frag_Polymer SMP019                                          OK  4 rows
+Frag_Polymer SMP020                                          OK  2 rows
+Frag_Polymer SMP023                                          OK  3 rows
+Frag_Polymer SMP024                                          OK  2 rows
+Frag_Polymer SMP026                                          OK  1 rows
+Frag_Polymer SMP027                                          OK  2 rows
+Frag_Polymer SMP028                                          OK  2 rows
+Frag_Polymer SMP030                                          OK  1 rows
+Frag_Polymer SMP031                                          OK  2 rows
+
+----- Frag_Texture -----
+Frag_Texture SMP002                                          OK  1 rows
+Frag_Texture SMP006                                          OK  2 rows
+Frag_Texture SMP014                                          OK  5 rows
+Frag_Texture SMP015                                          OK  5 rows
+Frag_Texture SMP016                                          OK  5 rows
+Frag_Texture SMP017                                          OK  2 rows
+Frag_Texture SMP018                                          DIFF  3 rows; HardPlastic: excel=33.3 db=33.33; Fabric: excel=33.3 db=33.33; Foam: excel=33.3 db=33.34
+Frag_Texture SMP019                                          OK  1 rows
+Frag_Texture SMP020                                          OK  2 rows
+Frag_Texture SMP023                                          OK  1 rows
+Frag_Texture SMP024                                          OK  3 rows
+Frag_Texture SMP026                                          OK  1 rows
+Frag_Texture SMP027                                          OK  2 rows
+Frag_Texture SMP028                                          OK  2 rows
+Frag_Texture SMP030                                          OK  1 rows
+Frag_Texture SMP031                                          OK  3 rows
+
+----- Frag_Color -----
+Frag_Color SMP014                                            OK  13 rows
+Frag_Color SMP015                                            OK  13 rows
+Frag_Color SMP016                                            OK  2 rows
+Frag_Color SMP017                                            OK  2 rows
+Frag_Color SMP018                                            OK  2 rows
+Frag_Color SMP019                                            OK  2 rows
+Frag_Color SMP020                                            OK  3 rows
+Frag_Color SMP023                                            OK  2 rows
+Frag_Color SMP024                                            OK  4 rows
+Frag_Color SMP026                                            OK  1 rows
+Frag_Color SMP027                                            OK  3 rows
+Frag_Color SMP028                                            OK  2 rows
+Frag_Color SMP030                                            OK  2 rows
+Frag_Color SMP031                                            OK  2 rows
+
+----- Frag_Opacity -----
+Frag_Opacity SMP014                                          OK  4 rows
+Frag_Opacity SMP015                                          OK  4 rows
+Frag_Opacity SMP016                                          OK  2 rows
+Frag_Opacity SMP017                                          OK  2 rows
+Frag_Opacity SMP018                                          OK  1 rows
+Frag_Opacity SMP019                                          OK  2 rows
+Frag_Opacity SMP020                                          DIFF  1 rows; extra in DB: transparentclear=15.0
+Frag_Opacity SMP021                                          DIFF  1 rows; missing Transparent_Clear (15.0%)
+Frag_Opacity SMP023                                          OK  2 rows
+Frag_Opacity SMP024                                          OK  1 rows
+Frag_Opacity SMP026                                          OK  1 rows
+Frag_Opacity SMP027                                          OK  2 rows
+Frag_Opacity SMP028                                          OK  1 rows
+Frag_Opacity SMP030                                          OK  1 rows
+Frag_Opacity SMP031                                          OK  2 rows
+
+===== SUMMARY =====
+DIFF: 86
+EXCEL_AMBIGUOUS: 3
+EXTRA_IN_DB: 1
+OK: 242

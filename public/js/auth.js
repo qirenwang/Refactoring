@@ -3,40 +3,6 @@
  * Handles login, signup, password reset, and captcha functionality
  */
 
-// Utility function to show alerts
-function showAlert(type, message) {
-    let errorDiv = document.querySelector('.error-message');
-    if (!errorDiv) {
-        errorDiv = document.createElement('div');
-        errorDiv.className = 'error-message';
-        const formContainer = document.querySelector('.form-container');
-        const form = formContainer.querySelector('form');
-        formContainer.insertBefore(errorDiv, form);
-    }
-    errorDiv.textContent = message;
-    errorDiv.style.display = 'block';
-}
-
-// Utility function to hide alerts
-function hideAlert() {
-    const errorDiv = document.querySelector('.error-message');
-    if (errorDiv) {
-        errorDiv.style.display = 'none';
-    }
-}
-
-// Global function for refreshing captcha (needed by templates)
-function refreshCaptcha() {
-    const captchaImage = document.getElementById('captcha-image');
-    if (captchaImage) {
-        captchaImage.src = '/auth/captcha?' + Math.random();
-        const captchaInput = document.getElementById('captcha');
-        if (captchaInput) {
-            captchaInput.value = '';
-        }
-    }
-}
-
 document.addEventListener('DOMContentLoaded', function() {
     initializeAuthForms();
     initializeCaptcha();
@@ -45,7 +11,6 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeAuthForms() {
     setupLoginForm();
     setupSignupForm();
-    setupPasswordResetForm();
     setupPasswordStrengthMeter();
 }
 
@@ -99,6 +64,8 @@ function setupLoginForm() {
 function setupSignupForm() {
     const signupForm = document.getElementById('signupForm');
     if (!signupForm) return;
+
+    setupSignupReferenceFields();
     
     signupForm.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -154,89 +121,71 @@ function setupSignupForm() {
     });
 }
 
-function setupPasswordResetForm() {
-    const resetRequestForm = document.getElementById('reset-request-form');
-    const resetForm = document.getElementById('reset-form');
-    
-    if (resetRequestForm) {
-        resetRequestForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const submitButton = this.querySelector('button[type="submit"]');
-            const originalText = submitButton.innerHTML;
-            
-            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
-            submitButton.disabled = true;
-            
-            const formData = new FormData(this);
-            
-            fetch('/auth/reset-password-request', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showEmailSentMessage();
-                } else {
-                    showAlert('danger', data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Password reset request error:', error);
-                showAlert('danger', 'An error occurred. Please try again.');
-            })
-            .finally(() => {
-                submitButton.innerHTML = originalText;
-                submitButton.disabled = false;
-            });
-        });
-    }
-    
-    if (resetForm) {
-        resetForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const newPassword = document.getElementById('new-password').value;
-            const confirmPassword = document.getElementById('confirm-password').value;
-            
-            if (newPassword !== confirmPassword) {
-                showAlert('danger', 'Passwords do not match');
+function setupSignupReferenceFields() {
+    const organizationTypeSelect = document.getElementById('organization_type_num');
+    const organizationTypeOtherGroup = document.getElementById('organization-type-other-group');
+    const organizationTypeOtherInput = document.getElementById('organization_type_other');
+    const countrySelect = document.getElementById('country_num');
+    const stateSelect = document.getElementById('state_num');
+
+    const updateOrganizationTypeOther = () => {
+        if (!organizationTypeSelect || !organizationTypeOtherGroup || !organizationTypeOtherInput) return;
+
+        const selectedOption = organizationTypeSelect.options[organizationTypeSelect.selectedIndex];
+        const showOther = selectedOption && selectedOption.dataset.isOther === 'true';
+
+        organizationTypeOtherGroup.classList.toggle('hidden', !showOther);
+        organizationTypeOtherGroup.setAttribute('aria-hidden', showOther ? 'false' : 'true');
+        organizationTypeOtherInput.disabled = !showOther;
+        organizationTypeOtherInput.required = showOther;
+        organizationTypeOtherInput.setAttribute('aria-required', showOther ? 'true' : 'false');
+
+        if (!showOther) {
+            organizationTypeOtherInput.value = '';
+        }
+    };
+
+    const updateStateOptions = () => {
+        if (!countrySelect || !stateSelect) return;
+
+        const selectedCountryId = countrySelect.value;
+        const selectedCountryOption = countrySelect.options[countrySelect.selectedIndex];
+        const isUnitedStates = selectedCountryOption
+            && selectedCountryOption.dataset.countryCode === 'US';
+        const placeholderOption = stateSelect.querySelector('option[value=""]');
+
+        stateSelect.value = '';
+
+        Array.from(stateSelect.options).forEach(option => {
+            if (!option.value) {
+                option.hidden = false;
                 return;
             }
-            
-            const submitButton = this.querySelector('button[type="submit"]');
-            const originalText = submitButton.innerHTML;
-            
-            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting...';
-            submitButton.disabled = true;
-            
-            const formData = new FormData(this);
-            
-            fetch('/auth/reset-password', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('success', 'Password reset successfully! You can now log in with your new password.');
-                    setTimeout(() => {
-                        window.location.href = '/login';
-                    }, 3000);
-                } else {
-                    showAlert('danger', data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Password reset error:', error);
-                showAlert('danger', 'An error occurred. Please try again.');
-            })
-            .finally(() => {
-                submitButton.innerHTML = originalText;
-                submitButton.disabled = false;
-            });
+
+            const matchesCountry = isUnitedStates
+                && option.dataset.countryNum === selectedCountryId;
+            option.hidden = !matchesCountry;
         });
+
+        stateSelect.disabled = !isUnitedStates;
+        stateSelect.required = isUnitedStates;
+        stateSelect.setAttribute('aria-required', isUnitedStates ? 'true' : 'false');
+
+        if (placeholderOption) {
+            placeholderOption.textContent = isUnitedStates
+                ? 'Select state'
+                : 'Not applicable';
+        }
+    };
+
+    if (organizationTypeSelect) {
+        organizationTypeSelect.addEventListener('change', updateOrganizationTypeOther);
+        updateOrganizationTypeOther();
+    }
+
+    if (countrySelect) {
+        countrySelect.addEventListener('change', updateStateOptions);
+        updateStateOptions();
     }
 }
 
@@ -347,30 +296,6 @@ function refreshCaptcha() {
     }
 }
 
-function showEmailSentMessage() {
-    const requestSection = document.getElementById('request-section');
-    const sentSection = document.getElementById('sent-section');
-    
-    if (requestSection && sentSection) {
-        requestSection.style.display = 'none';
-        sentSection.style.display = 'block';
-    } else {
-        showAlert('success', 'Password reset email sent! Please check your inbox.');
-    }
-}
-
-function showResetForm(token) {
-    const requestSection = document.getElementById('request-section');
-    const resetSection = document.getElementById('reset-section');
-    const tokenInput = document.getElementById('token');
-    
-    if (requestSection && resetSection && tokenInput) {
-        requestSection.style.display = 'none';
-        resetSection.style.display = 'block';
-        tokenInput.value = token;
-    }
-}
-
 function showAlert(type, message) {
     // Remove existing alerts
     const existingAlerts = document.querySelectorAll('.alert');
@@ -379,12 +304,17 @@ function showAlert(type, message) {
     // Create new alert
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="close" data-dismiss="alert">
-            <span>&times;</span>
-        </button>
-    `;
+
+    const messageText = document.createElement('span');
+    messageText.textContent = String(message || '');
+    alertDiv.appendChild(messageText);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'close';
+    closeButton.setAttribute('aria-label', 'Close');
+    closeButton.textContent = '×';
+    alertDiv.appendChild(closeButton);
     
     // Find the best container to insert the alert
     let container = document.querySelector('.form-container');
@@ -407,12 +337,9 @@ function showAlert(type, message) {
     }
     
     // Add click handler for close button
-    const closeButton = alertDiv.querySelector('.close');
-    if (closeButton) {
-        closeButton.addEventListener('click', function() {
-            alertDiv.remove();
-        });
-    }
+    closeButton.addEventListener('click', function() {
+        alertDiv.remove();
+    });
     
     // Auto-dismiss success alerts
     if (type === 'success') {
@@ -468,6 +395,5 @@ window.Auth = {
     refreshCaptcha,
     testCaptcha,
     checkPasswordStrength,
-    showAlert,
-    showResetForm
+    showAlert
 };

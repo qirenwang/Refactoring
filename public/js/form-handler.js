@@ -8,6 +8,13 @@ let loadedPages = 1; // Track how many pages have been loaded
 let formData = {};
 const formStorageKey = 'microplastics_form_data';
 let isPageInitialLoad = true; // Flag to track if this is initial page load/refresh
+const formRuntimeConfig = window.microplasticsFormConfig || {};
+const isEditMode = Boolean(formRuntimeConfig.isEditMode && formRuntimeConfig.editSampleId);
+const editSampleId = formRuntimeConfig.editSampleId ? String(formRuntimeConfig.editSampleId) : null;
+let editDataReady = !isEditMode;
+const publicationFormUtils = window.PublicationFormUtils;
+const partialDateUtils = window.PartialDateUtils;
+const dataSummaryUtils = window.DataSummaryUtils;
 
 const PACKAGING_DETAIL_GROUPS = {
     recycle: ['1', '2', '3', '4', '5', '6', '7', '0'],
@@ -24,8 +31,8 @@ const PACKAGING_DETAIL_LABELS = {
 const PACKAGING_CATEGORY_CONFIG = [
     { prefix: 'single_use', countField: 'packaging_count_single_use', label: 'Single-Use Food/Beverage Container' },
     { prefix: 'multi_use', countField: 'packaging_count_multi_use', label: 'Multi-Use Food/Beverage Container' },
-    { prefix: 'other_container', countField: 'packaging_count_other_container', label: 'Other Container' },
-    { prefix: 'bag', countField: 'packaging_count_bag', label: 'Bag' },
+    { prefix: 'consumer_product', countField: 'packaging_count_consumer_product', label: 'Other durable goods for longer term use' },
+    { prefix: 'bag_container', countField: 'packaging_count_bag_container', label: 'Bag for carrying or containing items' },
     { prefix: 'packing', countField: 'packaging_count_packing', label: 'Packing Materials' },
     { prefix: 'other_purpose', countField: 'packaging_count_other', label: 'Other Purpose' },
     { prefix: 'unknown_purpose', countField: 'packaging_count_unknown', label: 'Unknown Purpose' }
@@ -50,9 +57,230 @@ const DETAIL_TABLES = [
     'micro_size_details'
 ];
 
-function isHiddenLegacyField(element) {
-    return !!element.closest('#legacy-lulc, #legacy-raman, #legacy-package-validation');
+const PAGE4_ADDITIONAL_FIELDS = [
+    // Water
+    'environment_type', 'volume_sampled',
+    'total_water_depth', 'sample_water_depth', 'water_depth',
+    'water_flow_velocity', 'flow_velocity', 'turbidity',
+    'total_suspended_solids', 'suspended_solids',
+    'dissolved_oxygen', 'conductivity', 'water_additional_notes',
+
+    // Aquatic sediment
+    'sediment_depth', 'sediment_dry_weight', 'sediment_organic_matter',
+    'sediment_moisture', 'sediment_sand', 'sediment_silt', 'sediment_clay',
+    'sediment_additional_notes',
+
+    // Terrestrial soil
+    'soil_depth', 'soil_sample_dry_weight', 'soil_dry_weight',
+    'soil_organic_matter', 'soil_moisture', 'soil_sand', 'soil_silt', 'soil_clay',
+    'soil_additional_notes',
+
+    // Shared soil/sediment reference fields
+    'soil_texture', 'soil_texture_method',
+
+    // Land surface and mixed media
+    'surface_area_sampled', 'permeable_surfaces', 'impermeable_surfaces',
+    'surface_additional_notes', 'mixed_additional_notes',
+
+    // Legacy aliases that can still exist in cached/edit data
+    'soil_moisture_content', 'sediment_grain_size', 'sediment_organic_content',
+    'sampling_depth', 'sampling_method', 'filtration_method',
+    'extraction_method', 'identification_method'
+];
+
+const POLYMER_PERCENTAGE_GROUPS = {
+    mp_polymer: {
+        prefix: 'mp_polymer_',
+        methodFields: [
+            'micro_method_polymer_num',
+            'micro_methodPolymerNum',
+            'micro_method_polymer_other',
+            'micro_methodPolymerOther',
+            'micro_method_percent_estimate'
+        ]
+    },
+    fragment_polymer: {
+        prefix: 'fragment_polymer_',
+        methodFields: [
+            'fragments_method_polymer_num',
+            'fragments_methodPolymerNum',
+            'fragments_method_polymer_other',
+            'fragments_methodPolymerOther',
+            'fragments_method_percent_estimate'
+        ]
+    }
+};
+
+let editPercentageSnapshots = null;
+
+function normalizePercentageForSnapshot(value) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+        return null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed.toFixed(4) : `invalid:${String(value)}`;
 }
+
+function canonicalDetailRows(rows) {
+    if (!Array.isArray(rows)) return '[]';
+
+    const canonicalRows = rows.map(row => ({
+        ref: row?.ref_num ?? row?.refNum ?? null,
+        percent: normalizePercentageForSnapshot(row?.percent),
+        method: String(row?.method_percent_estimate ?? row?.methodPercentEstimate ?? '')
+    }));
+    canonicalRows.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+    return JSON.stringify(canonicalRows);
+}
+
+function firstOwnedValue(state, fields) {
+    for (const field of fields) {
+        if (Object.prototype.hasOwnProperty.call(state, field)) {
+            return state[field] ?? '';
+        }
+    }
+    return '';
+}
+
+function canonicalPolymerGroup(state, config) {
+    const percentages = Object.keys(state)
+        .filter(key => key.startsWith(config.prefix) && !key.endsWith('_specify'))
+        .map(key => [key, normalizePercentageForSnapshot(state[key])])
+        .filter(([, value]) => value !== null)
+        .sort(([left], [right]) => left.localeCompare(right));
+
+    return JSON.stringify({
+        percentages,
+        polymerMethod: String(firstOwnedValue(state, config.methodFields.slice(0, 2))),
+        polymerMethodOther: String(firstOwnedValue(state, config.methodFields.slice(2, 4))),
+        percentMethod: String(firstOwnedValue(state, config.methodFields.slice(4)))
+    });
+}
+
+function captureEditPercentageSnapshots(state) {
+    editPercentageSnapshots = {
+        details: Object.fromEntries(
+            DETAIL_TABLES.map(tableId => [tableId, canonicalDetailRows(state[tableId])])
+        ),
+        polymers: Object.fromEntries(
+            Object.entries(POLYMER_PERCENTAGE_GROUPS).map(([groupKey, config]) => [
+                groupKey,
+                canonicalPolymerGroup(state, config)
+            ])
+        )
+    };
+}
+
+function isDetailGroupChanged(tableId, state = formData) {
+    return !isEditMode || !editPercentageSnapshots ||
+        canonicalDetailRows(state[tableId]) !== editPercentageSnapshots.details[tableId];
+}
+
+function isPolymerGroupChanged(groupKey, state = formData) {
+    const config = POLYMER_PERCENTAGE_GROUPS[groupKey];
+    if (!config) return true;
+    return !isEditMode || !editPercentageSnapshots ||
+        canonicalPolymerGroup(state, config) !== editPercentageSnapshots.polymers[groupKey];
+}
+
+function buildSubmissionPayload(state) {
+    const payload = { ...state };
+    payload.device_installation_period = state.device_installation_period || 'no';
+
+    ['start_year', 'start_month', 'start_day', 'end_year', 'end_month', 'end_day']
+        .forEach(fieldName => {
+            if (payload[fieldName] === undefined || String(payload[fieldName]).trim() === '') {
+                payload[fieldName] = null;
+            }
+        });
+
+    if (payload.device_installation_period !== 'yes') {
+        payload.end_year = null;
+        payload.end_month = null;
+        payload.end_day = null;
+    }
+
+    if (!isEditMode || !editPercentageSnapshots) return payload;
+
+    const detailChanged = Object.fromEntries(
+        DETAIL_TABLES.map(tableId => [tableId, isDetailGroupChanged(tableId, state)])
+    );
+
+    // Shape and texture share one database table, so a change to either group
+    // must carry both current arrays through the update transaction.
+    if (detailChanged.micro_shape_details || detailChanged.micro_texture_details) {
+        detailChanged.micro_shape_details = true;
+        detailChanged.micro_texture_details = true;
+        payload.micro_shape_details = Array.isArray(state.micro_shape_details)
+            ? state.micro_shape_details
+            : [];
+        payload.micro_texture_details = Array.isArray(state.micro_texture_details)
+            ? state.micro_texture_details
+            : [];
+    }
+
+    DETAIL_TABLES.forEach(tableId => {
+        if (!detailChanged[tableId]) {
+            delete payload[tableId];
+        }
+    });
+
+    Object.entries(POLYMER_PERCENTAGE_GROUPS).forEach(([groupKey, config]) => {
+        if (isPolymerGroupChanged(groupKey, state)) return;
+
+        Object.keys(payload)
+            .filter(key => key.startsWith(config.prefix))
+            .forEach(key => delete payload[key]);
+        config.methodFields.forEach(field => delete payload[field]);
+    });
+
+    return payload;
+}
+
+window.shouldValidatePercentageGroup = function shouldValidatePercentageGroup(groupKey) {
+    if (DETAIL_TABLES.includes(groupKey)) {
+        return isDetailGroupChanged(groupKey);
+    }
+    if (POLYMER_PERCENTAGE_GROUPS[groupKey]) {
+        return isPolymerGroupChanged(groupKey);
+    }
+    return true;
+};
+
+function isHiddenLegacyField(element) {
+    return !!element.closest(
+        '#legacy-lulc, #legacy-raman, #legacy-package-validation, ' +
+        '#legacy-micro-column-percentages, #legacy-fragments-column-percentages, ' +
+        '#legacy-sample-amounts'
+    );
+}
+
+function setEditFormLocked(locked) {
+    if (!isEditMode) return;
+    const container = document.querySelector('.form-pages-container');
+    if (!container) return;
+
+    if (locked) {
+        container.setAttribute('inert', '');
+        container.setAttribute('aria-busy', 'true');
+    } else {
+        container.removeAttribute('inert');
+        container.removeAttribute('aria-busy');
+    }
+}
+
+// `inert` is supported by current browsers; this capture guard also prevents
+// early Add/Continue/Save clicks in older browsers while edit data is loading.
+document.addEventListener('click', event => {
+    if (!isEditMode || editDataReady) return;
+    if (!event.target.closest('.form-pages-container')) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (typeof window.showTemporaryMessage === 'function') {
+        window.showTemporaryMessage('Please wait for the existing sample to finish loading.', 'info');
+    }
+}, true);
 
 function hasPublicationSource(state = {}) {
     const selected = state.publication_id_num || state.publication_id || state.publicationId;
@@ -81,6 +309,133 @@ function hasDebrisDetailData(state = {}) {
         !!state.fragments_method_percent_estimate;
 }
 
+function getCombinedDebrisCount(state = {}) {
+    return (parseInt(state.fragments_count, 10) || 0) +
+        (parseInt(state.packaging_count, 10) || 0);
+}
+
+function getPartialDateParts(state, prefix) {
+    return {
+        year: state[`${prefix}_year`],
+        month: state[`${prefix}_month`],
+        day: state[`${prefix}_day`]
+    };
+}
+
+function setPartialDateError(prefix, message = '') {
+    const fieldset = document.getElementById(
+        prefix === 'start' ? 'start-date-section' : 'device-period-section'
+    );
+    const errorElement = document.getElementById(`${prefix}-date-error`);
+    fieldset?.classList.toggle('has-error', Boolean(message));
+    if (errorElement) {
+        errorElement.textContent = message;
+    }
+}
+
+function clearPartialDateFields(prefix) {
+    ['year', 'month', 'day'].forEach(part => {
+        const fieldName = `${prefix}_${part}`;
+        delete formData[fieldName];
+        const element = document.querySelector(`[name="${fieldName}"]`);
+        if (element) element.value = '';
+    });
+    setPartialDateError(prefix);
+    sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+}
+
+function syncPartialDateDayOptions(prefix, options = {}) {
+    const yearInput = document.getElementById(`${prefix}-year`);
+    const monthSelect = document.getElementById(`${prefix}-month`);
+    const daySelect = document.getElementById(`${prefix}-day`);
+    if (!yearInput || !monthSelect || !daySelect || !partialDateUtils) return;
+
+    const preferredDay = String(
+        options.preferredDay ?? formData[`${prefix}_day`] ?? daySelect.value ?? ''
+    );
+    const year = partialDateUtils.parsePart(yearInput.value);
+    const month = partialDateUtils.parsePart(monthSelect.value);
+    const maximumDay = partialDateUtils.daysInMonth(year, month);
+
+    daySelect.innerHTML = '<option value="">Unknown / not reported</option>';
+    if (!maximumDay) {
+        daySelect.disabled = true;
+        daySelect.value = '';
+        if (preferredDay) {
+            delete formData[`${prefix}_day`];
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+        }
+        return;
+    }
+
+    daySelect.disabled = false;
+    for (let day = 1; day <= maximumDay; day += 1) {
+        const option = document.createElement('option');
+        option.value = String(day);
+        option.textContent = String(day);
+        daySelect.appendChild(option);
+    }
+
+    if (preferredDay && Number.parseInt(preferredDay, 10) <= maximumDay) {
+        daySelect.value = preferredDay;
+        return;
+    }
+
+    daySelect.value = '';
+    if (preferredDay) {
+        delete formData[`${prefix}_day`];
+        sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+        setPartialDateError(
+            prefix,
+            `The selected day is not valid for ${partialDateUtils.MONTH_NAMES[month - 1]} ${year} and was cleared.`
+        );
+    }
+}
+
+function initializePartialDateControls() {
+    syncPartialDateDayOptions('start');
+    syncPartialDateDayOptions('end');
+}
+
+function validateSamplingEventDates(state = formData, options = {}) {
+    const showErrors = options.showErrors === true;
+    const isDevicePeriod = state.device_installation_period === 'yes';
+    const startLabel = isDevicePeriod
+        ? 'Device installation start date'
+        : 'Plastic collection date';
+    const startResult = partialDateUtils.validateDateParts(
+        getPartialDateParts(state, 'start'),
+        { label: startLabel }
+    );
+    let endResult = { valid: true, errors: [] };
+    let orderResult = { valid: true, errors: [] };
+
+    if (isDevicePeriod) {
+        endResult = partialDateUtils.validateDateParts(
+            getPartialDateParts(state, 'end'),
+            { label: 'Device removal/end date' }
+        );
+        if (startResult.valid && endResult.valid) {
+            orderResult = partialDateUtils.validateDateOrder(startResult, endResult);
+        }
+    }
+
+    if (showErrors) {
+        setPartialDateError('start', startResult.errors[0] || '');
+        setPartialDateError(
+            'end',
+            endResult.errors[0] || orderResult.errors[0] || ''
+        );
+    }
+
+    return {
+        ok: startResult.valid && endResult.valid && orderResult.valid,
+        issues: [...startResult.errors, ...endResult.errors, ...orderResult.errors],
+        start: startResult,
+        end: endResult
+    };
+}
+
 function normalizeRefCode(value) {
     return String(value || '')
         .trim()
@@ -89,15 +444,19 @@ function normalizeRefCode(value) {
         .replace(/^_+|_+$/g, '');
 }
 
-function mapReferenceOptions(refKey) {
+function mapReferenceOptions(refKey, retainedRefId = '') {
     const data = referenceDataCache || {};
 
     if (refKey === 'colors') {
-        return (data.colors || []).map(item => ({
-            id: item.ColorUniqueID,
-            code: item.Color_Code,
-            label: item.Color_Name || item.Color_Code
-        }));
+        return (data.colors || [])
+            .filter(item => item.Color_Set === 'Detailed' ||
+                String(item.ColorUniqueID) === String(retainedRefId))
+            .map(item => ({
+                id: item.ColorUniqueID,
+                code: item.Color_Code,
+                label: item.Color_Name || item.Color_Code,
+                disabled: item.Color_Set !== 'Detailed'
+            }));
     }
 
     if (refKey === 'opacities') {
@@ -193,7 +552,7 @@ async function loadPublications() {
 
 function populateSelectOptions(select, options, placeholder) {
     if (!select) return;
-    const currentValue = select.value;
+    const currentValue = select.value || (select.name ? formData[select.name] : '') || '';
     select.innerHTML = `<option value="">${placeholder}</option>`;
     options.forEach(option => {
         const optionElement = document.createElement('option');
@@ -203,12 +562,33 @@ function populateSelectOptions(select, options, placeholder) {
         select.appendChild(optionElement);
     });
     if (currentValue) {
-        select.value = currentValue;
+        select.value = String(currentValue);
     }
 }
 
 function populateReferenceDrivenControls() {
     if (!referenceDataCache) return;
+
+    document.querySelectorAll('.unit-select').forEach(select => {
+        const currentValue = select.value || formData[select.name] || '';
+        const units = (referenceDataCache.units || [])
+            .filter(unit => unit.Units_Type === 'Sample_Quantity');
+
+        select.innerHTML = '<option value="">-- Select Unit --</option>';
+        units.forEach(unit => {
+            const option = document.createElement('option');
+            option.value = unit.Units_Code;
+            option.dataset.unitId = unit.UnitsUniqueID;
+            option.textContent = `${unit.Units_Desc} (${unit.Units_Code})`;
+
+            if (unit.Units_Code === 'L') option.classList.add('water-unit');
+            if (unit.Units_Code === 'g') option.classList.add('soil-unit');
+            if (unit.Units_Code === 'km2') option.classList.add('soil-unit', 'area-unit');
+
+            select.appendChild(option);
+        });
+        select.value = currentValue;
+    });
 
     document.querySelectorAll('.soil-texture-select').forEach(select => {
         const options = (referenceDataCache.soilTextures || []).map(item => ({
@@ -252,6 +632,7 @@ function populateReferenceDrivenControls() {
         populateSelectOptions(select, options, '-- Select Source Type --');
     });
 
+    updateSampleAmountUnits(formData.media_type);
     restoreDetailRowsFromFormData();
 }
 
@@ -261,27 +642,86 @@ async function initializeReferenceData() {
         populateReferenceDrivenControls();
         populatePublicationControls();
         applyPublicationCarryForward();
-        window.loadPolymerOptions();
+        await Promise.resolve(window.loadPolymerOptions());
+        return true;
     } catch (error) {
         console.error('Reference initialization failed:', error);
+        return false;
     }
 }
 
 function populatePublicationControls() {
     document.querySelectorAll('.publication-select').forEach(select => {
         const currentValue = select.value || formData.publication_id_num || '';
-        select.innerHTML = '<option value="">-- Select Publication --</option>';
+        select.innerHTML = '<option value="">-- Select Existing Publication --</option>';
         (publicationsCache || []).forEach(publication => {
             const option = document.createElement('option');
             option.value = publication.publication_id_num;
-            option.textContent = `${publication.publication_year} - ${publication.publication_authors}`;
+            option.textContent = publicationFormUtils.getPublicationOptionLabel(publication);
+            option.dataset.year = publication.publication_year || '';
+            option.dataset.authors = publication.publication_authors || '';
+            option.dataset.journal = publication.publication_journal || '';
             option.dataset.citation = publication.publication_full_citation_apa || '';
+            option.dataset.sourceCode = publication.publication_pub_source_code || '';
             select.appendChild(option);
         });
         if (currentValue) {
             select.value = currentValue;
         }
+        if (select.value) {
+            applySelectedPublication(select);
+        } else {
+            setPublicationDetailsLocked(false);
+        }
     });
+}
+
+const publicationAutofillFields = publicationFormUtils.PUBLICATION_FIELD_MAP;
+
+function setPublicationDetailsLocked(locked) {
+    publicationFormUtils.setPublicationFieldsLocked(
+        document.querySelectorAll('.publication-detail-field'),
+        locked
+    );
+}
+
+function applySelectedPublication(select) {
+    const selection = publicationFormUtils.getPublicationSelectionState(
+        select?.value,
+        publicationsCache || []
+    );
+
+    if (!selection.publication) {
+        if (select) {
+            select.value = '';
+        }
+        delete formData.publication_id_num;
+        publicationAutofillFields.forEach(([fieldName]) => {
+            delete formData[fieldName];
+            document.querySelectorAll(`[name="${fieldName}"]`).forEach(element => {
+                element.value = '';
+            });
+        });
+        setPublicationDetailsLocked(false);
+        sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+        rememberPublicationForLocation();
+        return;
+    }
+
+    formData.publication_present = 'yes';
+    formData.publication_id_num = selection.publicationId;
+
+    publicationAutofillFields.forEach(([fieldName]) => {
+        const value = selection.fields[fieldName] ?? '';
+        formData[fieldName] = value;
+        document.querySelectorAll(`[name="${fieldName}"]`).forEach(element => {
+            element.value = value;
+        });
+    });
+
+    setPublicationDetailsLocked(true);
+    sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+    rememberPublicationForLocation();
 }
 
 function getPublicationCarryForwardStore() {
@@ -311,9 +751,13 @@ function rememberPublicationForLocation() {
         }
     });
 
-    if (Object.keys(publicationData).length === 0) return;
-
     const store = getPublicationCarryForwardStore();
+    if (Object.keys(publicationData).length === 0) {
+        delete store[locationId];
+        sessionStorage.setItem(publicationCarryForwardKey, JSON.stringify(store));
+        return;
+    }
+
     store[locationId] = publicationData;
     sessionStorage.setItem(publicationCarryForwardKey, JSON.stringify(store));
 }
@@ -333,12 +777,40 @@ function applyPublicationCarryForward() {
             element.value = value;
         });
     });
+
+    const select = document.querySelector('.publication-select');
+    if (formData.publication_id_num && select) {
+        select.value = String(formData.publication_id_num);
+        applySelectedPublication(select);
+    } else {
+        setPublicationDetailsLocked(false);
+    }
+
     sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
 }
 
 function handleSavedPublication(data) {
     if (!data || !data.publicationId) return;
-    formData.publication_id_num = String(data.publicationId);
+    const publicationId = String(data.publicationId);
+    formData.publication_id_num = publicationId;
+    formData.publication_present = 'yes';
+
+    // A newly created publication is not in the cache loaded when the form
+    // opened. Add it immediately so the carried-forward ID remains selectable
+    // when the user reaches the Publication Source section in the next case.
+    if (Array.isArray(publicationsCache) &&
+        !publicationsCache.some(publication => String(publication.publication_id_num) === publicationId)) {
+        publicationsCache.unshift({
+            publication_id_num: publicationId,
+            publication_year: formData.publication_year || '',
+            publication_authors: formData.publication_authors || '',
+            publication_journal: formData.publication_journal || '',
+            publication_full_citation_apa: formData.publication_full_citation_apa || '',
+            publication_pub_source_code: formData.publication_pub_source_code || ''
+        });
+    }
+
+    populatePublicationControls();
     sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
     rememberPublicationForLocation();
 }
@@ -360,7 +832,7 @@ function createDetailRow(tableId, initial = {}) {
     percent.className = 'form-input detail-percent-input';
     percent.min = '0';
     percent.max = '100';
-    percent.step = '0.01';
+    percent.step = '0.0001';
     percent.placeholder = 'percent';
 
     const remove = document.createElement('button');
@@ -374,6 +846,7 @@ function createDetailRow(tableId, initial = {}) {
     row.appendChild(remove);
     container.appendChild(row);
 
+    if (initial.ref_num) select.dataset.initialRefNum = String(initial.ref_num);
     updateDetailSectionOptions(tableId);
 
     if (initial.ref_num) select.value = String(initial.ref_num);
@@ -402,23 +875,25 @@ function updateDetailSectionOptions(tableId) {
     const section = document.querySelector(`[data-detail-section="${tableId}"]`);
     if (!container || !section || !referenceDataCache) return;
 
-    const options = mapReferenceOptions(section.dataset.refKey);
     const selectedValues = Array.from(container.querySelectorAll('.detail-ref-select'))
-        .map(select => select.value)
+        .map(select => select.value || select.dataset.initialRefNum || '')
         .filter(Boolean);
 
     container.querySelectorAll('.detail-ref-select').forEach(select => {
-        const current = select.value;
+        const current = select.value || select.dataset.initialRefNum || '';
+        const options = mapReferenceOptions(section.dataset.refKey, current);
         select.innerHTML = '<option value="">-- Select --</option>';
         options.forEach(option => {
             const optionElement = document.createElement('option');
             optionElement.value = option.id;
             optionElement.dataset.code = option.code || '';
             optionElement.textContent = option.label || option.code || option.id;
-            optionElement.disabled = selectedValues.includes(String(option.id)) && current !== String(option.id);
+            optionElement.disabled = option.disabled ||
+                (selectedValues.includes(String(option.id)) && current !== String(option.id));
             select.appendChild(optionElement);
         });
         select.value = current;
+        delete select.dataset.initialRefNum;
     });
 
     updateDetailTotal(tableId);
@@ -432,7 +907,7 @@ function updateDetailTotal(tableId) {
     const total = Array.from(container.querySelectorAll('.detail-percent-input'))
         .reduce((sum, input) => sum + (parseFloat(input.value) || 0), 0);
 
-    totalElement.textContent = `Total: ${total.toFixed(2).replace(/\.00$/, '')}%`;
+    totalElement.textContent = `Total: ${total.toFixed(4).replace(/\.?0+$/, '')}%`;
     totalElement.classList.toggle('valid', Math.abs(total - 100) <= 0.1);
     return total;
 }
@@ -459,17 +934,20 @@ function collectDetailRows(tableId) {
                 method_percent_estimate: method
             };
         })
-        .filter(row => row.ref_num && row.percent !== null && !Number.isNaN(row.percent));
+        // Keep partially completed rows so validation can report them instead
+        // of silently dropping values the user attempted to enter.
+        .filter(row => row.ref_num !== null || row.percent !== null);
 }
 
 function syncDetailRowsToFormData() {
     DETAIL_TABLES.forEach(tableId => {
+        // A loaded empty container is an explicit clear during edit. If the
+        // page/container is not loaded, preserve the existing state instead.
+        const container = document.getElementById(tableId);
+        if (!container || container.dataset.detailsReady !== 'true') return;
+
         const rows = collectDetailRows(tableId);
-        if (rows.length > 0) {
-            formData[tableId] = rows;
-        } else {
-            delete formData[tableId];
-        }
+        formData[tableId] = rows;
     });
     sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
     return formData;
@@ -479,9 +957,100 @@ function restoreDetailRowsFromFormData() {
     DETAIL_TABLES.forEach(tableId => {
         const container = document.getElementById(tableId);
         const rows = Array.isArray(formData[tableId]) ? formData[tableId] : [];
-        if (!container || rows.length === 0 || container.querySelector('.detail-percent-row')) return;
-        rows.forEach(row => createDetailRow(tableId, row));
+        if (!container) return;
+
+        container.dataset.detailsReady = 'false';
+        delete container.dataset.detailRestoreError;
+        const authoritativeEditRestore = isEditMode && !editDataReady &&
+            container.dataset.editRestored !== 'true';
+        if (authoritativeEditRestore) {
+            // The database payload is authoritative during the first edit
+            // restore. Never let a stale or prematurely added row suppress it.
+            container.replaceChildren();
+        }
+
+        const methods = [...new Set(rows.map(row =>
+            String(row.method_percent_estimate ?? row.methodPercentEstimate ?? '')
+        ))];
+        if (methods.length > 1) {
+            container.dataset.detailRestoreError =
+                `${tableId} contains more than one stored percent-estimation method.`;
+            console.error(container.dataset.detailRestoreError);
+            return;
+        }
+
+        const storedMethod = methods[0] || '';
+        if (storedMethod) {
+            const section = document.querySelector(`[data-detail-section="${tableId}"]`);
+            const masterFieldName = section?.dataset.masterMethodField || '';
+            const masterSelect = masterFieldName
+                ? document.querySelector(`[name="${masterFieldName}"]`)
+                : null;
+            const overrideSelect = document.querySelector(
+                `[data-detail-method-select="${tableId}"]`
+            );
+
+            if (!masterSelect) {
+                container.dataset.detailRestoreError =
+                    `${tableId} could not restore its percent-estimation method.`;
+                console.error(container.dataset.detailRestoreError);
+                return;
+            }
+
+            const currentMasterMethod = String(masterSelect.value || formData[masterFieldName] || '');
+            if (currentMasterMethod && masterSelect.value !== currentMasterMethod) {
+                masterSelect.value = currentMasterMethod;
+                if (masterSelect.value !== currentMasterMethod) {
+                    container.dataset.detailRestoreError =
+                        `${tableId} uses a percent-estimation method that is no longer available.`;
+                    console.error(container.dataset.detailRestoreError);
+                    return;
+                }
+            }
+            if (!currentMasterMethod) {
+                masterSelect.value = storedMethod;
+                if (masterSelect.value !== storedMethod) {
+                    container.dataset.detailRestoreError =
+                        `${tableId} uses a percent-estimation method that is no longer available.`;
+                    console.error(container.dataset.detailRestoreError);
+                    return;
+                }
+                formData[masterFieldName] = storedMethod;
+            } else if (currentMasterMethod !== storedMethod) {
+                if (!overrideSelect) {
+                    container.dataset.detailRestoreError =
+                        `${tableId} could not restore its section-specific method.`;
+                    console.error(container.dataset.detailRestoreError);
+                    return;
+                }
+                overrideSelect.value = storedMethod;
+                if (overrideSelect.value !== storedMethod) {
+                    container.dataset.detailRestoreError =
+                        `${tableId} uses a percent-estimation method that is no longer available.`;
+                    console.error(container.dataset.detailRestoreError);
+                    return;
+                }
+                const overrideContainer = document.querySelector(
+                    `[data-method-override="${tableId}"]`
+                );
+                if (overrideContainer) overrideContainer.style.display = 'block';
+            }
+        }
+
+        if (rows.length > 0 &&
+            (authoritativeEditRestore || !container.querySelector('.detail-percent-row'))) {
+            const restored = rows.every(row => Boolean(createDetailRow(tableId, row)));
+            if (!restored) {
+                container.dataset.detailRestoreError = `${tableId} could not restore all stored rows.`;
+                console.error(container.dataset.detailRestoreError);
+                return;
+            }
+        }
         updateDetailSectionOptions(tableId);
+        container.dataset.detailsReady = 'true';
+        if (authoritativeEditRestore) {
+            container.dataset.editRestored = 'true';
+        }
     });
 }
 
@@ -504,7 +1073,7 @@ window.loadPolymerOptions = function loadPolymerOptions() {
             row.className = 'form-row polymer-category';
             row.innerHTML = `
                 <label class="form-label">${polymer.Polymer_Code} - ${polymer.Polymer_FullName || polymer.Polymer_Code}:</label>
-                <input type="number" name="${fieldName}" class="form-input" placeholder="percentage" min="0" max="100">
+                <input type="number" name="${fieldName}" class="form-input" placeholder="percentage" min="0" max="100" step="0.0001">
             `;
             const input = row.querySelector('input');
             if (input && formData[fieldName] !== undefined) {
@@ -639,14 +1208,68 @@ function devLogSaveError(context, status, data, requestBody) {
     }
 }
 
+function getSaveRequestConfig() {
+    if (isEditMode && editSampleId) {
+        return {
+            url: `/api/my-samples/${encodeURIComponent(editSampleId)}/form-data`,
+            method: 'PUT',
+            successMessage: 'Data Updated Successfully!'
+        };
+    }
+
+    return {
+        url: '/api/save-form-data',
+        method: 'POST',
+        successMessage: 'Data Saved Successfully!'
+    };
+}
+
 // Lightweight pre-submit validation to catch common issues before calling the API
 function preValidateBeforeSubmit(state) {
+    const issues = [];
+
+    if (isEditMode && !editDataReady) {
+        issues.push('The existing sample did not finish loading. Refresh the page before saving.');
+        return { ok: false, issues };
+    }
+
+    if (isEditMode) {
+        const unrestoredDetailGroups = DETAIL_TABLES.filter(tableId => {
+            const hasStoredRows = Array.isArray(state[tableId]) && state[tableId].length > 0;
+            const container = document.getElementById(tableId);
+            return hasStoredRows &&
+                (!container || container.dataset.detailsReady !== 'true');
+        });
+        const detailRestoreErrors = DETAIL_TABLES
+            .map(tableId => document.getElementById(tableId)?.dataset.detailRestoreError)
+            .filter(Boolean);
+
+        const hasMicroPolymerData = Object.keys(state).some(key =>
+            key.startsWith('mp_polymer_') && !key.endsWith('_specify') && parseFloat(state[key]) > 0
+        );
+        const hasFragmentPolymerData = Object.keys(state).some(key =>
+            key.startsWith('fragment_polymer_') && !key.endsWith('_specify') && parseFloat(state[key]) > 0
+        );
+        const microPolymerReady = document.getElementById('mp-polymer-dynamic-container')
+            ?.dataset.loaded === 'true';
+        const fragmentPolymerReady = document.getElementById('fragment-polymer-dynamic-container')
+            ?.dataset.loaded === 'true';
+
+        if (unrestoredDetailGroups.length > 0 || detailRestoreErrors.length > 0 ||
+            (hasMicroPolymerData && !microPolymerReady) ||
+            (hasFragmentPolymerData && !fragmentPolymerReady)) {
+            issues.push(
+                detailRestoreErrors[0] ||
+                'Existing percentage details did not finish loading. Refresh the page before saving.'
+            );
+            return { ok: false, issues };
+        }
+    }
+
     if (typeof syncDetailRowsToFormData === 'function') {
         syncDetailRowsToFormData();
         Object.assign(state, formData);
     }
-
-    const issues = [];
 
     // Location must exist (either selected or saved new location)
     if (!state.location_id) {
@@ -662,20 +1285,10 @@ function preValidateBeforeSubmit(state) {
         }
     }
 
-    // Page 2 required fields.
-    // For a device-period sample the primary date is the device start date;
-    // otherwise it's the single collection date.
-    const isDevicePeriod = state.device_installation_period === 'yes';
-    if (isDevicePeriod) {
-        if (!state.device_start_date) {
-            issues.push('Please enter the Device Installation Start Date on Page 2.');
-        }
-        if (!state.device_end_date) {
-            issues.push('Please enter the Device Removal/End Date on Page 2.');
-        }
-    } else if (!state.sample_date) {
-        issues.push('Please enter Sample Date on Page 2.');
-    }
+    // Page 2 date components are validated together so all save paths apply
+    // identical partial-date and device-period ordering rules.
+    const samplingDateValidation = validateSamplingEventDates(state);
+    issues.push(...samplingDateValidation.issues);
     if (!state.media_type) {
         issues.push('Please select Media Type on Page 2.');
     }
@@ -695,6 +1308,7 @@ function preValidateBeforeSubmit(state) {
     }
 
     DETAIL_TABLES.forEach(tableId => {
+        if (isEditMode && !isDetailGroupChanged(tableId, state)) return;
         const rows = Array.isArray(state[tableId]) ? state[tableId] : [];
         if (rows.length === 0) return;
         const total = rows.reduce((sum, row) => sum + (parseFloat(row.percent) || 0), 0);
@@ -706,7 +1320,10 @@ function preValidateBeforeSubmit(state) {
         }
     });
 
-    const hasMicroPolymerRows = Object.keys(state).some(key => key.startsWith('mp_polymer_') && parseFloat(state[key]) > 0);
+    const validateMicroPolymer = !isEditMode || isPolymerGroupChanged('mp_polymer', state);
+    const hasMicroPolymerRows = validateMicroPolymer && Object.keys(state).some(key =>
+        key.startsWith('mp_polymer_') && parseFloat(state[key]) > 0
+    );
     if (hasMicroPolymerRows && !state.micro_method_polymer_num) {
         issues.push('Microplastics polymer percentages require a Polymer ID Method.');
     }
@@ -714,7 +1331,10 @@ function preValidateBeforeSubmit(state) {
         issues.push('Microplastics polymer percentages require a percent-estimation method.');
     }
 
-    const hasFragmentPolymerRows = Object.keys(state).some(key => key.startsWith('fragment_polymer_') && parseFloat(state[key]) > 0);
+    const validateFragmentPolymer = !isEditMode || isPolymerGroupChanged('fragment_polymer', state);
+    const hasFragmentPolymerRows = validateFragmentPolymer && Object.keys(state).some(key =>
+        key.startsWith('fragment_polymer_') && parseFloat(state[key]) > 0
+    );
     if (hasFragmentPolymerRows && !state.fragments_method_polymer_num) {
         issues.push('Fragments polymer percentages require a Polymer ID Method.');
     }
@@ -1139,6 +1759,14 @@ function saveCurrentPageData() {
         if (isHiddenLegacyField(element)) {
             return;
         }
+        // Fields inside media sections hidden for the selected media type must
+        // not be captured: their empty values would overwrite/mask the visible
+        // section's data (sediment vs soil fields share server-side precedence,
+        // and both sections contain a select named soil_texture).
+        const mediaSection = element.closest('.media-specific-section');
+        if (mediaSection && mediaSection.style.display === 'none') {
+            return;
+        }
 
         // Special handling for location select - don't overwrite the stored
         // location ID when the user added a new location (option 2).
@@ -1253,13 +1881,13 @@ function updateExistingPageContent(pageElement, pageNumber) {
 }
 
 // Function to update page 2 content based on page 1 data
-function updatePage2Content() {
+async function updatePage2Content() {
     // Update any dynamic content based on location selection
     if (formData.location_id) {
         console.log('Updating page 2 based on location:', formData.location_id);
     }
-    initializeReferenceData();
-    applyPublicationCarryForward();
+    syncPage2SectionVisibility();
+    await initializeReferenceData();
     syncPage2SectionVisibility();
 }
 
@@ -1268,12 +1896,17 @@ function updatePage2Content() {
 function syncPage2SectionVisibility() {
     // Device installation period section visibility
     const isDevicePeriod = formData.device_installation_period === 'yes';
-    const singleSection = document.getElementById('single-collection-section');
+    const startLegend = document.getElementById('start-date-legend');
     const deviceSection = document.getElementById('device-period-section');
-    if (singleSection && deviceSection) {
-        singleSection.style.display = isDevicePeriod ? 'none' : 'block';
+    if (startLegend) {
+        startLegend.innerHTML = isDevicePeriod
+            ? 'Device Installation Start Date (<span class="required-marker">*</span>):'
+            : 'Plastic Collection Date (<span class="required-marker">*</span>):';
+    }
+    if (deviceSection) {
         deviceSection.style.display = isDevicePeriod ? 'block' : 'none';
     }
+    initializePartialDateControls();
 
     // Publication source section visibility. Default to "No" unless the user
     // selected "Yes" or publication data has been carried forward.
@@ -1294,6 +1927,7 @@ function syncPage2SectionVisibility() {
     if (publicationFields) {
         publicationFields.style.display = showPublication ? 'block' : 'none';
     }
+    setPublicationDetailsLocked(showPublication && Boolean(formData.publication_id_num));
 }
 
 // Function to update page 3 content based on page 2 data
@@ -1352,18 +1986,19 @@ function updateFormPage5Sections() {
 
     // Update fragments details section and sample amount
     const fragmentsCount = parseInt(currentFormData['fragments_count']) || 0;
+    const packagingCount = parseInt(currentFormData['packaging_count']) || 0;
+    const debrisCount = getCombinedDebrisCount(currentFormData);
     const fragmentsDetails = document.getElementById('fragments-details');
     const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
     if (fragmentsDetails) {
-        fragmentsDetails.style.display = fragmentsCount > 0 ? 'block' : 'none';
-        console.log('Fragments details section:', fragmentsCount > 0 ? 'shown' : 'hidden');
+        fragmentsDetails.style.display = debrisCount > 0 ? 'block' : 'none';
+        console.log('Fragments details section:', debrisCount > 0 ? 'shown' : 'hidden');
     }
     if (fragmentsAmountContainer) {
-        fragmentsAmountContainer.style.display = fragmentsCount > 0 ? 'block' : 'none';
+        fragmentsAmountContainer.style.display = debrisCount > 0 ? 'block' : 'none';
     }
 
     // Update packaging details section and sample amount
-    const packagingCount = parseInt(currentFormData['packaging_count']) || 0;
     const packagingDetails = document.getElementById('packaging-details');
     const packagingAmountContainer = document.getElementById('packaging-amount-container');
     if (packagingDetails) {
@@ -1485,6 +2120,12 @@ function loadAndAppendNextPage(pageNumber) {
                 fillFormFieldsInPage(newPage);
             }
 
+            // Publication options are reference-backed and the initial fetch can
+            // finish before page 2 is cloned into the document.
+            if (pageNumber === 2) {
+                updatePage2Content();
+            }
+
             // If loading page 4, update additional info sections
             if (pageNumber === 4) {
                 updatePage4Content();
@@ -1553,6 +2194,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize form data from session storage or create new object
     formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+    setEditFormLocked(isEditMode);
 
     // Initialize device installation period radio button default selection
     initializeDeviceInstallationPeriod();
@@ -1587,6 +2229,116 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load reference data used by dynamic dropdowns and detail-row tables.
     initializeReferenceData();
+    initializeEditModeIfNeeded();
+
+    async function initializeEditModeIfNeeded() {
+        if (!isEditMode || !editSampleId) {
+            return;
+        }
+
+        try {
+            editDataReady = false;
+            setEditFormLocked(true);
+            document.body.classList.add('edit-mode');
+            showTemporaryMessage('Loading your submitted data for editing...', 'info');
+
+            const response = await fetch(`/api/my-samples/${encodeURIComponent(editSampleId)}/form-data`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            const payload = await response.json();
+
+            if (!response.ok || !payload.success) {
+                throw new Error(payload.message || 'Could not load sample data for editing.');
+            }
+
+            formData = {
+                ...(payload.data?.formData || {}),
+                edit_mode: 'true',
+                sample_id: editSampleId
+            };
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            isPageInitialLoad = false;
+
+            addEditModeBanner();
+
+            const firstPage = document.getElementById('form-page1');
+            if (firstPage) {
+                fillFormFieldsInPage(firstPage);
+            }
+
+            for (let pageNumber = 2; pageNumber <= 6; pageNumber += 1) {
+                const existingPage = document.getElementById(`form-page${pageNumber}`);
+                if (existingPage) {
+                    updateExistingPageContent(existingPage, pageNumber);
+                } else {
+                    loadAndAppendNextPage(pageNumber);
+                    loadedPages = Math.max(loadedPages, pageNumber);
+                }
+            }
+
+            const referencesReady = await initializeReferenceData();
+            if (!referencesReady) {
+                throw new Error(
+                    'The reference lists needed to restore this sample could not be loaded. Refresh the page before saving.'
+                );
+            }
+            fillFormFieldsFromSession();
+
+            for (let pageNumber = 2; pageNumber <= 6; pageNumber += 1) {
+                const page = document.getElementById(`form-page${pageNumber}`);
+                if (page) {
+                    updateExistingPageContent(page, pageNumber);
+                }
+            }
+
+            currentPage = 6;
+            updateProgressSteps(currentPage);
+
+            const saveButton = document.getElementById('save-button');
+            if (saveButton) {
+                saveButton.textContent = 'Update Data';
+            }
+
+            // Use the fully restored, reference-aware UI as the edit baseline.
+            // Capturing the raw GET payload earlier can make inherited method
+            // selectors look like user edits and rewrite otherwise untouched rows.
+            syncDetailRowsToFormData();
+            captureEditPercentageSnapshots(formData);
+
+            // Keep update actions blocked until the existing record and all
+            // reference-driven controls have finished restoring.
+            editDataReady = true;
+            setEditFormLocked(false);
+
+            setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 100);
+        } catch (error) {
+            editDataReady = false;
+            setEditFormLocked(true);
+            console.error('Error initializing edit mode:', error);
+            showTemporaryMessage(error.message || 'Failed to load sample data for editing.', 'error');
+        }
+    }
+
+    function addEditModeBanner() {
+        const mainContent = document.querySelector('.main-content');
+        if (!mainContent || document.getElementById('edit-mode-banner')) {
+            return;
+        }
+
+        const banner = document.createElement('div');
+        banner.id = 'edit-mode-banner';
+        banner.className = 'edit-mode-banner';
+        banner.innerHTML = `
+            <strong>Edit My Data</strong>
+            <span>You are editing a submitted sample. Saving will update this record instead of creating a new one.</span>
+        `;
+        mainContent.insertBefore(banner, mainContent.firstChild);
+    }
 
     // Function to set up "Back to New Media" functionality
     function setupBackToNewMediaFunction() {
@@ -1908,13 +2660,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 'existing_location_description', 'existing_location_latitude', 'existing_location_longitude',
 
                 // Page 2: Sampling Event Information
-                'device_installation_period', 'sample_date', 'device_start_date', 'device_end_date',
+                'device_installation_period',
+                'start_year', 'start_month', 'start_day',
+                'end_year', 'end_month', 'end_day',
                 'sample_time', 'sample_description',
 
                 // Page 3: Media Information
                 'media_type', 'water_type', 'water_type_other_description',
                 'sediment_type', 'sediment_type_other_description',
-                'soil_landscape_type', 'surface_landscape_type', 'mixed_media_description',
+                'mixed_media_description',
 
                 // Page 4: Additional Sampling Information
                 'additional_info', 'air_temp', 'current_conditions', 'rainfall', 'environment_type',
@@ -2403,27 +3157,6 @@ For each group you fill, Current Total should equal ${count}.`;
 
         // Define percentage groups that need to sum to 100%
         const percentageGroups = {
-            // Microplastics size percentages
-            mp_size: [
-                'mp_size_lt_1um',
-                'mp_size_1_20um',
-                'mp_size_20_100um',
-                'mp_size_100um_1mm',
-                'mp_size_1_5mm'
-            ],
-            // Microplastics color percentages
-            mp_color: [
-                'mp_color_clear',
-                'mp_color_opaque_light',
-                'mp_color_opaque_dark',
-                'mp_color_mixed'
-            ],
-            // Microplastics form percentages
-            mp_form: [
-                'mp_form_fiber',
-                'mp_form_pellet',
-                'mp_form_fragment'
-            ],
             // Microplastics polymer percentages
             mp_polymer: [
                 'mp_polymer_pete', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe',
@@ -2431,22 +3164,6 @@ For each group you fill, Current Total should equal ${count}.`;
                 'mp_polymer_pla', 'mp_polymer_abs', 'mp_polymer_eva', 'mp_polymer_pb',
                 'mp_polymer_pe_uhmw', 'mp_polymer_pmma', 'mp_polymer_hips', 'mp_polymer_eps',
                 'mp_polymer_pan', 'mp_polymer_rubber', 'mp_polymer_bitumen', 'mp_polymer_other'
-            ],
-            // Fragments color percentages
-            fragment_color: [
-                'fragment_color_clear',
-                'fragment_color_opaque_light',
-                'fragment_color_opaque_dark',
-                'fragment_color_mixed'
-            ],
-            // Fragments form percentages
-            fragment_form: [
-                'fragment_form_fiber',
-                'fragment_form_pellet',
-                'fragment_form_film',
-                'fragment_form_foam',
-                'fragment_form_hardplastic',
-                'fragment_form_other'
             ],
             // Fragments polymer percentages
             fragment_polymer: [
@@ -2460,12 +3177,7 @@ For each group you fill, Current Total should equal ${count}.`;
 
         // Scope each percentage group to the correct details section.
         const groupScopes = {
-            'mp_size': '#microplastics-details',
-            'mp_color': '#microplastics-details',
-            'mp_form': '#microplastics-details',
             'mp_polymer': '#microplastics-details',
-            'fragment_color': '#fragments-details',
-            'fragment_form': '#fragments-details',
             'fragment_polymer': '#fragments-details'
         };
 
@@ -2564,12 +3276,7 @@ For each group you fill, Current Total should equal ${count}.`;
 
             // Map group keys to their title keywords - need exact match for proper identification
             const titleKeywords = {
-                'mp_size': '1. Size',
-                'mp_color': '2. Color type',
-                'mp_form': '3. Form',
                 'mp_polymer': '4. Polymer type',
-                'fragment_color': '1. Color type',
-                'fragment_form': '2. Form',
                 'fragment_polymer': '3. Polymer type'
             };
 
@@ -2642,7 +3349,7 @@ For each group you fill, Current Total should equal ${count}.`;
             validationContainer.style.display = 'block';
             totalElement.textContent = `Current Total: ${total.toFixed(1)}%`;
 
-            const TOLERANCE = 0.5; // Same tolerance as formpage5.ejs validation
+            const TOLERANCE = 0.1; // Match backend and formpage5.ejs validation
 
             if (Math.abs(total - 100) <= TOLERANCE) {
                 // Valid - equals 100% (within tolerance)
@@ -2812,6 +3519,13 @@ For each group you fill, Current Total should equal ${count}.`;
     function updatePackagingUI(count) {
         console.log('Updating UI for packaging count:', count);
 
+        const unknownPurposeCount = parseInt(document.getElementById('fragments-count')?.value, 10) || 0;
+        const showDebrisDetails = count + unknownPurposeCount > 0;
+        const fragmentsDetails = document.getElementById('fragments-details');
+        const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
+        if (fragmentsDetails) fragmentsDetails.style.display = showDebrisDetails ? 'block' : 'none';
+        if (fragmentsAmountContainer) fragmentsAmountContainer.style.display = showDebrisDetails ? 'block' : 'none';
+
         // Update visibility of packaging details section
         const packagingDetails = document.getElementById('packaging-details');
         console.log('packaging-details element:', packagingDetails);
@@ -2944,26 +3658,13 @@ For each group you fill, Current Total should equal ${count}.`;
                 'fragments_sample_amount', 'fragments_sample_unit',
                 'packaging_sample_amount', 'packaging_sample_unit',
 
-                // Water-specific fields (Additional Sampling Information page)
-                'environment_type', 'volume_sampled', 'water_depth',
-                'flow_velocity', 'suspended_solids', 'conductivity',
+                // Media subtype fields
                 'water_type', 'water_type_other_description',
-                'total_water_depth', 'sample_water_depth', 'water_flow_velocity',
-                'turbidity', 'total_suspended_solids',
-
-                // Sediment/soil-specific fields (Additional Sampling Information page)
-                'soil_dry_weight', 'soil_organic_matter', 'soil_moisture',
-                'soil_sand', 'soil_silt', 'soil_clay',
                 'sediment_type', 'sediment_type_other_description',
-                'soil_moisture_content', 'soil_texture', 'soil_texture_method',
-                'sediment_grain_size', 'sediment_organic_content',
-
-                // Mixed media fields
                 'mixed_media_description',
 
-                // Additional sampling parameters
-                'sampling_depth', 'sampling_method', 'filtration_method',
-                'extraction_method', 'identification_method'
+                // Every media-specific field on Additional Information
+                ...PAGE4_ADDITIONAL_FIELDS
             ];
 
             // Clear these fields from formData and sessionStorage
@@ -3004,9 +3705,7 @@ For each group you fill, Current Total should equal ${count}.`;
     document.addEventListener('change', function(event) {
         // Handle suboption radio buttons
         if (event.target.name === 'water_type' ||
-            event.target.name === 'sediment_type' ||
-            event.target.name === 'soil_landscape_type' ||
-            event.target.name === 'surface_landscape_type') {
+            event.target.name === 'sediment_type') {
 
             // Update formData with suboption selection
             const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
@@ -3080,11 +3779,8 @@ For each group you fill, Current Total should equal ${count}.`;
 
                     // Clear all additional info field data when selecting "No"
                     const additionalInfoFields = [
-                        'air_temp', 'current_conditions', 'rainfall', 'environment_type',
-                        'volume_sampled', 'total_water_depth', 'sample_water_depth',
-                        'water_flow_velocity', 'turbidity', 'total_suspended_solids',
-                        'soil_dry_weight', 'soil_organic_matter', 'soil_moisture_content',
-                        'soil_texture', 'soil_texture_method', 'sediment_grain_size', 'sediment_organic_content'
+                        'air_temp', 'current_conditions', 'rainfall',
+                        ...PAGE4_ADDITIONAL_FIELDS
                     ];
 
                     // Clear from formData and sessionStorage
@@ -3278,11 +3974,13 @@ For each group you fill, Current Total should equal ${count}.`;
                                 const count = parseInt(this.value) || 0;
                                 const details = document.getElementById('fragments-details');
                                 const amountContainer = document.getElementById('fragments-amount-container');
+                                const knownPurposeCount = parseInt(document.getElementById('packaging-count')?.value, 10) || 0;
+                                const showDebrisDetails = count + knownPurposeCount > 0;
                                 if (details) {
-                                    details.style.display = count > 0 ? 'block' : 'none';
+                                    details.style.display = showDebrisDetails ? 'block' : 'none';
                                 }
                                 if (amountContainer) {
-                                    amountContainer.style.display = count > 0 ? 'block' : 'none';
+                                    amountContainer.style.display = showDebrisDetails ? 'block' : 'none';
                                 }
                                 // Save to formData
                                 formData['fragments_count'] = this.value;
@@ -3311,40 +4009,33 @@ For each group you fill, Current Total should equal ${count}.`;
     document.addEventListener('change', function(event) {
         if (event.target.name === 'device_installation_period') {
             const isDevicePeriod = event.target.value === 'yes';
-            const singleSection = document.getElementById('single-collection-section');
+            const startLegend = document.getElementById('start-date-legend');
             const deviceSection = document.getElementById('device-period-section');
 
-            if (singleSection && deviceSection) {
-                if (isDevicePeriod) {
-                    // Show device period section, hide single collection
-                    singleSection.style.display = 'none';
-                    deviceSection.style.display = 'block';
-
-                    // Clear single date field since it's not needed
-                    const singleDateInput = document.getElementById('sample-date');
-                    if (singleDateInput) singleDateInput.value = '';
-                } else {
-                    // Show single collection section, hide device period
-                    singleSection.style.display = 'block';
-                    deviceSection.style.display = 'none';
-
-                    // Clear device date fields since they're not needed
-                    const startDateInput = document.getElementById('device-start-date');
-                    const endDateInput = document.getElementById('device-end-date');
-                    if (startDateInput) startDateInput.value = '';
-                    if (endDateInput) endDateInput.value = '';
-                }
-
-                // Update formData
-                const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
-                formData[event.target.name] = event.target.value;
-                sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            if (startLegend) {
+                startLegend.innerHTML = isDevicePeriod
+                    ? 'Device Installation Start Date (<span class="required-marker">*</span>):'
+                    : 'Plastic Collection Date (<span class="required-marker">*</span>):';
             }
+            if (deviceSection) {
+                deviceSection.style.display = isDevicePeriod ? 'block' : 'none';
+            }
+            if (!isDevicePeriod) {
+                clearPartialDateFields('end');
+                syncPartialDateDayOptions('end');
+            }
+
+            formData[event.target.name] = event.target.value;
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
         }
     });
 
     // Add event delegation for publication source Yes/No toggle in form-page2
     document.addEventListener('change', function(event) {
+        if (event.target.classList.contains('publication-select')) {
+            applySelectedPublication(event.target);
+        }
+
         if (event.target.classList.contains('toggle-publication-source')) {
             const showPublication = event.target.value === 'yes';
             const publicationFields = document.getElementById('publication-source-fields');
@@ -3366,11 +4057,11 @@ For each group you fill, Current Total should equal ${count}.`;
                         const el = publicationFields.querySelector(`[name="${name}"]`);
                         if (el) el.value = '';
                     });
+                    setPublicationDetailsLocked(false);
                 }
             }
 
             // Persist the toggle (and cleared fields) to formData
-            const formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
             formData[event.target.name] = event.target.value;
             if (event.target.value === 'no') {
                 ['publication_id_num', 'publication_year', 'publication_authors',
@@ -3378,6 +4069,7 @@ For each group you fill, Current Total should equal ${count}.`;
                  'publication_pub_source_code'].forEach(name => { delete formData[name]; });
             }
             sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            rememberPublicationForLocation();
         }
     });
 
@@ -3797,24 +4489,14 @@ For each group you fill, Current Total should equal ${count}.`;
 
     // Handler for Option A: Start New Location/Date
     function handleNewLocationDate() {
-        // First save current data in background (without alert)
-        saveFormDataSilently().then(() => {
-            // Clear all form data
-            formData = {};
-            sessionStorage.removeItem(formStorageKey);
+        // The options are only displayed after a successful save. Do not submit
+        // the same sample a second time while preparing the next case.
+        formData = {};
+        sessionStorage.removeItem(formStorageKey);
 
-            // Reset to page 1 (location and date)
-            navigateToPage(1);
-
-            // Clear all form fields
-            clearAllFormFields();
-
-            // Show success message
-            showTemporaryMessage('Data saved! Starting fresh data entry for new location and date', 'success');
-        }).catch(error => {
-            console.error('Error saving data:', error);
-            showTemporaryMessage('Error saving data: ' + error.message, 'error');
-        });
+        navigateToPage(1);
+        clearAllFormFields();
+        showTemporaryMessage('Data saved! Starting fresh data entry for new location and date', 'success');
     }
 
     function preserveNextStepFields(fieldNames) {
@@ -3831,157 +4513,131 @@ For each group you fill, Current Total should equal ${count}.`;
 
     // Handler for Option B: Different Media Type (same location/date)
     function handleDifferentMedia() {
-        // First save current data in background (without alert)
-        saveFormDataSilently().then(() => {
-            // Preserve the full location context and sampling date/time metadata.
-            const preservedData = preserveNextStepFields([
-                'location_id',
-                'location_name',
-                'location_shortcode',
-                'location_description',
-                'latitude',
-                'longitude',
-                'streetaddress',
-                'city',
-                'state',
-                'country',
-                'zip_code',
-                'acres',
-                'event_location_description',
-                'event_latitude',
-                'event_longitude',
-                'device_installation_period',
-                'sample_date',
-                'device_start_date',
-                'device_end_date',
-                'sample_time',
-                'publication_id_num',
-                'publication_year',
-                'publication_authors',
-                'publication_journal',
-                'publication_full_citation_apa',
-                'publication_pub_source_code'
-            ]);
+        // Preserve the full location context and sampling date/time metadata.
+        const preservedData = preserveNextStepFields([
+            'location_id',
+            'location_name',
+            'location_shortcode',
+            'location_description',
+            'latitude',
+            'longitude',
+            'streetaddress',
+            'city',
+            'state',
+            'country',
+            'zip_code',
+            'acres',
+            'event_location_description',
+            'event_latitude',
+            'event_longitude',
+            'device_installation_period',
+            'start_year',
+            'start_month',
+            'start_day',
+            'end_year',
+            'end_month',
+            'end_day',
+            'sample_time',
+            'publication_present',
+            'publication_id_num',
+            'publication_year',
+            'publication_authors',
+            'publication_journal',
+            'publication_full_citation_apa',
+            'publication_pub_source_code'
+        ]);
 
-            // Reset form data but keep preserved data
-            formData = preservedData;
-            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+        formData = preservedData;
+        sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
 
-            // Go to page 3 (media type selection)
-            navigateToPage(3);
-
-            // Clear media-specific fields only
-            clearMediaSpecificFields();
-
-            // Show success message
-            showTemporaryMessage('Data saved! Select different media type for same location/date', 'success');
-        }).catch(error => {
-            console.error('Error saving data:', error);
-            showTemporaryMessage('Error saving data: ' + error.message, 'error');
-        });
+        navigateToPage(3);
+        clearMediaSpecificFields();
+        showTemporaryMessage('Data saved! Select different media type for same location/date', 'success');
     }
 
     // Handler for Option C: Additional Sample (same media, location, date)
     function handleSameMediaSample() {
-        // First save current data in background (without alert)
-        saveFormDataSilently().then(() => {
-            // Preserve location/date context plus media selections/subtypes.
-            const preservedData = preserveNextStepFields([
-                'location_id',
-                'location_name',
-                'location_shortcode',
-                'location_description',
-                'latitude',
-                'longitude',
-                'streetaddress',
-                'city',
-                'state',
-                'country',
-                'zip_code',
-                'acres',
-                'event_location_description',
-                'event_latitude',
-                'event_longitude',
-                'device_installation_period',
-                'sample_date',
-                'device_start_date',
-                'device_end_date',
-                'sample_time',
-                'publication_id_num',
-                'publication_year',
-                'publication_authors',
-                'publication_journal',
-                'publication_full_citation_apa',
-                'publication_pub_source_code',
-                'media_type',
-                'water_type',
-                'water_type_other_description',
-                'sediment_type',
-                'sediment_type_other_description',
-                'soil_landscape_type',
-                'surface_landscape_type',
-                'mixed_media_description'
-            ]);
+        // Preserve location/date context plus media selections/subtypes.
+        const preservedData = preserveNextStepFields([
+            'location_id',
+            'location_name',
+            'location_shortcode',
+            'location_description',
+            'latitude',
+            'longitude',
+            'streetaddress',
+            'city',
+            'state',
+            'country',
+            'zip_code',
+            'acres',
+            'event_location_description',
+            'event_latitude',
+            'event_longitude',
+            'device_installation_period',
+            'start_year',
+            'start_month',
+            'start_day',
+            'end_year',
+            'end_month',
+            'end_day',
+            'sample_time',
+            'publication_present',
+            'publication_id_num',
+            'publication_year',
+            'publication_authors',
+            'publication_journal',
+            'publication_full_citation_apa',
+            'publication_pub_source_code',
+            'media_type',
+            'water_type',
+            'water_type_other_description',
+            'sediment_type',
+            'sediment_type_other_description',
+            'mixed_media_description'
+        ]);
 
-            // Reset form data but keep preserved data
-            formData = preservedData;
-            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+        formData = preservedData;
+        sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
 
-            // Go to page 4 (additional sampling information)
-            navigateToPage(4);
-
-            // Clear sample-specific fields only
-            clearSampleSpecificFields();
-
-            // Show success message
-            showTemporaryMessage('Data saved! Enter additional sample for same media and location', 'success');
-        }).catch(error => {
-            console.error('Error saving data:', error);
-            showTemporaryMessage('Error saving data: ' + error.message, 'error');
-        });
+        navigateToPage(4);
+        clearSampleSpecificFields();
+        showTemporaryMessage('Data saved! Enter additional sample for same media and location', 'success');
     }
 
     // Handler for Option D: New Case, Same Publication
     // Keeps ONLY the publication block and starts a brand-new case from page 1.
     function handleSamePublication() {
-        // First save current data in background (without alert)
-        saveFormDataSilently().then(() => {
-            // Preserve only the publication source fields and the Yes/No toggle.
-            const preservedData = preserveNextStepFields([
-                'publication_present',
-                'publication_id_num',
-                'publication_year',
-                'publication_authors',
-                'publication_journal',
-                'publication_full_citation_apa',
-                'publication_pub_source_code'
-            ]);
+        const preservedData = preserveNextStepFields([
+            'publication_present',
+            'publication_id_num',
+            'publication_year',
+            'publication_authors',
+            'publication_journal',
+            'publication_full_citation_apa',
+            'publication_pub_source_code'
+        ]);
 
-            // Reset all form data but keep the publication block.
-            formData = preservedData;
-            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+        if (hasPublicationSource(preservedData)) {
+            preservedData.publication_present = 'yes';
+        }
 
-            // Go back to page 1 (location) to begin a new case.
-            navigateToPage(1);
+        formData = preservedData;
+        sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
 
-            // Clear every field, then restore the preserved publication values.
-            clearAllFormFields();
-            Object.entries(preservedData).forEach(([name, value]) => {
-                document.querySelectorAll(`[name="${name}"]`).forEach(element => {
-                    if (element.type === 'radio' || element.type === 'checkbox') {
-                        element.checked = (element.value === String(value));
-                    } else {
-                        element.value = value;
-                    }
-                });
+        navigateToPage(1);
+        clearAllFormFields();
+        Object.entries(preservedData).forEach(([name, value]) => {
+            document.querySelectorAll(`[name="${name}"]`).forEach(element => {
+                if (element.type === 'radio' || element.type === 'checkbox') {
+                    element.checked = (element.value === String(value));
+                } else {
+                    element.value = value;
+                }
             });
-
-            // Show success message
-            showTemporaryMessage('Data saved! Starting a new case with the same publication', 'success');
-        }).catch(error => {
-            console.error('Error saving data:', error);
-            showTemporaryMessage('Error saving data: ' + error.message, 'error');
         });
+
+        showTemporaryMessage('Data saved! Starting a new case with the same publication', 'success');
     }
 
     // Function to navigate to a specific page (load if not exists, then scroll)
@@ -4221,6 +4877,24 @@ For each group you fill, Current Total should equal ${count}.`;
 
     // Helper function to show temporary success messages
     function showTemporaryMessage(message, type = 'success') {
+        const styles = {
+            success: {
+                background: '#d4edda',
+                color: '#155724',
+                border: '#c3e6cb'
+            },
+            error: {
+                background: '#f8d7da',
+                color: '#721c24',
+                border: '#f5c6cb'
+            },
+            info: {
+                background: '#e8f4fd',
+                color: '#0c5460',
+                border: '#b6dcfe'
+            }
+        };
+        const style = styles[type] || styles.success;
         const messageDiv = document.createElement('div');
         messageDiv.className = `alert alert-${type}`;
         messageDiv.style.position = 'fixed';
@@ -4228,9 +4902,9 @@ For each group you fill, Current Total should equal ${count}.`;
         messageDiv.style.right = '20px';
         messageDiv.style.zIndex = '9999';
         messageDiv.style.padding = '15px';
-        messageDiv.style.backgroundColor = type === 'success' ? '#d4edda' : '#f8d7da';
-        messageDiv.style.color = type === 'success' ? '#155724' : '#721c24';
-        messageDiv.style.border = `1px solid ${type === 'success' ? '#c3e6cb' : '#f5c6cb'}`;
+        messageDiv.style.backgroundColor = style.background;
+        messageDiv.style.color = style.color;
+        messageDiv.style.border = `1px solid ${style.border}`;
         messageDiv.style.borderRadius = '5px';
         messageDiv.style.maxWidth = '300px';
         messageDiv.textContent = message;
@@ -4266,14 +4940,6 @@ For each group you fill, Current Total should equal ${count}.`;
             updatePage5Content(); // Particle Details - load polymer options
         } else if (pageNumber === 6) {
             generateSummary(); // Review and Submit
-        }
-    }
-
-    // Function to update page 2 content based on page 1 data
-    function updatePage2Content() {
-        // Update any dynamic content based on location selection
-        if (formData.location_id) {
-            console.log('Updating page 2 based on location:', formData.location_id);
         }
     }
 
@@ -4342,18 +5008,19 @@ For each group you fill, Current Total should equal ${count}.`;
 
         // Update fragments details section and sample amount
         const fragmentsCount = parseInt(currentFormData['fragments_count']) || 0;
+        const packagingCount = parseInt(currentFormData['packaging_count']) || 0;
+        const debrisCount = getCombinedDebrisCount(currentFormData);
         const fragmentsDetails = document.getElementById('fragments-details');
         const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
         if (fragmentsDetails) {
-            fragmentsDetails.style.display = fragmentsCount > 0 ? 'block' : 'none';
-            console.log('Fragments details section:', fragmentsCount > 0 ? 'shown' : 'hidden');
+            fragmentsDetails.style.display = debrisCount > 0 ? 'block' : 'none';
+            console.log('Fragments details section:', debrisCount > 0 ? 'shown' : 'hidden');
         }
         if (fragmentsAmountContainer) {
-            fragmentsAmountContainer.style.display = fragmentsCount > 0 ? 'block' : 'none';
+            fragmentsAmountContainer.style.display = debrisCount > 0 ? 'block' : 'none';
         }
 
         // Update packaging details section and sample amount
-        const packagingCount = parseInt(currentFormData['packaging_count']) || 0;
         const packagingDetails = document.getElementById('packaging-details');
         const packagingAmountContainer = document.getElementById('packaging-amount-container');
         if (packagingDetails) {
@@ -4431,6 +5098,12 @@ For each group you fill, Current Total should equal ${count}.`;
                     fillFormFieldsInPage(newPage);
                 }
 
+                // Publication options are reference-backed and the initial
+                // fetch can finish before page 2 is cloned into the document.
+                if (pageNumber === 2) {
+                    updatePage2Content();
+                }
+
                 // If loading page 5, update the particle details sections
                 if (pageNumber === 4) {
                     updateFormPage5Sections();
@@ -4481,6 +5154,17 @@ For each group you fill, Current Total should equal ${count}.`;
                 }
 
                 sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+
+                const partialDateMatch = element.name.match(/^(start|end)_(year|month|day)$/);
+                if (partialDateMatch) {
+                    const [, prefix, part] = partialDateMatch;
+                    setPartialDateError(prefix);
+                    if (part === 'year' || part === 'month') {
+                        syncPartialDateDayOptions(prefix, {
+                            preferredDay: formData[`${prefix}_day`]
+                        });
+                    }
+                }
             }
 
             if (element.closest('.detail-percent-section')) {
@@ -4517,6 +5201,7 @@ For each group you fill, Current Total should equal ${count}.`;
         }
 
         syncLocationMapFromInputs({ zoom: 13 });
+        initializePartialDateControls();
     }    // Function to set up summary generation
     function setupSummaryGeneration() {
         console.log('=== Setting up summary generation ===');
@@ -4576,12 +5261,32 @@ For each group you fill, Current Total should equal ${count}.`;
         // Clear interval after 30 seconds to avoid indefinite checking
         setTimeout(() => clearInterval(intervalCheck), 30000);
     }// Function to generate summary for the final page
-    function generateSummary() {
+    async function generateSummary() {
         console.log('=== generateSummary called ===');
         const summaryContainer = document.getElementById('summary-container');
         if (!summaryContainer) {
             console.log('Summary container not found');
             return;
+        }
+
+        if (!dataSummaryUtils) {
+            summaryContainer.innerHTML =
+                '<p class="error-message">The data summary could not be generated. Please refresh the page.</p>';
+            console.error('DataSummaryUtils is not available');
+            return;
+        }
+
+        // Polymer names and method labels are reference-backed. Wait for that
+        // data so the review page never falls back to an incomplete hard-coded
+        // list or displays database IDs as user-facing methods.
+        if (!referenceDataCache) {
+            summaryContainer.innerHTML =
+                '<p style="color: #666; font-style: italic;">Loading complete data summary...</p>';
+            try {
+                await loadReferenceData();
+            } catch (error) {
+                console.error('Could not load reference labels for the data summary:', error);
+            }
         }
 
         // Get current form data from session storage
@@ -4620,7 +5325,6 @@ For each group you fill, Current Total should equal ${count}.`;
         // Check required fields
         const requiredFields = [
             { key: 'location_id', label: 'Location', page: 1 },
-            { key: 'sample_date', label: 'Sample Date', page: 1 },
             { key: 'media_type', label: 'Media Type', page: 2 }
         ];
 
@@ -4631,6 +5335,15 @@ For each group you fill, Current Total should equal ${count}.`;
             if (!formData[field.key] || formData[field.key].toString().trim() === '') {
                 missingRequired.push(field);
             }
+        });
+
+        const dateValidation = validateSamplingEventDates(formData);
+        dateValidation.issues.forEach(message => {
+            missingRequired.push({
+                key: 'sampling_event_date',
+                label: message,
+                page: 2
+            });
         });
 
         // Check percentage validation for quantitative data
@@ -4674,40 +5387,75 @@ For each group you fill, Current Total should equal ${count}.`;
 
         summaryContainer.appendChild(validationSection);
 
+        const particleSummary = dataSummaryUtils.buildParticleSummary(
+            formData,
+            referenceDataCache || {}
+        );
+        const microPolymerEntries = particleSummary.microplastics.polymers;
+        const fragmentPolymerEntries = particleSummary.fragments.polymers;
+
         // Define field groups for better organization
         const fieldGroups = {
             'Location Information': [
                 'location_id', 'location_name', 'location_shortcode', 'location_description', 'latitude', 'longitude',
                 'event_location_description', 'event_latitude', 'event_longitude', 'acres',
-                'streetaddress', 'city', 'state', 'country', 'zip_code'
+                'streetaddress', 'city', 'state', 'country', 'zip_code', 'land_use_cover'
             ],
             'Sampling Event Information': [
-                'device_installation_period', 'sample_date', 'device_start_date', 'device_end_date',
+                'device_installation_period',
+                'start_date_summary', 'end_date_summary',
                 'sample_time', 'sample_description',
+                'publication_present',
                 'publication_id_num', 'publication_year', 'publication_authors', 'publication_journal',
                 'publication_full_citation_apa', 'publication_pub_source_code'
             ],
+            'Submission Notes': [
+                'additional_notes'
+            ],
             'Media Information': [
-                'media_type', 'water_type', 'sediment_type', 'soil_landscape_type', 'surface_landscape_type',
+                'media_type', 'water_type', 'water_type_other_description',
+                'sediment_type', 'sediment_type_other_description',
                 'mixed_media_description'
             ],
-            'Environmental Conditions': [
-                'air_temp', 'current_conditions', 'rainfall', 'environment_type'
+            'Sampling Weather Conditions': [
+                'air_temp', 'current_conditions', 'rainfall'
+            ],
+            'Additional Environmental Information': [
+                'additional_info', 'environment_type'
             ],
             'Additional Water Information': [
-                'volume_sampled', 'water_depth', 'flow_velocity', 'suspended_solids', 'conductivity'
+                'volume_sampled',
+                'total_water_depth', 'sample_water_depth', 'water_depth',
+                'water_flow_velocity', 'flow_velocity',
+                'turbidity',
+                'total_suspended_solids', 'suspended_solids',
+                'dissolved_oxygen', 'conductivity', 'water_additional_notes'
             ],
-            'Additional Soil Information': [
-                'soil_dry_weight', 'soil_organic_matter', 'soil_moisture', 'soil_sand', 'soil_silt', 'soil_clay'
+            'Additional Aquatic Sediment Information': [
+                'sediment_depth', 'sediment_dry_weight', 'sediment_organic_matter',
+                'soil_texture', 'soil_texture_method',
+                'sediment_moisture', 'sediment_sand', 'sediment_silt', 'sediment_clay',
+                'sediment_additional_notes'
+            ],
+            'Additional Terrestrial Soil Information': [
+                'soil_depth', 'soil_sample_dry_weight', 'soil_dry_weight', 'soil_organic_matter',
+                'soil_texture', 'soil_texture_method',
+                'soil_moisture', 'soil_sand', 'soil_silt', 'soil_clay',
+                'soil_additional_notes'
+            ],
+            'Additional Land Surface Information': [
+                'surface_area_sampled', 'permeable_surfaces', 'impermeable_surfaces',
+                'surface_additional_notes'
+            ],
+            'Additional Mixed Media Information': [
+                'mixed_additional_notes'
             ],
             'Quantitative Data': [
-                'has_quantitative_data', 'microplastics_count', 'fragments_count', 'packaging_count'
+                'has_quantitative_data', 'replicates_count',
+                'microplastics_count', 'fragments_count', 'packaging_count'
             ],
             'Sample Amounts': [
-                'total_sample_amount', 'sample_unit',
-                'microplastics_sample_amount', 'microplastics_sample_unit',
-                'fragments_sample_amount', 'fragments_sample_unit',
-                'packaging_sample_amount', 'packaging_sample_unit'
+                'total_sample_amount', 'sample_unit'
             ],
             'Microplastics Size Distribution': [
                 'mp_size_lt_1um', 'mp_size_1_20um', 'mp_size_20_100um', 'mp_size_100um_1mm', 'mp_size_1_5mm'
@@ -4718,13 +5466,7 @@ For each group you fill, Current Total should equal ${count}.`;
             'Microplastics Form Distribution': [
                 'mp_form_fiber', 'mp_form_pellet', 'mp_form_fragment', 'mp_form_film', 'mp_form_foam'
             ],
-            'Microplastics Polymer Types': [
-                'mp_polymer_pet', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe', 'mp_polymer_pp', 'mp_polymer_ps',
-                'mp_polymer_pc', 'mp_polymer_pan', 'mp_polymer_pmma', 'mp_polymer_pa', 'mp_polymer_abs',
-                'mp_polymer_polyester_fiber', 'mp_polymer_acrylic_fiber', 'mp_polymer_pe_fiber', 'mp_polymer_pp_fiber',
-                'mp_polymer_tire_rubber', 'mp_polymer_natural_rubber', 'mp_polymer_synthetic_rubber',
-                'mp_polymer_mixed', 'mp_polymer_unknown', 'mp_polymer_other', 'mp_polymer_other_specify'
-            ],
+            'Microplastics Polymer Types': microPolymerEntries.map(entry => entry.field),
             'Microplastics Estimation Method': [
                 'micro_mass_mp_total', 'micro_method_polymer_num', 'micro_method_polymer_other', 'micro_method_percent_estimate'
             ],
@@ -4732,15 +5474,10 @@ For each group you fill, Current Total should equal ${count}.`;
                 'fragment_color_clear', 'fragment_color_opaque_light', 'fragment_color_opaque_dark', 'fragment_color_mixed'
             ],
             'Fragments Form Distribution': [
-                'fragment_form_fiber', 'fragment_form_pellet', 'fragment_form_film', 'fragment_form_foam', 'fragment_form_hardplastic'
+                'fragment_form_fiber', 'fragment_form_pellet', 'fragment_form_film',
+                'fragment_form_foam', 'fragment_form_hardplastic', 'fragment_form_other'
             ],
-            'Fragments Polymer Types': [
-                'fragment_polymer_pet', 'fragment_polymer_hdpe', 'fragment_polymer_pvc', 'fragment_polymer_ldpe', 'fragment_polymer_pp', 'fragment_polymer_ps',
-                'fragment_polymer_pc', 'fragment_polymer_pan', 'fragment_polymer_pmma', 'fragment_polymer_pa', 'fragment_polymer_abs',
-                'fragment_polymer_polyester_fiber', 'fragment_polymer_acrylic_fiber', 'fragment_polymer_pe_fiber', 'fragment_polymer_pp_fiber',
-                'fragment_polymer_tire_rubber', 'fragment_polymer_natural_rubber', 'fragment_polymer_synthetic_rubber',
-                'fragment_polymer_mixed', 'fragment_polymer_unknown', 'fragment_polymer_other', 'fragment_polymer_other_specify'
-            ],
+            'Fragments Polymer Types': fragmentPolymerEntries.map(entry => entry.field),
             'Fragments Estimation Method': [
                 'fragments_mass_debris_total', 'fragments_method_polymer_num', 'fragments_method_polymer_other', 'fragments_method_percent_estimate'
             ]
@@ -4756,36 +5493,41 @@ For each group you fill, Current Total should equal ${count}.`;
             'event_location_description': 'Event Location Description (Override)',
             'event_latitude': 'Event Latitude (Override)',
             'event_longitude': 'Event Longitude (Override)',
-            'acres': 'Area (km²)',
+            'acres': 'Area (acres)',
             'streetaddress': 'Street Address',
             'city': 'City',
             'state': 'State',
             'country': 'Country',
             'zip_code': 'Zip Code',
+            'land_use_cover': 'Land Use and Land Cover',
 
             // Sampling Event Information
             'device_installation_period': 'Device Installation Period',
-            'sample_date': 'Sample Date',
-            'device_start_date': 'Device Start Date',
-            'device_end_date': 'Device End Date',
+            'start_date_summary': formData.device_installation_period === 'yes'
+                ? 'Device Installation Start Date'
+                : 'Plastic Collection Date',
+            'end_date_summary': 'Device Removal/End Date',
             'sample_time': 'Collection Time',
             'sample_description': 'Sample Description',
+            'publication_present': 'Publication Information Available',
             'publication_id_num': 'Selected Publication',
             'publication_year': 'Publication Year',
             'publication_authors': 'Publication Authors',
             'publication_journal': 'Publication Journal',
             'publication_full_citation_apa': 'Full Citation APA',
             'publication_pub_source_code': 'Publication Source Type',
+            'additional_notes': 'Additional Notes',
 
             // Media Information
             'media_type': 'Media Type',
             'water_type': 'Water Type',
+            'water_type_other_description': 'Other Water Type Description',
             'sediment_type': 'Sediment Type',
-            'soil_landscape_type': 'Soil Landscape Type',
-            'surface_landscape_type': 'Surface Landscape Type',
+            'sediment_type_other_description': 'Other Sediment Type Description',
             'mixed_media_description': 'Mixed Media Description',
 
             // Environmental Conditions
+            'additional_info': 'Additional Sampling Information Available',
             'air_temp': 'Air Temperature (°C)',
             'current_conditions': 'Current Weather Conditions',
             'rainfall': 'Rainfall (cm)',
@@ -4794,17 +5536,44 @@ For each group you fill, Current Total should equal ${count}.`;
             // Additional Water Information
             'volume_sampled': 'Volume Sampled (L)',
             'water_depth': 'Water Depth (m)',
+            'total_water_depth': 'Total Water Depth at Sampling Site (m)',
+            'sample_water_depth': 'Sample Collection Depth (m)',
             'flow_velocity': 'Flow Velocity (m/s)',
+            'water_flow_velocity': 'Water Flow Velocity (m/s)',
+            'turbidity': 'Turbidity (NTU)',
             'suspended_solids': 'Total Suspended Solids (mg/L)',
-            'conductivity': 'Conductivity (μS/cm)',
+            'total_suspended_solids': 'Total Suspended Solids (mg/L)',
+            'dissolved_oxygen': 'Dissolved Oxygen (mg/L)',
+            'conductivity': 'Conductivity (S/m)',
+            'water_additional_notes': 'Additional Water Notes',
 
-            // Additional Soil Information
+            // Additional Aquatic Sediment / Terrestrial Soil Information
+            'sediment_depth': 'Sediment Sampling Depth (m)',
+            'sediment_dry_weight': 'Sediment Sample Dry Weight (g)',
+            'sediment_organic_matter': 'Sediment Organic Matter (%)',
+            'soil_texture': 'Soil Texture Classification',
+            'soil_texture_method': 'Soil Texture Method',
+            'sediment_moisture': 'Sediment Moisture Content (%)',
+            'sediment_sand': 'Sediment Sand Content (%)',
+            'sediment_silt': 'Sediment Silt Content (%)',
+            'sediment_clay': 'Sediment Clay Content (%)',
+            'sediment_additional_notes': 'Additional Sediment Notes',
+            'soil_depth': 'Soil Depth (m)',
+            'soil_sample_dry_weight': 'Soil Sample Dry Weight (g)',
             'soil_dry_weight': 'Soil Dry Weight (g)',
             'soil_organic_matter': 'Soil Organic Matter (%)',
             'soil_moisture': 'Soil Moisture Content (%)',
             'soil_sand': 'Sand Content (%)',
             'soil_silt': 'Silt Content (%)',
             'soil_clay': 'Clay Content (%)',
+            'soil_additional_notes': 'Additional Soil Notes',
+
+            // Additional Land Surface / Mixed Media Information
+            'surface_area_sampled': 'Surface Area Sampled (km²)',
+            'permeable_surfaces': 'Permeable Surfaces (%)',
+            'impermeable_surfaces': 'Impermeable Surfaces (%)',
+            'surface_additional_notes': 'Additional Land Surface Notes',
+            'mixed_additional_notes': 'Additional Mixed Media Notes',
 
             // Quantitative Data
             'has_quantitative_data': 'Quantitative Data Available',
@@ -4843,30 +5612,6 @@ For each group you fill, Current Total should equal ${count}.`;
             'mp_form_film': 'Film (%)',
             'mp_form_foam': 'Foam (%)',
 
-            // Microplastics Polymer Types
-            'mp_polymer_pet': 'PET - Polyethylene Terephthalate #1 (%)',
-            'mp_polymer_hdpe': 'HDPE - High-Density Polyethylene #2 (%)',
-            'mp_polymer_pvc': 'PVC - Polyvinyl Chloride #3 (%)',
-            'mp_polymer_ldpe': 'LDPE - Low-Density Polyethylene #4 (%)',
-            'mp_polymer_pp': 'PP - Polypropylene #5 (%)',
-            'mp_polymer_ps': 'PS - Polystyrene #6 (%)',
-            'mp_polymer_pc': 'PC - Polycarbonate (%)',
-            'mp_polymer_pan': 'PAN - Polyacrylonitrile (%)',
-            'mp_polymer_pmma': 'PMMA - Polymethyl Methacrylate (%)',
-            'mp_polymer_pa': 'PA - Polyamide/Nylon (%)',
-            'mp_polymer_abs': 'ABS - Acrylonitrile Butadiene Styrene (%)',
-            'mp_polymer_polyester_fiber': 'Polyester Fiber (%)',
-            'mp_polymer_acrylic_fiber': 'Acrylic Fiber (%)',
-            'mp_polymer_pe_fiber': 'Polyethylene Fiber (%)',
-            'mp_polymer_pp_fiber': 'Polypropylene Fiber (%)',
-            'mp_polymer_tire_rubber': 'Tire Rubber (SBR) (%)',
-            'mp_polymer_natural_rubber': 'Natural Rubber (%)',
-            'mp_polymer_synthetic_rubber': 'Synthetic Rubber (%)',
-            'mp_polymer_mixed': 'Mixed/Composite Polymers (%)',
-            'mp_polymer_unknown': 'Unknown Polymer Type (%)',
-            'mp_polymer_other': 'Other Polymer Type (%)',
-            'mp_polymer_other_specify': 'Specify Other Polymer Type',
-
             // Microplastics Estimation Method
             'micro_mass_mp_total': 'Total Microplastics Mass (g)',
             'micro_method_polymer_num': 'Microplastics Polymer ID Method',
@@ -4883,59 +5628,124 @@ For each group you fill, Current Total should equal ${count}.`;
             'fragment_form_film': 'Film (%)',
             'fragment_form_foam': 'Foam (%)',
             'fragment_form_hardplastic': 'Hard Plastic (%)',
-
-            // Fragments Polymer Types
-            'fragment_polymer_pet': 'PET - Polyethylene Terephthalate #1 (%)',
-            'fragment_polymer_hdpe': 'HDPE - High-Density Polyethylene #2 (%)',
-            'fragment_polymer_pvc': 'PVC - Polyvinyl Chloride #3 (%)',
-            'fragment_polymer_ldpe': 'LDPE - Low-Density Polyethylene #4 (%)',
-            'fragment_polymer_pp': 'PP - Polypropylene #5 (%)',
-            'fragment_polymer_ps': 'PS - Polystyrene #6 (%)',
-            'fragment_polymer_pc': 'PC - Polycarbonate (%)',
-            'fragment_polymer_pan': 'PAN - Polyacrylonitrile (%)',
-            'fragment_polymer_pmma': 'PMMA - Polymethyl Methacrylate (%)',
-            'fragment_polymer_pa': 'PA - Polyamide/Nylon (%)',
-            'fragment_polymer_abs': 'ABS - Acrylonitrile Butadiene Styrene (%)',
-            'fragment_polymer_polyester_fiber': 'Polyester Fiber (%)',
-            'fragment_polymer_acrylic_fiber': 'Acrylic Fiber (%)',
-            'fragment_polymer_pe_fiber': 'Polyethylene Fiber (%)',
-            'fragment_polymer_pp_fiber': 'Polypropylene Fiber (%)',
-            'fragment_polymer_tire_rubber': 'Tire Rubber (SBR) (%)',
-            'fragment_polymer_natural_rubber': 'Natural Rubber (%)',
-            'fragment_polymer_synthetic_rubber': 'Synthetic Rubber (%)',
-            'fragment_polymer_mixed': 'Mixed/Composite Polymers (%)',
-            'fragment_polymer_unknown': 'Unknown Polymer Type (%)',
-            'fragment_polymer_other': 'Other Polymer Type (%)',
-            'fragment_polymer_other_specify': 'Specify Other Polymer Type',
+            'fragment_form_other': 'Other Form (%)',
 
             // Fragments Estimation Method
             'fragments_mass_debris_total': 'Total Debris Mass (g)',
             'fragments_method_polymer_num': 'Fragments Polymer ID Method',
             'fragments_method_polymer_other': 'Other Fragments Polymer ID Method',
             'fragments_method_percent_estimate': 'Fragments Percent Method'
-        };        // Check if packaging items exist and add them to a separate section
-        const packagingItems = [];
-        Object.keys(formData).forEach(key => {
-            if (key.startsWith('packaging_') && key !== 'packaging_count') {
-                packagingItems.push(key);
-            }
+        };
+
+        [...microPolymerEntries, ...fragmentPolymerEntries].forEach(entry => {
+            fieldLabels[entry.field] = entry.label;
         });
 
-        if (packagingItems.length > 0) {
-            fieldGroups['Packaging Items'] = packagingItems;
+        function getSummaryFieldValue(field) {
+            if (field === 'start_date_summary') {
+                return partialDateUtils.formatPartialDate(
+                    getPartialDateParts(formData, 'start'),
+                    { emptyLabel: '' }
+                );
+            }
+            if (field === 'end_date_summary') {
+                if (formData.device_installation_period !== 'yes') return '';
+                return partialDateUtils.formatPartialDate(
+                    getPartialDateParts(formData, 'end'),
+                    { emptyLabel: '' }
+                );
+            }
+            return formData[field];
+        }
+
+        const methodReferenceFields = new Set([
+            'micro_method_polymer_num',
+            'micro_method_percent_estimate',
+            'fragments_method_polymer_num',
+            'fragments_method_percent_estimate',
+            'soil_texture_method'
+        ]);
+        const particleMethodLabels = new Map([
+            ['micro_method_polymer_num', particleSummary.microplastics.polymerMethod],
+            ['micro_method_percent_estimate', particleSummary.microplastics.percentMethod],
+            ['fragments_method_polymer_num', particleSummary.fragments.polymerMethod],
+            ['fragments_method_percent_estimate', particleSummary.fragments.percentMethod]
+        ]);
+        const yesNoFields = new Set(['publication_present', 'additional_info']);
+
+        function getSelectedControlLabel(field, value) {
+            const select = Array.from(document.querySelectorAll('select[name]'))
+                .find(element => element.name === field);
+            const option = Array.from(select?.options || [])
+                .find(item => String(item.value) === String(value));
+            if (option?.textContent) {
+                return option.textContent.trim();
+            }
+
+            const radio = Array.from(
+                document.querySelectorAll('input[type="radio"][name]')
+            ).find(element =>
+                element.name === field && String(element.value) === String(value)
+            );
+            const radioLabel = Array.from(radio?.labels || [])[0] ||
+                radio?.closest('label');
+            return String(radioLabel?.textContent || '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function getSummaryDisplayValue(field, value) {
+            const selectedControlLabel = getSelectedControlLabel(field, value);
+            if (methodReferenceFields.has(field)) {
+                const modelLabel = particleMethodLabels.get(field);
+                if (modelLabel && !modelLabel.startsWith('Unknown method')) {
+                    return modelLabel;
+                }
+                return dataSummaryUtils.resolveMethodLabel(
+                    value,
+                    referenceDataCache?.methods || [],
+                    selectedControlLabel
+                );
+            }
+            if (selectedControlLabel && !selectedControlLabel.startsWith('--')) {
+                return selectedControlLabel;
+            }
+            if (yesNoFields.has(field)) {
+                if (value === 'yes') return 'Yes';
+                if (value === 'no') return 'No';
+            }
+            return value;
         }
 
         const allDefinedFields = new Set();
         Object.values(fieldGroups).forEach(fields => {
             fields.forEach(field => allDefinedFields.add(field));
         });
+        [
+            'start_year', 'start_month', 'start_day',
+            'end_year', 'end_month', 'end_day',
+            'existing_location_description',
+            'existing_location_latitude',
+            'existing_location_longitude',
+            'location_type',
+            'edit_mode',
+            'sample_id',
+            'sampling_event_id',
+            'microplastics_sample_amount',
+            'microplastics_sample_unit',
+            'fragments_sample_amount',
+            'fragments_sample_unit',
+            'packaging_sample_amount',
+            'packaging_sample_unit'
+        ].forEach(field => allDefinedFields.add(field));
 
+        const packagingItemPattern =
+            /^packaging_(?:id|purpose|recycle_code|color_opacity|color)_(\d+)$/;
         const otherFields = Object.keys(formData).filter(field =>
             !allDefinedFields.has(field) &&
             !DETAIL_TABLES.includes(field) &&
-            formData[field] &&
-            formData[field].toString().trim() !== '' &&
-            !field.startsWith('packaging_') // These are handled separately
+            dataSummaryUtils.hasSummaryValue(formData[field]) &&
+            !packagingItemPattern.test(field)
         );
 
         let otherSectionAdded = false;
@@ -4967,7 +5777,7 @@ For each group you fill, Current Total should equal ${count}.`;
                 const valueDiv = document.createElement('div');
                 valueDiv.className = 'summary-value';
                 valueDiv.style.width = '60%';
-                valueDiv.textContent = formData[field];
+                valueDiv.textContent = getSummaryDisplayValue(field, formData[field]);
 
                 itemDiv.appendChild(labelDiv);
                 itemDiv.appendChild(valueDiv);
@@ -4977,25 +5787,35 @@ For each group you fill, Current Total should equal ${count}.`;
             otherSectionAdded = true;
         }
 
+        const groupMediaTypes = {
+            'Additional Water Information': ['water'],
+            'Additional Aquatic Sediment Information': ['soil_sediment'],
+            'Additional Terrestrial Soil Information': ['in_soil'],
+            'Additional Land Surface Information': ['soil_litter'],
+            'Additional Mixed Media Information': ['mixed_composite']
+        };
+
         // Create summary sections by field groups
-        for (const [groupTitle, fields] of Object.entries(fieldGroups)) {
+        for (const [groupTitle, configuredFields] of Object.entries(fieldGroups)) {
             // Skip certain groups based on conditions
-            if (groupTitle === 'Additional Water Information' && formData['media_type'] !== 'water') {
-                continue;
-            }
-            if (groupTitle === 'Additional Soil Information' && !['soil_sediment', 'in_soil', 'soil_litter'].includes(formData['media_type'])) {
-                continue;
+            const allowedMediaTypes = groupMediaTypes[groupTitle];
+            let fields = configuredFields;
+            if (allowedMediaTypes && !allowedMediaTypes.includes(formData.media_type)) {
+                // Normally media changes clear these values. If older/edit data
+                // still contains non-current media fields, show them instead of
+                // hiding data that would otherwise remain in the submission.
+                fields = configuredFields.filter(field =>
+                    field !== 'soil_texture' && field !== 'soil_texture_method'
+                );
+                if (!fields.some(field =>
+                    dataSummaryUtils.hasSummaryValue(getSummaryFieldValue(field))
+                )) {
+                    continue;
+                }
             }
             if (groupTitle === 'Sample Amounts' && formData['has_quantitative_data'] !== 'yes') {
                 continue;
             }
-            if (groupTitle.includes('Microplastics') && (!formData['microplastics_count'] || parseInt(formData['microplastics_count']) === 0)) {
-                continue;
-            }
-            if (groupTitle.includes('Fragments') && (!formData['fragments_count'] || parseInt(formData['fragments_count']) === 0)) {
-                continue;
-            }
-
             // Create group header
             const groupHeader = document.createElement('h4');
             groupHeader.textContent = groupTitle;
@@ -5012,7 +5832,8 @@ For each group you fill, Current Total should equal ${count}.`;
                     return;
                 }
 
-                if (formData[field] && formData[field].toString().trim() !== '') {
+                const summaryFieldValue = getSummaryFieldValue(field);
+                if (dataSummaryUtils.hasSummaryValue(summaryFieldValue)) {
                     hasValues = true;
 
                     const itemDiv = document.createElement('div');
@@ -5042,10 +5863,12 @@ For each group you fill, Current Total should equal ${count}.`;
                         valueDiv.textContent = formData[field] === 'yes' ? 'Yes (Device installed for a period)' : 'No (Single collection event)';
                     } else if (field === 'has_quantitative_data') {
                         valueDiv.textContent = formData[field] === 'yes' ? 'Yes' : formData[field] === 'no' ? 'No' : 'Not specified';
+                    } else if (field === 'start_date_summary' || field === 'end_date_summary') {
+                        valueDiv.textContent = summaryFieldValue;
                     } else if (field.includes('_polymer_other_specify')) {
                         // Display the specified polymer type with percentage from the corresponding _other field
                         const otherField = field.replace('_specify', '');
-                        if (formData[otherField]) {
+                        if (dataSummaryUtils.hasSummaryValue(formData[otherField])) {
                             valueDiv.textContent = `${formData[field]} (${formData[otherField]}%)`;
                             valueDiv.style.fontStyle = 'italic';
                             valueDiv.style.color = '#0066cc';
@@ -5056,7 +5879,7 @@ For each group you fill, Current Total should equal ${count}.`;
                         // Don't display the generic "Other" entry if there's a specification
                         return;
                     } else {
-                        valueDiv.textContent = formData[field];
+                        valueDiv.textContent = getSummaryDisplayValue(field, summaryFieldValue);
                     }
 
                     itemDiv.appendChild(labelDiv);
@@ -5103,6 +5926,32 @@ For each group you fill, Current Total should equal ${count}.`;
             detailHeader.style.borderBottom = '1px solid #ddd';
             summaryContainer.appendChild(detailHeader);
 
+            const sectionMethodLabels = dataSummaryUtils.getDetailMethodLabels(
+                rows,
+                referenceDataCache?.methods || []
+            );
+            if (sectionMethodLabels.length > 0) {
+                const methodItem = document.createElement('div');
+                methodItem.className = 'summary-item';
+                methodItem.style.display = 'flex';
+                methodItem.style.marginBottom = '8px';
+
+                const methodLabel = document.createElement('div');
+                methodLabel.className = 'summary-label';
+                methodLabel.style.width = '40%';
+                methodLabel.style.fontWeight = 'bold';
+                methodLabel.textContent = 'Section Percent Estimation Method';
+
+                const methodValue = document.createElement('div');
+                methodValue.className = 'summary-value';
+                methodValue.style.width = '60%';
+                methodValue.textContent = sectionMethodLabels.join(', ');
+
+                methodItem.appendChild(methodLabel);
+                methodItem.appendChild(methodValue);
+                summaryContainer.appendChild(methodItem);
+            }
+
             rows.forEach(row => {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'summary-item';
@@ -5126,20 +5975,25 @@ For each group you fill, Current Total should equal ${count}.`;
             });
         });
 
-        // Add a section for packaging details if needed
-        if (parseInt(formData['packaging_count']) > 0) {
-            // Create a header for packaging items
+        // Preserve legacy per-item packaging data when it is actually present,
+        // without creating an empty section for the current count-only form.
+        const packagingItemNumbers = [...new Set(
+            Object.keys(formData)
+                .map(field => field.match(packagingItemPattern))
+                .filter(match => match && dataSummaryUtils.hasSummaryValue(formData[match[0]]))
+                .map(match => Number.parseInt(match[1], 10))
+        )].sort((left, right) => left - right);
+
+        if (packagingItemNumbers.length > 0) {
             const packagingHeader = document.createElement('h4');
-            packagingHeader.textContent = `Packaging Items (${formData['packaging_count']})`;
+            packagingHeader.textContent = `Packaging Item Details (${packagingItemNumbers.length})`;
             packagingHeader.style.marginBottom = '10px';
             packagingHeader.style.marginTop = '15px';
             packagingHeader.style.paddingBottom = '5px';
             packagingHeader.style.borderBottom = '1px solid #ddd';
             summaryContainer.appendChild(packagingHeader);
 
-            // Group by item number
-            const itemCount = parseInt(formData['packaging_count']);
-            for (let i = 1; i <= itemCount; i++) {
+            packagingItemNumbers.forEach(i => {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'packaging-item-summary';
                 itemDiv.style.margin = '10px 0';
@@ -5163,7 +6017,7 @@ For each group you fill, Current Total should equal ${count}.`;
 
                 let hasItemData = false;
                 packagingFields.forEach(fieldInfo => {
-                    if (formData[fieldInfo.key]) {
+                    if (dataSummaryUtils.hasSummaryValue(formData[fieldInfo.key])) {
                         hasItemData = true;
                         const fieldDiv = document.createElement('div');
                         fieldDiv.style.display = 'flex';
@@ -5187,30 +6041,14 @@ For each group you fill, Current Total should equal ${count}.`;
                 if (hasItemData) {
                     summaryContainer.appendChild(itemDiv);
                 }
-            }
-        }
-
-        function resolveSectionEditPage(sectionTitle) {
-            if (sectionTitle === 'Location Information') return 1;
-            if (sectionTitle === 'Other Information') return 4;
-            if (sectionTitle === 'Sampling Event Information') return 2;
-            if (sectionTitle === 'Media Information') return 3;
-            if (
-                sectionTitle === 'Environmental Conditions' ||
-                sectionTitle === 'Additional Water Information' ||
-                sectionTitle === 'Additional Soil Information'
-            ) {
-                return 4;
-            }
-            if (sectionTitle === 'Data Validation Status') return 6;
-            return 5; // Most summary blocks map to Step 5 details
+            });
         }
 
         // Add edit buttons for each section for better usability
         const sectionHeaders = summaryContainer.querySelectorAll('h4');
         sectionHeaders.forEach(header => {
             const sectionTitle = header.textContent;
-            const pageNumber = resolveSectionEditPage(sectionTitle);
+            const pageNumber = dataSummaryUtils.resolveSectionEditPage(sectionTitle);
 
             const editButton = document.createElement('button');
             editButton.type = 'button';
@@ -5239,7 +6077,7 @@ For each group you fill, Current Total should equal ${count}.`;
             }
 
             const sectionTitle = header.textContent;
-            const pageNumber = resolveSectionEditPage(sectionTitle);
+            const pageNumber = dataSummaryUtils.resolveSectionEditPage(sectionTitle);
 
             const editButton = document.createElement('button');
             editButton.type = 'button';
@@ -5287,14 +6125,17 @@ For each group you fill, Current Total should equal ${count}.`;
             return;
         }
 
+        const saveRequest = getSaveRequestConfig();
+        const requestPayload = buildSubmissionPayload(dataToSubmit);
+
         // Use fetch API to submit data
-        fetch('/api/save-form-data', {
-                method: 'POST',
+        fetch(saveRequest.url, {
+                method: saveRequest.method,
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify(dataToSubmit)
+                body: JSON.stringify(requestPayload)
             })
             .then(async response => {
                 if (!response.ok) {
@@ -5316,7 +6157,9 @@ For each group you fill, Current Total should equal ${count}.`;
                     const locationData = {};
                     const locationFields = [
                         'location_id', 'location_name', 'latitude', 'longitude',
-                        'acres', 'address', 'zip_code', 'sample_date',
+                        'acres', 'address', 'zip_code',
+                        'start_year', 'start_month', 'start_day',
+                        'end_year', 'end_month', 'end_day',
                         'publication_id_num', 'publication_year', 'publication_authors',
                         'publication_journal', 'publication_full_citation_apa',
                         'publication_pub_source_code'
@@ -5403,14 +6246,17 @@ For each group you fill, Current Total should equal ${count}.`;
             return Promise.reject(new Error(msg));
         }
 
+        const saveRequest = getSaveRequestConfig();
+        const requestPayload = buildSubmissionPayload(formData);
+
         // Submit data directly to save endpoint
-        return fetch('/api/save-form-data', {
-            method: 'POST',
+        return fetch(saveRequest.url, {
+            method: saveRequest.method,
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
-            body: JSON.stringify(formData)
+            body: JSON.stringify(requestPayload)
         })
         .then(async response => {
             console.log('Silent save response status:', response.status);
@@ -5463,14 +6309,17 @@ For each group you fill, Current Total should equal ${count}.`;
             return;
         }
 
+        const saveRequest = getSaveRequestConfig();
+        const requestPayload = buildSubmissionPayload(formData);
+
         // Submit data to server
-        fetch('/api/save-form-data', {
-            method: 'POST',
+        fetch(saveRequest.url, {
+            method: saveRequest.method,
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
-            body: JSON.stringify(formData)
+            body: JSON.stringify(requestPayload)
         })
         .then(async response => {
             console.log('Save response status:', response.status);
@@ -5488,7 +6337,18 @@ For each group you fill, Current Total should equal ${count}.`;
             if (data.success) {
                 handleSavedPublication(data);
                 // Show success message at the top of the page
-                showTemporaryMessage('Data Saved Successfully!', 'success');
+                showTemporaryMessage(saveRequest.successMessage, 'success');
+
+                if (isEditMode) {
+                    if (saveButton) {
+                        saveButton.textContent = originalText;
+                        saveButton.disabled = false;
+                    }
+                    setTimeout(() => {
+                        window.location.href = '/my-samples';
+                    }, 900);
+                    return;
+                }
 
                 // Show three options on the page (not in popup)
                 showNextStepsOptions();
@@ -5560,14 +6420,17 @@ For each group you fill, Current Total should equal ${count}.`;
             return;
         }
 
+        const saveRequest = getSaveRequestConfig();
+        const requestPayload = buildSubmissionPayload(formData);
+
         // Submit data directly to save endpoint
-        fetch('/api/save-form-data', {
-            method: 'POST',
+        fetch(saveRequest.url, {
+            method: saveRequest.method,
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
-            body: JSON.stringify(formData)
+            body: JSON.stringify(requestPayload)
         })
         .then(async response => {
             console.log('Save response status:', response.status);
@@ -5585,6 +6448,19 @@ For each group you fill, Current Total should equal ${count}.`;
             console.log('Save endpoint success:', data);
             if (data.success) {
                 handleSavedPublication(data);
+
+                if (isEditMode) {
+                    showTemporaryMessage(saveRequest.successMessage, 'success');
+                    if (saveButton) {
+                        saveButton.textContent = originalText;
+                        saveButton.disabled = false;
+                    }
+                    setTimeout(() => {
+                        window.location.href = '/my-samples';
+                    }, 900);
+                    return;
+                }
+
                 // Show success message and options for next steps
                 showIterationConfirmation();
 
@@ -5712,36 +6588,16 @@ function restorePackagingSelections() {
 // Function to validate page 2 (sampling event information)
 function validatePage2() {
     const devicePeriodRadio = document.querySelector('input[name="device_installation_period"]:checked');
-      if (!devicePeriodRadio) {
+    if (!devicePeriodRadio) {
         displayErrorMessage('Please select whether this sample came from a device installed for a period of time.');
         return false;
     }
 
-    if (devicePeriodRadio.value === 'yes') {
-        // Validate device installation period dates
-        const startDate = document.getElementById('device-start-date')?.value;
-        const endDate = document.getElementById('device-end-date')?.value;
-          if (!startDate) {
-            displayErrorMessage('Please provide the device installation start date.');
-            return false;
-        }
-          if (!endDate) {
-            displayErrorMessage('Please provide the device removal/end date.');
-            return false;        }
-
-        // Validate that end date is after start date
-        if (new Date(endDate) <= new Date(startDate)) {
-            displayErrorMessage('Device removal/end date must be after the installation start date.');
-            return false;
-        }
-    } else {
-        // Validate single collection date
-        const sampleDate = document.getElementById('sample-date')?.value;
-
-        if (!sampleDate) {
-            displayErrorMessage('Please provide the plastic collection date.');
-            return false;
-        }
+    saveCurrentPageData();
+    const validation = validateSamplingEventDates(formData, { showErrors: true });
+    if (!validation.ok) {
+        displayErrorMessage(validation.issues[0]);
+        return false;
     }
 
     return true;
@@ -5806,7 +6662,9 @@ window.addTestData = function() {
         'location_name': 'Test Location',
         'latitude': '42.3601',
         'longitude': '-71.0589',
-        'sample_date': '2025-06-18',
+        'start_year': '2025',
+        'start_month': '6',
+        'start_day': '18',
         'media_type': 'water',
         'sample_description': 'Test sample description'
     };

@@ -1,19 +1,57 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// Create transporter for sending emails
-const transporter = nodemailer.createTransport({
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function singleLine(value) {
+    return String(value || '').replace(/[\r\n]+/g, ' ').trim();
+}
+
+function getAccountDetails(to, accountOrUsername) {
+    const account = accountOrUsername && typeof accountOrUsername === 'object'
+        ? accountOrUsername
+        : { username: accountOrUsername };
+
+    return {
+        username: singleLine(account.username),
+        email: singleLine(account.email || to),
+        name: [account.first_name, account.last_name]
+            .map(singleLine)
+            .filter(Boolean)
+            .join(' '),
+        greeting: singleLine(account.first_name || account.username || 'there')
+    };
+}
+
+// Port 465 uses implicit TLS. Other SMTP submission ports must successfully
+// upgrade with STARTTLS, and certificate verification remains enabled.
+const smtpPort = Number.parseInt(process.env.SMTP_PORT, 10) || 587;
+const smtpSecure = smtpPort === 465;
+const transportOptions = {
     host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: false, // true for 465, false for other ports
+    port: smtpPort,
+    secure: smtpSecure,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 30000,
     auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS
-    },
-    tls: {
-        rejectUnauthorized: false
     }
-});
+};
+
+if (!smtpSecure) {
+    transportOptions.requireTLS = true;
+}
+
+const transporter = nodemailer.createTransport(transportOptions);
 
 // Verify transporter configuration
 transporter.verify((error, success) => {
@@ -28,9 +66,17 @@ transporter.verify((error, success) => {
  * Send password reset email
  * @param {string} to - Recipient email address
  * @param {string} resetLink - Password reset link
- * @param {string} username - User's username
+ * @param {Object|string} account - Account details (legacy username strings are supported)
+ * @param {Object} options - Optional delivery metadata such as a stable messageId
  */
-async function sendPasswordResetEmail(to, resetLink, username) {
+async function sendPasswordResetEmail(to, resetLink, account, options = {}) {
+    const accountDetails = getAccountDetails(to, account);
+    const safeGreeting = escapeHtml(accountDetails.greeting);
+    const safeUsername = escapeHtml(accountDetails.username);
+    const safeEmail = escapeHtml(accountDetails.email);
+    const safeName = escapeHtml(accountDetails.name);
+    const safeResetLink = escapeHtml(resetLink);
+
     const mailOptions = {
         from: {
             name: 'MicroPlastics Data System',
@@ -38,6 +84,7 @@ async function sendPasswordResetEmail(to, resetLink, username) {
         },
         to: to,
         subject: 'Password Reset Request - MicroPlastics Data System',
+        ...(options.messageId ? { messageId: options.messageId } : {}),
         html: `
         <!DOCTYPE html>
         <html>
@@ -100,6 +147,16 @@ async function sendPasswordResetEmail(to, resetLink, username) {
                     margin: 20px 0;
                     color: #856404;
                 }
+                .account-box {
+                    background-color: #eef8fc;
+                    border: 1px solid #b8e3f4;
+                    border-radius: 6px;
+                    padding: 15px;
+                    margin: 20px 0;
+                }
+                .account-box p {
+                    margin: 4px 0;
+                }
                 .email-footer {
                     background-color: #f5f5f5;
                     padding: 20px 30px;
@@ -126,18 +183,24 @@ async function sendPasswordResetEmail(to, resetLink, username) {
                 </div>
                 
                 <div class="email-body">
-                    <h2>Hello ${username},</h2>
-                    
+                    <h2>Hello ${safeGreeting},</h2>
+
                     <p>We received a request to reset your password for your MicroPlastics Data System account.</p>
-                    
+
+                    <div class="account-box">
+                        <p><strong>Account username:</strong> ${safeUsername}</p>
+                        <p><strong>Registered email:</strong> ${safeEmail}</p>
+                        ${safeName ? `<p><strong>Account name:</strong> ${safeName}</p>` : ''}
+                    </div>
+
                     <p>Click the button below to reset your password:</p>
                     
                     <div style="text-align: center;">
-                        <a href="${resetLink}" class="reset-button">Reset Password</a>
+                        <a href="${safeResetLink}" class="reset-button">Reset Password</a>
                     </div>
                     
                     <p>Or copy and paste this link into your browser:</p>
-                    <div class="link-text">${resetLink}</div>
+                    <div class="link-text">${safeResetLink}</div>
                     
                     <div class="warning-box">
                         <strong>⚠️ Important:</strong>
@@ -166,10 +229,14 @@ async function sendPasswordResetEmail(to, resetLink, username) {
         text: `
         Password Reset Request - MicroPlastics Data System
         
-        Hello ${username},
-        
+        Hello ${accountDetails.greeting},
+
         We received a request to reset your password for your MicroPlastics Data System account.
-        
+
+        Account username: ${accountDetails.username}
+        Registered email: ${accountDetails.email}
+        ${accountDetails.name ? `Account name: ${accountDetails.name}` : ''}
+
         Please click the following link to reset your password:
         ${resetLink}
         
@@ -196,9 +263,14 @@ async function sendPasswordResetEmail(to, resetLink, username) {
 /**
  * Send password reset confirmation email
  * @param {string} to - Recipient email address
- * @param {string} username - User's username
+ * @param {Object|string} account - Account details (legacy username strings are supported)
  */
-async function sendPasswordResetConfirmationEmail(to, username) {
+async function sendPasswordResetConfirmationEmail(to, account) {
+    const accountDetails = getAccountDetails(to, account);
+    const safeGreeting = escapeHtml(accountDetails.greeting);
+    const safeUsername = escapeHtml(accountDetails.username);
+    const safeEmail = escapeHtml(accountDetails.email);
+
     const mailOptions = {
         from: {
             name: 'MicroPlastics Data System',
@@ -257,6 +329,15 @@ async function sendPasswordResetConfirmationEmail(to, username) {
                     margin: 20px 0;
                     color: #0c5460;
                 }
+                .account-box {
+                    background-color: #f5f5f5;
+                    border-radius: 6px;
+                    padding: 15px;
+                    margin: 20px 0;
+                }
+                .account-box p {
+                    margin: 4px 0;
+                }
             </style>
         </head>
         <body>
@@ -266,10 +347,15 @@ async function sendPasswordResetConfirmationEmail(to, username) {
                 </div>
                 
                 <div class="email-body">
-                    <h2>Hello ${username},</h2>
-                    
+                    <h2>Hello ${safeGreeting},</h2>
+
                     <div class="success-box">
                         <strong>Great news!</strong> Your password has been successfully reset.
+                    </div>
+
+                    <div class="account-box">
+                        <p><strong>Account username:</strong> ${safeUsername}</p>
+                        <p><strong>Registered email:</strong> ${safeEmail}</p>
                     </div>
                     
                     <p>Your MicroPlastics Data System account password has been updated successfully. You can now log in with your new password.</p>
@@ -291,9 +377,11 @@ async function sendPasswordResetConfirmationEmail(to, username) {
         text: `
         Password Reset Successful - MicroPlastics Data System
         
-        Hello ${username},
-        
+        Hello ${accountDetails.greeting},
+
         Your MicroPlastics Data System account password has been successfully reset.
+        Account username: ${accountDetails.username}
+        Registered email: ${accountDetails.email}
         You can now log in with your new password.
         
         If you didn't make this change, please contact our support team immediately.

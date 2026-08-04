@@ -56,8 +56,7 @@ async function createSampleDataTable() {
           \`particle_color\` varchar(50) DEFAULT NULL,
           \`polymer_code\` text DEFAULT NULL,
           \`analysis_type\` varchar(100) DEFAULT NULL,
-          \`storage_location\` varchar(100) DEFAULT NULL,
-          
+
           -- Additional data and notes
           \`notes\` text DEFAULT NULL,
           \`additional_data\` longtext DEFAULT NULL COMMENT 'JSON string for additional form fields',

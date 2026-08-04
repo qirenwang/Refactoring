@@ -26,6 +26,7 @@
             <% } %>
             
             <form id="loginForm" action="/auth/login" method="POST">
+                <input type="hidden" name="returnUrl" value="<%= returnUrl %>">
                 <div class="form-group">
                     <label class="form-label" for="login">Username or Email:</label>
                     <input type="text" id="login" name="login" class="form-input" required>
@@ -39,8 +40,8 @@
                 <div class="form-group">
                     <label class="form-label" for="captcha">Verification Code:</label>
                     <div class="captcha-container">
-                        <img id="captcha-image" src="/auth/captcha" alt="Captcha" class="captcha-image" 
-                             onclick="refreshCaptcha()" title="Click to refresh">
+                        <img id="captcha-image" src="/auth/captcha" alt="Captcha" class="captcha-image"
+                             title="Click to refresh">
                         <input type="text" id="captcha" name="captcha" class="form-input captcha-input" 
                                placeholder="Enter code" required>
                     </div>
@@ -56,14 +57,10 @@
         </div>
           <div class="form-footer">
             <p>Don't have an account? <a href="/signup">Sign up here</a></p>
-            <p><a href="/auth/reset-password">Forgot your password?</a></p>
+            <p><a href="/auth/reset-password">Forgot your username or password?</a></p>
         </div>
-    </div>    <script>
-        function refreshCaptcha() {
-            const captchaImage = document.getElementById('captcha-image');
-            captchaImage.src = '/auth/captcha?' + Math.random();
-            document.getElementById('captcha').value = '';
-        }    </script>    <script src="/js/auth.js"></script>
+    </div>
+    <script src="/js/auth.js"></script>
     
     <!-- Disable Stagewise Toolbar for auth pages -->
     <% if (false && process.env.NODE_ENV !== 'production') { %>

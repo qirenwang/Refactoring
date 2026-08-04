@@ -14,6 +14,7 @@ if (!process.env.NODE_ENV) {
 
 const { testConnection } = require('./config/database');
 const sessionConfig = require('./config/session');
+const { startAccountRecoveryOutboxWorker } = require('./services/accountRecoveryOutbox');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -147,6 +148,7 @@ async function startServer() {
             console.error('Failed to connect to database. Server not started.');
             process.exit(1);
         }        app.listen(PORT, '0.0.0.0', () => {
+            startAccountRecoveryOutboxWorker();
             console.log(`Server running on port ${PORT}`);
             console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
             console.log(`Local access: http://localhost:${PORT}`);

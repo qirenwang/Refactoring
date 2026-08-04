@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Samples - Microplastics Data Entry</title>
+    <title>Edit My Data - Microplastics Data Entry</title>
     <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
     <!-- Add Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
@@ -23,8 +23,8 @@
         <div class="main-content">
             <!-- Page Header -->
             <div class="page-header">
-                <h1><i class="fas fa-vial"></i> My Samples</h1>
-                <p class="page-description">View and manage your microplastic sample data</p>
+                <h1><i class="fas fa-edit"></i> Edit My Data</h1>
+                <p class="page-description">Review and update your submitted microplastic sample data</p>
             </div>
 
             <!-- Action Bar -->
@@ -150,6 +150,7 @@
                     </button>
                 </div>
             </div>
+
         </div>
     </div>
 </div>
@@ -164,20 +165,21 @@
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <!-- Add session timeout script -->
 <script src="/js/session-timeout.js"></script>
+<script src="/js/partial-date-utils.js"></script>
 
 <script>
 console.log('=== MY SAMPLES SCRIPT STARTING ===');
 
 class MySamplesManager {
     constructor() {
-    this.samples = [];
-    this.currentView = 'grid';
-    this.filteredSamples = [];
-    this.searchTerm = '';
-    this.currentPage = 1;
-    this.itemsPerPage = 12; // page size used in API request
-    this.totalPages = 0;     // from API
-    this.totalItems = 0;     // from API
+        this.samples = [];
+        this.currentView = 'grid';
+        this.filteredSamples = [];
+        this.searchTerm = '';
+        this.currentPage = 1;
+        this.itemsPerPage = 12; // page size used in API request
+        this.totalPages = 0;     // from API
+        this.totalItems = 0;     // from API
         this.map = null;
         this.markers = [];
         this.init();
@@ -260,18 +262,80 @@ class MySamplesManager {
         this.loadSamples();
     }
 
+    getCollectionDateParts(sample) {
+        return {
+            year: sample.collection_year,
+            month: sample.collection_month,
+            day: sample.collection_day
+        };
+    }
+
+    getEndDateParts(sample) {
+        return {
+            year: sample.end_year,
+            month: sample.end_month,
+            day: sample.end_day
+        };
+    }
+
+    getCollectionDateKey(sample) {
+        const suppliedKey = typeof sample.collection_date_key === 'string'
+            ? sample.collection_date_key.trim()
+            : '';
+        if (suppliedKey) return suppliedKey;
+
+        return window.PartialDateUtils?.formatPartialDateKey(
+            this.getCollectionDateParts(sample)
+        ) || '';
+    }
+
+    getEndDateKey(sample) {
+        return window.PartialDateUtils?.formatPartialDateKey(
+            this.getEndDateParts(sample)
+        ) || '';
+    }
+
+    getCollectionDateDisplay(sample) {
+        const suppliedDisplay = typeof sample.collection_date_display === 'string'
+            ? sample.collection_date_display.trim()
+            : '';
+        if (suppliedDisplay) return suppliedDisplay;
+
+        const startKey = this.getCollectionDateKey(sample);
+        const startDisplay = window.PartialDateUtils?.formatPartialDate(
+            this.getCollectionDateParts(sample),
+            { emptyLabel: '' }
+        ) ||
+            startKey ||
+            'N/A';
+
+        const endKey = this.getEndDateKey(sample);
+        if (!startKey || !endKey) return startDisplay;
+
+        const endDisplay = window.PartialDateUtils?.formatPartialDate(
+            this.getEndDateParts(sample),
+            { emptyLabel: '' }
+        ) || endKey;
+        return `${startDisplay} – ${endDisplay}`;
+    }
+
     updateStatistics() {
-    const totalSamples = this.totalItems || this.samples.length;
+        const totalSamples = this.totalItems || this.samples.length;
         const totalParticles = this.samples.reduce((sum, sample) => {
             // Calculate estimated particles based on sample type (placeholder logic)
             return sum + Math.floor(Math.random() * 100) + 10;
         }, 0);
-        
-        const currentMonth = new Date().getMonth();
-        const currentYear = new Date().getFullYear();
+
+        const now = new Date();
+        const currentMonth = now.getMonth() + 1;
+        const currentYear = now.getFullYear();
         const recentSamples = this.samples.filter(sample => {
-            const sampleDate = new Date(sample.collection_date);
-            return sampleDate.getMonth() === currentMonth && sampleDate.getFullYear() === currentYear;
+            const year = window.PartialDateUtils?.parsePart(sample.collection_year);
+            const month = window.PartialDateUtils?.parsePart(sample.collection_month);
+            return Number.isInteger(year) &&
+                Number.isInteger(month) &&
+                year === currentYear &&
+                month === currentMonth;
         }).length;
 
         document.getElementById('total-samples').textContent = totalSamples;
@@ -284,12 +348,18 @@ class MySamplesManager {
             this.filteredSamples = this.samples;
         } else {
             // Client-side filter only within current page of results
-            this.filteredSamples = this.samples.filter(sample => 
-                (sample.location_name && sample.location_name.toLowerCase().includes(this.searchTerm)) ||
-                (sample.sample_type && sample.sample_type.toLowerCase().includes(this.searchTerm)) ||
-                (sample.collection_date && String(sample.collection_date).toLowerCase().includes(this.searchTerm)) ||
-                (sample.id && sample.id.toString().includes(this.searchTerm))
-            );
+            this.filteredSamples = this.samples.filter(sample => {
+                const formattedDate = this.getCollectionDateDisplay(sample).toLowerCase();
+                const collectionDateKey = this.getCollectionDateKey(sample).toLowerCase();
+                const endDateKey = this.getEndDateKey(sample).toLowerCase();
+
+                return (sample.location_name && sample.location_name.toLowerCase().includes(this.searchTerm)) ||
+                    (sample.sample_type && sample.sample_type.toLowerCase().includes(this.searchTerm)) ||
+                    formattedDate.includes(this.searchTerm) ||
+                    collectionDateKey.includes(this.searchTerm) ||
+                    endDateKey.includes(this.searchTerm) ||
+                    (sample.id && sample.id.toString().includes(this.searchTerm));
+            });
         }
 
         if (this.filteredSamples.length === 0) {
@@ -358,10 +428,10 @@ class MySamplesManager {
     createSampleCard(sample) {
         const card = document.createElement('div');
         card.className = 'sample-card';
-        
-        const collectionDate = sample.collection_date ? 
-            new Date(sample.collection_date).toLocaleDateString() : 'N/A';
-        
+
+        const collectionDate = this.getCollectionDateDisplay(sample);
+        const escapedCollectionDate = this.escapeHtml(collectionDate);
+
         const coordinates = sample.latitude && sample.longitude ?
             `${parseFloat(sample.latitude).toFixed(4)}, ${parseFloat(sample.longitude).toFixed(4)}` : 'N/A';
         const sampleAmount = this.formatSampleAmount(sample);
@@ -381,7 +451,7 @@ class MySamplesManager {
                     </div>
                     <div class="sample-info-item">
                         <i class="fas fa-calendar"></i>
-                        <span>${collectionDate}</span>
+                        <span>${escapedCollectionDate}</span>
                     </div>
                     <div class="sample-info-item">
                         <i class="fas fa-globe"></i>
@@ -401,7 +471,7 @@ class MySamplesManager {
             </div>
             <div class="sample-card-footer">
                 <div class="collection-info">
-                    <span class="text-muted">Collected ${this.getTimeAgo(sample.collection_date)}</span>
+                    <span class="text-muted">Collection date: ${escapedCollectionDate}</span>
                 </div>
                 <div class="sample-actions">
                     <button class="action-btn view" onclick="viewSample(${sample.id})" title="View Details">
@@ -423,9 +493,8 @@ class MySamplesManager {
     createSampleListRow(sample) {
         const row = document.createElement('div');
         row.className = 'list-row';
-        
-        const collectionDate = sample.collection_date ? 
-            new Date(sample.collection_date).toLocaleDateString() : 'N/A';
+
+        const collectionDate = this.escapeHtml(this.getCollectionDateDisplay(sample));
         
         const coordinates = sample.latitude && sample.longitude ?
             `${parseFloat(sample.latitude).toFixed(4)}, ${parseFloat(sample.longitude).toFixed(4)}` : 'N/A';
@@ -532,6 +601,8 @@ class MySamplesManager {
         }
 
         validSamples.forEach(sample => {
+            const collectionDate = this.escapeHtml(this.getCollectionDateDisplay(sample));
+
             // Add marker to map
             const marker = L.marker([sample.latitude, sample.longitude])
                 .bindPopup(`
@@ -540,7 +611,7 @@ class MySamplesManager {
                         <p><strong>Location:</strong> ${sample.location_name || 'Unknown'}</p>
                         <p><strong>Type:</strong> ${sample.sample_type || 'Unknown'}</p>
                         <p><strong>Amount:</strong> ${this.formatSampleAmount(sample)}</p>
-                        <p><strong>Date:</strong> ${sample.collection_date ? new Date(sample.collection_date).toLocaleDateString() : 'N/A'}</p>
+                        <p><strong>Date:</strong> ${collectionDate}</p>
                         <div class="popup-actions">
                             <button onclick="viewSample(${sample.id})" class="btn btn-sm">View</button>
                             <button onclick="editSample(${sample.id})" class="btn btn-sm">Edit</button>
@@ -564,7 +635,7 @@ class MySamplesManager {
                 <div class="sidebar-item-content">
                     <p><i class="fas fa-map-marker-alt"></i> ${sample.location_name || 'Unknown'}</p>
                     <p><i class="fas fa-weight-hanging"></i> ${this.formatSampleAmount(sample)}</p>
-                    <p><i class="fas fa-calendar"></i> ${sample.collection_date ? new Date(sample.collection_date).toLocaleDateString() : 'N/A'}</p>
+                    <p><i class="fas fa-calendar"></i> ${collectionDate}</p>
                 </div>
             `;
             
@@ -635,21 +706,6 @@ class MySamplesManager {
         document.getElementById('empty-state').style.display = 'none';
     }
 
-    getTimeAgo(dateString) {
-        if (!dateString) return 'unknown time';
-        
-        const date = new Date(dateString);
-        const now = new Date();
-        const diffInSeconds = Math.floor((now - date) / 1000);
-        
-        if (diffInSeconds < 60) return 'just now';
-        if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
-        if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
-        if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} days ago`;
-        if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)} months ago`;
-        return `${Math.floor(diffInSeconds / 31536000)} years ago`;
-    }
-
     escapeHtml(text) {
         if (!text) return '';
         const map = {
@@ -671,9 +727,8 @@ window.viewSample = function(sampleId) {
 };
 
 window.editSample = function(sampleId) {
-    // Implement edit sample functionality
     console.log('Edit sample:', sampleId);
-    alert(`Edit sample ${sampleId} - Feature coming soon!`);
+    window.location.href = `/enter_data_by_form?editSampleId=${encodeURIComponent(sampleId)}`;
 };
 
 window.deleteSample = function(sampleId) {
@@ -1243,6 +1298,7 @@ document.addEventListener('DOMContentLoaded', function() {
         flex-direction: column;
         gap: 1rem;
     }
+
 }
 </style>
 </body>

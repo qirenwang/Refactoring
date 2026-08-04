@@ -1,5 +1,6 @@
 // Database Test Script - 5 Test Cases for Form Data Submission
 const { pool } = require('./config/database');
+const { formatPartialDate } = require('./public/js/partial-date-utils');
 
 async function runTests() {
     console.log('=== Database Testing Script ===\n');
@@ -25,16 +26,20 @@ async function runTests() {
         const [samples] = await pool.execute(`
             SELECT
                 sd.SampleUniqueID,
-                se.SamplingDate,
+                se.StartYear,
+                se.StartMonth,
+                se.StartDay,
                 l.LocationName,
                 mt.MediaTypeOverall as MediaType,
                 sd.Micro5mmAndSmaller_Count as Microplastics,
-                sd.FragLargerThan5mm_Count as Fragments,
-                sd.WholePkg_Count as Packages
+                sd.FragLargerThan5mm_Count as FragmentDebris,
+                f.PurposeKnown_Count as PurposeKnown,
+                f.PurposeUnknown_Count as PurposeUnknown
             FROM SampleDetails sd
             LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
             LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
             LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
+            LEFT JOIN FragmentsInSample f ON f.SampleDetails_Num = sd.SampleUniqueID
             WHERE se.UserSamplingID = ?
             ORDER BY sd.SampleUniqueID DESC
             LIMIT 10
@@ -43,7 +48,12 @@ async function runTests() {
         if (samples.length > 0) {
             console.log('Recent samples by admin:');
             samples.forEach(s => {
-                console.log(`  - ID ${s.SampleUniqueID}: ${s.LocationName || 'N/A'} on ${s.SamplingDate} | ${s.MediaType || 'N/A'} | MP:${s.Microplastics || 0} Frag:${s.Fragments || 0} Pkg:${s.Packages || 0}`);
+                const dateDisplay = formatPartialDate({
+                    year: s.StartYear,
+                    month: s.StartMonth,
+                    day: s.StartDay
+                });
+                console.log(`  - ID ${s.SampleUniqueID}: ${s.LocationName || 'N/A'} on ${dateDisplay} | ${s.MediaType || 'N/A'} | MP:${s.Microplastics || 0} Debris:${s.FragmentDebris || 0} (known:${s.PurposeKnown || 0}, unknown:${s.PurposeUnknown || 0})`);
             });
         } else {
             console.log('No samples found for admin user');
@@ -51,11 +61,20 @@ async function runTests() {
 
         // Check counts in main tables
         console.log('\n--- Table Row Counts ---');
-        const tables = ['Location', 'SamplingEvent', 'SampleDetails', 'MicroplasticsInSample', 'FragmentsInSample', 'PackageCategoryDetails'];
+        const tables = ['Location', 'SamplingEvent', 'SampleDetails', 'MicroplasticsInSample', 'FragmentsInSample', 'FragmentsPurposes', 'Units_Ref'];
         for (const table of tables) {
             const [count] = await pool.execute(`SELECT COUNT(*) as count FROM ${table}`);
             console.log(`  ${table}: ${count[0].count} rows`);
         }
+
+        const [unitForeignKeys] = await pool.execute(`
+            SELECT COUNT(*) AS count
+            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'SampleDetails'
+              AND REFERENCED_TABLE_NAME = 'Units_Ref'
+        `);
+        console.log(`  SampleDetails → Units_Ref foreign keys: ${unitForeignKeys[0].count}`);
 
         // Check microplastics details
         console.log('\n--- Microplastics Details ---');
@@ -72,16 +91,16 @@ async function runTests() {
             });
         }
 
-        // Check package details
-        console.log('\n--- Package Category Details ---');
-        const [pkgDetails] = await pool.execute(`
-            SELECT * FROM PackageCategoryDetails
-            ORDER BY ID DESC
+        // Check normalized fragment purpose details
+        console.log('\n--- Fragment Purpose Details ---');
+        const [purposeDetails] = await pool.execute(`
+            SELECT * FROM FragmentsPurposes
+            ORDER BY FragPurposeUniqueID DESC
             LIMIT 5
         `);
-        if (pkgDetails.length > 0) {
-            pkgDetails.forEach(p => {
-                console.log(`  Sample ${p.SampleDetails_Num}: ${p.PurposeCategory} - Count:${p.CategoryCount} | R1:${p.RecycleCode_1} R2:${p.RecycleCode_2}`);
+        if (purposeDetails.length > 0) {
+            purposeDetails.forEach(p => {
+                console.log(`  Fragment ${p.FragInSample_Num}: ${p.Purpose_Legacy} - ${p.Percent_Purpose}%`);
             });
         }
 

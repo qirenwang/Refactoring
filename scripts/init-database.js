@@ -23,20 +23,27 @@ async function initializeDatabase() {
         
         console.log('✅ Connected to MySQL server');
         
-        // Read the schema file
-        const schemaPath = path.join(__dirname, '..', 'database', 'schema.sql');
+        const databaseName = process.env.DB_NAME || 'sweetl23_partner_demo';
+        await connection.query(
+            `CREATE DATABASE IF NOT EXISTS ${mysql.escapeId(databaseName)}
+             CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+        );
+        await connection.changeUser({ database: databaseName });
+
+        // Read the repository's canonical schema file.
+        const schemaPath = path.join(__dirname, '..', 'database_init.sql');
         const schemaSql = await fs.readFile(schemaPath, 'utf8');
         
         console.log('📖 Read schema file');
         
         // Execute the schema SQL
         console.log('🏗️  Creating database and tables...');
-        await connection.execute(schemaSql);
+        await connection.query(schemaSql);
         
         console.log('✅ Database schema created successfully!');
         console.log('');
         console.log('📊 Database Summary:');
-        console.log('  • Database: sweetl23_partner_demo');
+        console.log(`  • Database: ${databaseName}`);
         console.log('  • Tables created:');
         console.log('    - users (authentication)');
         console.log('    - sample_data (main data storage)');

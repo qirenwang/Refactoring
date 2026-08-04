@@ -3,6 +3,17 @@ const multer = require('multer');
 const { body, validationResult } = require('express-validator');
 const { pool } = require('../config/database');
 const { requireAuth } = require('../middleware/auth');
+const {
+    PERCENTAGE_DECIMAL_PLACES,
+    PERCENTAGE_TOLERANCE,
+    isPercentageTotalValid,
+    parsePercentage,
+    toDatabasePercentage
+} = require('../utils/percentage');
+const {
+    addPartialDatePresentation,
+    normalizeSamplingEventDates
+} = require('../utils/sampling-date');
 
 const router = express.Router();
 
@@ -28,87 +39,111 @@ function parseBoundingBox(boundingBox) {
 }
 
 // Function to validate percentage groups sum to 100%
-function validatePercentageGroups(formData) {
+function validatePercentageGroups(formData, options = {}) {
+    const { includeLegacyColumnGroups = true } = options;
+    const legacyColumnGroups = new Set([
+        'mp_size',
+        'mp_color',
+        'mp_form',
+        'fragment_color',
+        'fragment_form'
+    ]);
     const percentageGroups = {
-        // Microplastics size percentages
-        mp_size: [
-            'mp_size_lt_1um',
-            'mp_size_1_20um',
-            'mp_size_20_100um',
-            'mp_size_100um_1mm',
-            'mp_size_1_5mm'
-        ],
-        // Microplastics color percentages
-        mp_color: [
-            'mp_color_clear',
-            'mp_color_opaque_light',
-            'mp_color_opaque_dark',
-            'mp_color_mixed'
-        ],
-        // Microplastics form percentages
-        mp_form: [
-            'mp_form_fiber',
-            'mp_form_pellet',
-            'mp_form_fragment'
-        ],
-        // Microplastics polymer percentages
-        mp_polymer: [
-            'mp_polymer_pete', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe',
-            'mp_polymer_pp', 'mp_polymer_ps', 'mp_polymer_pa', 'mp_polymer_pc',
-            'mp_polymer_pla', 'mp_polymer_abs', 'mp_polymer_eva', 'mp_polymer_pb',
-            'mp_polymer_pe_uhmw', 'mp_polymer_pmma', 'mp_polymer_hips', 'mp_polymer_eps',
-            'mp_polymer_pan', 'mp_polymer_rubber', 'mp_polymer_bitumen', 'mp_polymer_other'
-        ],
-        // Fragments form percentages
-        fragment_color: [
-            'fragment_color_clear',
-            'fragment_color_opaque_light',
-            'fragment_color_opaque_dark',
-            'fragment_color_mixed'
-        ],
-        // Fragments form percentages
-        fragment_form: [
-            'fragment_form_fiber',
-            'fragment_form_pellet',
-            'fragment_form_film',
-            'fragment_form_foam',
-            'fragment_form_hardplastic',
-            'fragment_form_other'
-        ],
-        // Fragments polymer percentages
-        fragment_polymer: [
-            'fragment_polymer_pete', 'fragment_polymer_hdpe', 'fragment_polymer_pvc', 'fragment_polymer_ldpe',
-            'fragment_polymer_pp', 'fragment_polymer_ps', 'fragment_polymer_pa', 'fragment_polymer_pc',
-            'fragment_polymer_pla', 'fragment_polymer_abs', 'fragment_polymer_eva', 'fragment_polymer_pb',
-            'fragment_polymer_pe_uhmw', 'fragment_polymer_pmma', 'fragment_polymer_hips', 'fragment_polymer_eps',
-            'fragment_polymer_pan', 'fragment_polymer_rubber', 'fragment_polymer_bitumen', 'fragment_polymer_other'
-        ]
+        // Active polymer detail groups
+        mp_polymer: getSubmittedPolymerPercentageFields(formData, 'mp_polymer_'),
+        fragment_polymer: getSubmittedPolymerPercentageFields(formData, 'fragment_polymer_')
     };
+
+    // These fixed columns belong to the retired, hidden percentage UI. Keep
+    // validating them for legacy create clients, but never make an edit of an
+    // existing record depend on values the current UI cannot display or change.
+    if (includeLegacyColumnGroups) {
+        Object.assign(percentageGroups, {
+            // Microplastics size percentages
+            mp_size: [
+                'mp_size_lt_1um',
+                'mp_size_1_20um',
+                'mp_size_20_100um',
+                'mp_size_100um_1mm',
+                'mp_size_1_5mm'
+            ],
+            // Microplastics color percentages
+            mp_color: [
+                'mp_color_clear',
+                'mp_color_opaque_light',
+                'mp_color_opaque_dark',
+                'mp_color_mixed'
+            ],
+            // Microplastics form percentages
+            mp_form: [
+                'mp_form_fiber',
+                'mp_form_pellet',
+                'mp_form_fragment'
+            ],
+            // Fragments color percentages
+            fragment_color: [
+                'fragment_color_clear',
+                'fragment_color_opaque_light',
+                'fragment_color_opaque_dark',
+                'fragment_color_mixed'
+            ],
+            // Fragments form percentages
+            fragment_form: [
+                'fragment_form_fiber',
+                'fragment_form_pellet',
+                'fragment_form_film',
+                'fragment_form_foam',
+                'fragment_form_hardplastic',
+                'fragment_form_other'
+            ]
+        });
+    }
 
     const errors = [];
 
     for (const [groupName, fields] of Object.entries(percentageGroups)) {
         let total = 0;
         let hasAnyValue = false;
+        let hasInvalidValue = false;
 
         fields.forEach(fieldName => {
             const value = formData[fieldName];
             if (value !== undefined && value !== null && value !== '') {
-                const numValue = parseFloat(value);
-                if (!isNaN(numValue)) {
-                    total += numValue;
-                    hasAnyValue = true;
+                hasAnyValue = true;
+                try {
+                    const numValue = parsePercentage(value, fieldName);
+                    if (numValue !== null) {
+                        if (legacyColumnGroups.has(groupName) && !Number.isInteger(numValue)) {
+                            hasInvalidValue = true;
+                            errors.push({
+                                group: groupName,
+                                field: fieldName,
+                                message: `${fieldName} is a retired integer percentage field and cannot store decimals.`
+                            });
+                            return;
+                        }
+                        total += numValue;
+                    }
+                } catch (error) {
+                    hasInvalidValue = true;
+                    errors.push({
+                        group: groupName,
+                        field: fieldName,
+                        message: error.message
+                    });
                 }
             }
         });
 
         // Only validate if user has entered any values in this group
-        if (hasAnyValue) {
-            if (Math.abs(total - 100) > 0.1) {
+        if (hasAnyValue && !hasInvalidValue) {
+            if (!isPercentageTotalValid(total)) {
                 errors.push({
                     group: groupName,
-                    total: total.toFixed(1),
-                    message: `${groupName} percentages sum to ${total.toFixed(1)}% but must equal 100%`
+                    total: total.toFixed(PERCENTAGE_DECIMAL_PLACES),
+                    message: `${groupName} percentages sum to ` +
+                        `${total.toFixed(PERCENTAGE_DECIMAL_PLACES)}% but must equal ` +
+                        `100% ± ${PERCENTAGE_TOLERANCE}%`
                 });
             }
         }
@@ -135,8 +170,8 @@ function validateWholePackageHierarchy(formData) {
     // All 7 packaging categories from the UI
     const singleUseTotal = parseInt(formData.packaging_count_single_use) || 0;
     const multiUseTotal = parseInt(formData.packaging_count_multi_use) || 0;
-    const otherContainerTotal = parseInt(formData.packaging_count_other_container) || 0;
-    const bagTotal = parseInt(formData.packaging_count_bag) || 0;
+    const consumerProductTotal = parseInt(formData.packaging_count_consumer_product) || 0;
+    const bagTotal = parseInt(formData.packaging_count_bag_container) || 0;
     const packingTotal = parseInt(formData.packaging_count_packing) || 0;
     const otherPurposeTotal = parseInt(formData.packaging_count_other) || 0;
     const unknownTotal = parseInt(formData.packaging_count_unknown) || 0;
@@ -144,7 +179,7 @@ function validateWholePackageHierarchy(formData) {
     // Only validate if user has entered package count
     if (wholePackagesTotal > 0) {
         // Validate main hierarchy: Sum of all categories = Whole Packages total
-        const allCategoriesSum = singleUseTotal + multiUseTotal + otherContainerTotal +
+        const allCategoriesSum = singleUseTotal + multiUseTotal + consumerProductTotal +
                                   bagTotal + packingTotal + otherPurposeTotal + unknownTotal;
 
         // Only validate if user has entered any category values
@@ -179,20 +214,20 @@ function validateWholePackageHierarchy(formData) {
             }
         }
 
-        // Validate other container recycle codes if provided
-        if (otherContainerTotal > 0) {
-            const recycleSum = calculateRecycleCodeSum(formData, 'other_container');
-            if (recycleSum > 0 && recycleSum !== otherContainerTotal) {
+        // Validate consumer-product recycle codes if provided
+        if (consumerProductTotal > 0) {
+            const recycleSum = calculateRecycleCodeSum(formData, 'consumer_product');
+            if (recycleSum > 0 && recycleSum !== consumerProductTotal) {
                 errors.push({
-                    type: 'other_container_recycle',
-                    message: `Other Container recycle codes sum to ${recycleSum} but total is ${otherContainerTotal}. They must be equal.`
+                    type: 'consumer_product_recycle',
+                    message: `Consumer product recycle codes sum to ${recycleSum} but total is ${consumerProductTotal}. They must be equal.`
                 });
             }
         }
 
         // Validate bag recycle codes if provided
         if (bagTotal > 0) {
-            const recycleSum = calculateRecycleCodeSum(formData, 'bag');
+            const recycleSum = calculateRecycleCodeSum(formData, 'bag_container');
             if (recycleSum > 0 && recycleSum !== bagTotal) {
                 errors.push({
                     type: 'bag_recycle',
@@ -270,6 +305,15 @@ function parseNullableInt(value) {
     return Number.isFinite(parsed) ? parsed : null;
 }
 
+function getFragmentDebrisCount(formData) {
+    const purposeUnknownCount = parseNullableInt(formData.fragments_count);
+    const purposeKnownCount = parseNullableInt(formData.packaging_count);
+
+    return purposeUnknownCount === null && purposeKnownCount === null
+        ? null
+        : (purposeUnknownCount || 0) + (purposeKnownCount || 0);
+}
+
 function firstPresent(formData, ...keys) {
     for (const key of keys) {
         if (formData[key] !== undefined && formData[key] !== null && formData[key] !== '') {
@@ -280,25 +324,112 @@ function firstPresent(formData, ...keys) {
 }
 
 function getDetailRows(formData, snakeKey, camelKey) {
-    const value = formData[snakeKey] ?? formData[camelKey] ?? [];
-    return Array.isArray(value) ? value : [];
+    const hasSnakeKey = Object.prototype.hasOwnProperty.call(formData, snakeKey);
+    const hasCamelKey = Object.prototype.hasOwnProperty.call(formData, camelKey);
+    if (snakeKey !== camelKey && hasSnakeKey && hasCamelKey) {
+        const error = new TypeError(
+            `Submit only one of ${snakeKey} or ${camelKey}, not both.`
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const submittedKey = hasSnakeKey
+        ? snakeKey
+        : (hasCamelKey ? camelKey : null);
+
+    if (!submittedKey) {
+        return [];
+    }
+
+    const value = formData[submittedKey];
+    if (!Array.isArray(value)) {
+        const error = new TypeError(`${submittedKey} must be an array.`);
+        error.statusCode = 400;
+        throw error;
+    }
+
+    return value;
 }
 
-function normalizeDetailRow(row) {
+function normalizeDetailRow(row, fieldName = 'Detail percentage') {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+        const error = new TypeError(`${fieldName} row must be an object.`);
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const rawRefNum = row.ref_num ?? row.refNum;
+    let refNum = null;
+    if (rawRefNum !== undefined && rawRefNum !== null && rawRefNum !== '') {
+        const parsedRefNum = Number(rawRefNum);
+        if (!Number.isInteger(parsedRefNum) || parsedRefNum <= 0) {
+            const error = new TypeError(`${fieldName} reference ID must be a positive integer.`);
+            error.statusCode = 400;
+            throw error;
+        }
+        refNum = parsedRefNum;
+    }
+
+    let percent;
+    try {
+        percent = parsePercentage(row.percent, fieldName);
+    } catch (error) {
+        error.statusCode = 400;
+        throw error;
+    }
+
     return {
-        refNum: parseNullableInt(row.ref_num ?? row.refNum),
-        legacy: row.legacy ?? '',
-        percent: parseNullableFloat(row.percent),
+        refNum,
+        legacy: String(row.legacy ?? ''),
+        percent,
         methodPercentEstimate: row.method_percent_estimate ?? row.methodPercentEstimate ?? null
     };
 }
 
-function detailRowsTotal(rows) {
-    return rows.reduce((sum, row) => sum + (parseNullableFloat(row.percent) || 0), 0);
+function hasPolymerPercentages(formData, prefix) {
+    return getSubmittedPolymerPercentageFields(formData, prefix)
+        .some(key => parseNullableFloat(formData[key]) > 0);
 }
 
-function hasPolymerPercentages(formData, prefix) {
-    return Object.keys(formData).some(key => key.startsWith(prefix) && parseNullableFloat(formData[key]) > 0);
+function getSubmittedPolymerPercentageFields(formData, prefix) {
+    return Object.keys(formData)
+        .filter(fieldName => fieldName.startsWith(prefix) && !fieldName.endsWith('_specify'));
+}
+
+function hasMicroplasticsDetailData(formData) {
+    const detailRows = [
+        ...getDetailRows(formData, 'micro_color_details', 'microColorDetails'),
+        ...getDetailRows(formData, 'micro_shape_details', 'microShapeDetails'),
+        ...getDetailRows(formData, 'micro_texture_details', 'microTextureDetails'),
+        ...getDetailRows(formData, 'micro_opacity_details', 'microOpacityDetails'),
+        ...getDetailRows(formData, 'micro_size_details', 'microSizeDetails')
+    ];
+
+    return parseNullableInt(formData.microplastics_count) > 0 ||
+        parseNullableFloat(firstPresent(formData, 'micro_mass_mp_total', 'micro_massMPTotal')) > 0 ||
+        Boolean(firstPresent(formData, 'micro_method_polymer_num', 'micro_methodPolymerNum')) ||
+        detailRows.length > 0 ||
+        hasPolymerPercentages(formData, 'mp_polymer_') ||
+        hasAnyFormValue(formData, [
+            'mp_size_lt_1um', 'mp_size_1_20um', 'mp_size_20_100um',
+            'mp_size_100um_1mm', 'mp_size_1_5mm',
+            'mp_form_fiber', 'mp_form_pellet', 'mp_form_fragment',
+            'mp_color_clear', 'mp_color_opaque_light', 'mp_color_opaque_dark', 'mp_color_mixed'
+        ]);
+}
+
+function hasFragmentsDetailData(formData) {
+    return parseNullableInt(formData.fragments_count) > 0 ||
+        parseNullableInt(formData.packaging_count) > 0 ||
+        parseNullableFloat(firstPresent(formData, 'fragments_mass_debris_total', 'fragments_massDebrisTotal')) > 0 ||
+        hasDebrisDetailData(formData) ||
+        hasAnyFormValue(formData, [
+            'fragment_color_clear', 'fragment_color_opaque_light',
+            'fragment_color_opaque_dark', 'fragment_color_mixed',
+            'fragment_form_fiber', 'fragment_form_pellet', 'fragment_form_film',
+            'fragment_form_foam', 'fragment_form_hardplastic', 'fragment_form_other'
+        ]);
 }
 
 function getPublicationInputState(formData) {
@@ -352,9 +483,13 @@ function validateNewSaveRules(formData) {
     }
 
     const hasQuantitativeData = firstPresent(formData, 'has_quantitative_data', 'hasQuantitativeData') === 'yes';
-    const debrisCount =
-        (parseNullableInt(formData.fragments_count) || 0) +
-        (parseNullableInt(formData.packaging_count) || 0);
+    if (!hasQuantitativeData && (hasMicroplasticsDetailData(formData) || hasFragmentsDetailData(formData))) {
+        errors.push(
+            'Quantitative details were provided while Has Quantitative Data is not Yes. ' +
+            'Select Yes or clear those details so they are not silently omitted.'
+        );
+    }
+    const debrisCount = getFragmentDebrisCount(formData) || 0;
     const debrisMass = parseNullableFloat(firstPresent(formData, 'fragments_mass_debris_total', 'fragments_massDebrisTotal')) || 0;
     if (hasQuantitativeData && hasDebrisDetailData(formData) && debrisCount <= 0 && debrisMass <= 0) {
         errors.push('Enter at least a count or a mass for debris.');
@@ -372,18 +507,87 @@ function validateNewSaveRules(formData) {
         ['micro_size_details', 'microSizeDetails']
     ];
 
+    const duplicateRepresentationGroups = [
+        {
+            label: 'Microplastics size',
+            legacyFields: [
+                'mp_size_lt_1um', 'mp_size_1_20um', 'mp_size_20_100um',
+                'mp_size_100um_1mm', 'mp_size_1_5mm'
+            ],
+            detailKeys: ['micro_size_details', 'microSizeDetails']
+        },
+        {
+            label: 'Microplastics color',
+            legacyFields: [
+                'mp_color_clear', 'mp_color_opaque_light',
+                'mp_color_opaque_dark', 'mp_color_mixed'
+            ],
+            detailKeys: ['micro_color_details', 'microColorDetails']
+        },
+        {
+            label: 'Microplastics form',
+            legacyFields: ['mp_form_fiber', 'mp_form_pellet', 'mp_form_fragment'],
+            detailKeys: ['micro_shape_details', 'microShapeDetails']
+        },
+        {
+            label: 'Fragments color',
+            legacyFields: [
+                'fragment_color_clear', 'fragment_color_opaque_light',
+                'fragment_color_opaque_dark', 'fragment_color_mixed'
+            ],
+            detailKeys: ['fragments_color_details', 'fragmentsColorDetails']
+        },
+        {
+            label: 'Fragments form',
+            legacyFields: [
+                'fragment_form_fiber', 'fragment_form_pellet', 'fragment_form_film',
+                'fragment_form_foam', 'fragment_form_hardplastic', 'fragment_form_other'
+            ],
+            detailKeys: ['fragments_form_details', 'fragmentsFormDetails']
+        }
+    ];
+
+    duplicateRepresentationGroups.forEach(group => {
+        const hasLegacyValues = hasAnyFormValue(formData, group.legacyFields);
+        const hasActiveRows = getDetailRows(formData, ...group.detailKeys).length > 0;
+        if (hasLegacyValues && hasActiveRows) {
+            errors.push(
+                `${group.label} was submitted in both retired fixed columns and active detail rows. ` +
+                'Submit only the active detail rows.'
+            );
+        }
+    });
+
     detailGroups.forEach(([snakeKey, camelKey]) => {
         const rows = getDetailRows(formData, snakeKey, camelKey);
         if (rows.length === 0) return;
 
-        const total = detailRowsTotal(rows);
-        if (Math.abs(total - 100) > 0.1) {
-            errors.push(`${snakeKey} percentages sum to ${total.toFixed(1)}% but must equal 100%.`);
-        }
+        try {
+            const normalizedRows = rows.map((row, index) =>
+                normalizeDetailRow(row, `${snakeKey}[${index}].percent`)
+            );
+            const incompleteRow = normalizedRows.find(row =>
+                row.refNum === null || row.percent === null
+            );
+            if (incompleteRow) {
+                errors.push(`${snakeKey} has a row missing its reference or percentage.`);
+                return;
+            }
 
-        const missingMethod = rows.some(row => !normalizeDetailRow(row).methodPercentEstimate);
-        if (missingMethod) {
-            errors.push(`${snakeKey} requires a percent-estimation method for every provided row.`);
+            const total = normalizedRows.reduce((sum, row) => sum + row.percent, 0);
+            if (!isPercentageTotalValid(total)) {
+                errors.push(
+                    `${snakeKey} percentages sum to ${total.toFixed(PERCENTAGE_DECIMAL_PLACES)}% ` +
+                    `but must equal 100% ± ${PERCENTAGE_TOLERANCE}%.`
+                );
+            }
+
+            const missingMethod = normalizedRows.some(row => !row.methodPercentEstimate);
+            if (missingMethod) {
+                errors.push(`${snakeKey} requires a percent-estimation method for every provided row.`);
+            }
+        } catch (error) {
+            errors.push(error.message);
         }
     });
 
@@ -419,6 +623,11 @@ async function getTableColumns(connection, tableName) {
 async function insertFromMap(connection, tableName, dataMap, tableColumns = null) {
     const availableColumns = tableColumns || await getTableColumns(connection, tableName);
     const entries = Object.entries(dataMap).filter(([column]) => availableColumns.has(column));
+
+    if (entries.length === 0) {
+        return;
+    }
+
     const columns = entries.map(([column]) => `\`${column}\``).join(', ');
     const placeholders = entries.map(() => '?').join(', ');
     const values = entries.map(([, value]) => value);
@@ -429,30 +638,486 @@ async function insertFromMap(connection, tableName, dataMap, tableColumns = null
     );
 }
 
+async function updateFromMap(connection, tableName, dataMap, whereSql, whereValues, tableColumns = null) {
+    const availableColumns = tableColumns || await getTableColumns(connection, tableName);
+    const entries = Object.entries(dataMap).filter(([column]) => availableColumns.has(column));
+
+    if (entries.length === 0) {
+        return;
+    }
+
+    const assignments = entries.map(([column]) => `\`${column}\` = ?`).join(', ');
+    const values = entries.map(([, value]) => value);
+
+    await connection.execute(
+        `UPDATE ${tableName} SET ${assignments} WHERE ${whereSql}`,
+        [...values, ...whereValues]
+    );
+}
+
 async function nextTableId(connection, tableName, idColumn) {
     const [rows] = await connection.execute(`SELECT MAX(\`${idColumn}\`) as maxId FROM ${tableName}`);
     return (rows[0].maxId || 0) + 1;
 }
 
+const DETAIL_REFERENCE_RULES = {
+    'FragmentsColorDetails:FragColor_Num': {
+        tableName: 'ColorType_Ref', idColumn: 'ColorUniqueID', legacyColumn: 'Color_Code',
+        methodAppliesColumn: 'AppliesTo_Debris'
+    },
+    'FragmentsFormDetails:FragForm_Num': {
+        tableName: 'Form_Ref', idColumn: 'FormUniqueID', legacyColumn: 'Form_Name',
+        applicabilityColumn: 'AppliesTo_Texture', methodAppliesColumn: 'AppliesTo_Debris'
+    },
+    'FragmentsOpacityDetails:FragOpacity_Num': {
+        tableName: 'Opacity_Ref', idColumn: 'OpacityUniqueID', legacyColumn: 'Opacity_Code',
+        methodAppliesColumn: 'AppliesTo_Debris'
+    },
+    'FragmentsPurposes:Purpose_Num': {
+        tableName: 'Purpose_Ref', idColumn: 'PurposeUniqueID', legacyColumn: 'Purpose_Code',
+        methodAppliesColumn: 'AppliesTo_Debris'
+    },
+    'MicroplasticsColorDetails:MicroColor_Num': {
+        tableName: 'ColorType_Ref', idColumn: 'ColorUniqueID', legacyColumn: 'Color_Code',
+        methodAppliesColumn: 'AppliesTo_MP'
+    },
+    'MicroplasticsOpacityDetails:MicroOpacity_Num': {
+        tableName: 'Opacity_Ref', idColumn: 'OpacityUniqueID', legacyColumn: 'Opacity_Code',
+        methodAppliesColumn: 'AppliesTo_MP'
+    },
+    'MicroplasticsSizeDetails:MicroSize_Num': {
+        tableName: 'SizeClass_Ref', idColumn: 'SizeUniqueID', legacyColumn: 'Size_Code',
+        methodAppliesColumn: 'AppliesTo_MP'
+    },
+    'MicroplasticsFormDetails:MicroShape_Num': {
+        tableName: 'Form_Ref', idColumn: 'FormUniqueID', legacyColumn: 'Form_Name',
+        applicabilityColumn: 'AppliesTo_MP_Shape', methodAppliesColumn: 'AppliesTo_MP'
+    },
+    'MicroplasticsFormDetails:MicroTexture_Num': {
+        tableName: 'Form_Ref', idColumn: 'FormUniqueID', legacyColumn: 'Form_Name',
+        applicabilityColumn: 'AppliesTo_Texture', methodAppliesColumn: 'AppliesTo_MP'
+    }
+};
+
+async function assertMethodReference(connection, rawMethodId, methodType, appliesColumn, fieldName) {
+    const methodId = Number(rawMethodId);
+    if (!Number.isInteger(methodId) || methodId <= 0) {
+        const error = new Error(`${fieldName} must be a valid method reference ID.`);
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const [rows] = await connection.execute(`
+        SELECT MethodsUniqueID
+        FROM Methods_Ref
+        WHERE MethodsUniqueID = ?
+          AND MethodType = ?
+          AND \`${appliesColumn}\` = 1
+        LIMIT 1
+    `, [methodId, methodType]);
+
+    if (rows.length === 0) {
+        const error = new Error(`${fieldName} is not valid for this data group.`);
+        error.statusCode = 400;
+        throw error;
+    }
+
+    return String(methodId);
+}
+
+async function validateSubmittedPolymerMethod(connection, formData, type) {
+    const isMicroplastics = type === 'microplastics';
+    const rawMethodId = isMicroplastics
+        ? firstPresent(formData, 'micro_method_polymer_num', 'micro_methodPolymerNum')
+        : firstPresent(formData, 'fragments_method_polymer_num', 'fragments_methodPolymerNum');
+
+    if (rawMethodId === null) {
+        return null;
+    }
+
+    const validatedMethodId = await assertMethodReference(
+        connection,
+        rawMethodId,
+        'Polymer',
+        isMicroplastics ? 'AppliesTo_MP' : 'AppliesTo_Debris',
+        `${type} polymer identification method`
+    );
+    return Number(validatedMethodId);
+}
+
+async function resolveDetailReferenceValues(connection, config, rows) {
+    const rule = DETAIL_REFERENCE_RULES[`${config.tableName}:${config.refColumn}`];
+    if (!rule) {
+        const error = new Error(`No reference validation rule is configured for ${config.tableName}.`);
+        error.statusCode = 500;
+        throw error;
+    }
+
+    const referenceIds = [...new Set(rows.map(row => row.refNum))];
+    const referencePlaceholders = referenceIds.map(() => '?').join(', ');
+    const applicabilitySql = rule.applicabilityColumn
+        ? ` AND \`${rule.applicabilityColumn}\` = 1`
+        : '';
+    const [referenceRows] = await connection.execute(`
+        SELECT
+            \`${rule.idColumn}\` AS RefId,
+            \`${rule.legacyColumn}\` AS LegacyValue
+        FROM ${rule.tableName}
+        WHERE \`${rule.idColumn}\` IN (${referencePlaceholders})${applicabilitySql}
+    `, referenceIds);
+    const referenceById = new Map(
+        referenceRows.map(row => [String(row.RefId), String(row.LegacyValue ?? '')])
+    );
+
+    for (const referenceId of referenceIds) {
+        if (!referenceById.has(String(referenceId))) {
+            const error = new Error(
+                `${config.tableName} reference ID ${referenceId} is invalid for this detail group.`
+            );
+            error.statusCode = 400;
+            throw error;
+        }
+    }
+
+    const methodIds = [];
+    for (const row of rows) {
+        const methodId = Number(row.methodPercentEstimate);
+        if (!Number.isInteger(methodId) || methodId <= 0) {
+            const error = new Error(
+                `${config.tableName} percent-estimation method must be a valid reference ID.`
+            );
+            error.statusCode = 400;
+            throw error;
+        }
+        methodIds.push(methodId);
+    }
+
+    const uniqueMethodIds = [...new Set(methodIds)];
+    if (uniqueMethodIds.length !== 1) {
+        const error = new Error(
+            `${config.tableName} must use one percent-estimation method per detail group.`
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+    const validatedMethodId = await assertMethodReference(
+        connection,
+        uniqueMethodIds[0],
+        'Percent',
+        rule.methodAppliesColumn,
+        `${config.tableName} percent-estimation method`
+    );
+
+    return rows.map(row => ({
+        ...row,
+        legacy: referenceById.get(String(row.refNum)),
+        methodPercentEstimate: validatedMethodId
+    }));
+}
+
+async function assertStoredDetailRows(connection, config, parentId, expectedRows) {
+    const [rows] = await connection.execute(`
+        SELECT
+            \`${config.refColumn}\` AS RefNum,
+            \`${config.legacyColumn}\` AS LegacyValue,
+            \`${config.percentColumn}\` AS PercentageValue,
+            Method_PercentEstimate
+        FROM ${config.tableName}
+        WHERE \`${config.parentColumn}\` = ?
+          AND \`${config.refColumn}\` IS NOT NULL
+    `, [parentId]);
+
+    const failVerification = detail => {
+        const error = new Error(`${config.tableName} detail percentages were not stored exactly: ${detail}`);
+        error.statusCode = 500;
+        throw error;
+    };
+
+    if (rows.length !== expectedRows.length) {
+        failVerification(`expected ${expectedRows.length} rows but found ${rows.length}.`);
+    }
+
+    const expectedRefIds = new Set();
+    for (const row of expectedRows) {
+        const refId = String(row.refNum);
+        if (expectedRefIds.has(refId)) {
+            const error = new Error(`${config.tableName} contains duplicate submitted reference ID ${refId}.`);
+            error.statusCode = 400;
+            throw error;
+        }
+        expectedRefIds.add(refId);
+    }
+
+    const storedByRefId = new Map();
+    for (const row of rows) {
+        const refId = String(row.RefNum);
+        if (storedByRefId.has(refId)) {
+            failVerification(`reference ID ${refId} was stored more than once.`);
+        }
+        storedByRefId.set(refId, row);
+    }
+
+    for (const expected of expectedRows) {
+        const refId = String(expected.refNum);
+        const stored = storedByRefId.get(refId);
+        if (!stored) {
+            failVerification(`reference ID ${refId} is missing.`);
+        }
+
+        const expectedPercentage = toDatabasePercentage(
+            expected.percent,
+            `${config.tableName}.${config.percentColumn}`
+        );
+        const storedPercentage = toDatabasePercentage(
+            stored.PercentageValue,
+            `${config.tableName}.${config.percentColumn}`
+        );
+        if (storedPercentage !== expectedPercentage) {
+            failVerification(
+                `reference ID ${refId} expected ${expectedPercentage}% but found ${storedPercentage}%.`
+            );
+        }
+
+        if (String(stored.LegacyValue ?? '') !== String(expected.legacy ?? '')) {
+            failVerification(`reference ID ${refId} has the wrong legacy value.`);
+        }
+
+        if (String(stored.Method_PercentEstimate ?? '') !==
+            String(expected.methodPercentEstimate ?? '')) {
+            failVerification(`reference ID ${refId} has the wrong percent-estimation method.`);
+        }
+    }
+}
+
 async function insertDetailRows(connection, config, parentId, rows) {
-    let nextId = await nextTableId(connection, config.tableName, config.idColumn);
+    let normalizedRows = [];
 
-    for (const rawRow of rows) {
-        const row = normalizeDetailRow(rawRow);
-        if (!row.refNum || row.percent === null) continue;
+    for (let index = 0; index < rows.length; index += 1) {
+        const row = normalizeDetailRow(
+            rows[index],
+            `${config.tableName}.${config.percentColumn}[${index}]`
+        );
+        if (row.refNum === null || row.percent === null) {
+            const error = new Error(
+                `${config.tableName} row ${index + 1} is missing its reference or percentage.`
+            );
+            error.statusCode = 400;
+            throw error;
+        }
+        normalizedRows.push(row);
+    }
 
+    if (normalizedRows.length === 0) {
+        return normalizedRows;
+    }
+
+    const submittedTotal = normalizedRows.reduce((total, row) => total + row.percent, 0);
+    if (!isPercentageTotalValid(submittedTotal)) {
+        const error = new Error(
+            `${config.tableName} percentages sum to ` +
+            `${submittedTotal.toFixed(PERCENTAGE_DECIMAL_PLACES)}% ` +
+            `but must equal 100% ± ${PERCENTAGE_TOLERANCE}%.`
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+
+    if (normalizedRows.some(row => !row.methodPercentEstimate)) {
+        const error = new Error(`${config.tableName} requires a percent-estimation method for every row.`);
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const submittedRefIds = normalizedRows.map(row => String(row.refNum));
+    if (new Set(submittedRefIds).size !== submittedRefIds.length) {
+        const error = new Error(`${config.tableName} contains duplicate submitted reference IDs.`);
+        error.statusCode = 400;
+        throw error;
+    }
+
+    normalizedRows = await resolveDetailReferenceValues(connection, config, normalizedRows);
+
+    const columns = await getTableColumns(connection, config.tableName);
+    const requiredColumns = [
+        config.idColumn,
+        config.parentColumn,
+        config.refColumn,
+        config.legacyColumn,
+        config.percentColumn,
+        'Method_PercentEstimate'
+    ];
+    const missingColumns = requiredColumns.filter(column => !columns.has(column));
+    if (missingColumns.length > 0) {
+        const error = new Error(
+            `${config.tableName} is missing required detail columns: ${missingColumns.join(', ')}.`
+        );
+        error.statusCode = 500;
+        throw error;
+    }
+
+    await assertDecimalPercentageStorage(connection, config.tableName, config.percentColumn);
+    await assertAutoIncrementColumn(connection, config.tableName, config.idColumn);
+
+    for (const row of normalizedRows) {
         const dataMap = {
-            [config.idColumn]: nextId++,
             [config.parentColumn]: parentId,
             [config.refColumn]: row.refNum,
             [config.legacyColumn]: row.legacy,
-            [config.percentColumn]: row.percent,
+            [config.percentColumn]: toDatabasePercentage(
+                row.percent,
+                `${config.tableName}.${config.percentColumn}`
+            ),
             Method_PercentEstimate: row.methodPercentEstimate,
             DateEntered: new Date()
         };
 
-        await insertFromMap(connection, config.tableName, dataMap);
+        await insertFromMap(connection, config.tableName, dataMap, columns);
     }
+
+    await assertStoredDetailRows(connection, config, parentId, normalizedRows);
+    return normalizedRows;
+}
+
+async function replaceDetailRows(connection, config, parentId, rows, options = {}) {
+    if (!parentId) {
+        return false;
+    }
+
+    const columns = await getTableColumns(connection, config.tableName);
+    const requiredColumns = [
+        config.idColumn,
+        config.parentColumn,
+        config.refColumn,
+        config.legacyColumn,
+        config.percentColumn,
+        'Method_PercentEstimate'
+    ];
+    const missingColumns = requiredColumns.filter(column => !columns.has(column));
+    if (missingColumns.length > 0) {
+        const error = new Error(
+            `${config.tableName} is missing required detail columns: ${missingColumns.join(', ')}.`
+        );
+        error.statusCode = 500;
+        throw error;
+    }
+
+    if (options.deleteExisting !== false) {
+        await connection.execute(
+            `DELETE FROM ${config.tableName} WHERE \`${config.parentColumn}\` = ?`,
+            [parentId]
+        );
+    }
+
+    const insertedRows = await insertDetailRows(connection, config, parentId, rows);
+    if (insertedRows.length === 0) {
+        await assertStoredDetailRows(connection, config, parentId, []);
+    }
+    return true;
+}
+
+function formatTimeForInput(value) {
+    if (!value) return null;
+    return String(value).slice(0, 5);
+}
+
+function normalizeRefCodeForField(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function valueOrNull(value) {
+    return value === undefined || value === null || value === '' ? null : value;
+}
+
+function hasAnyFormValue(formData, fields) {
+    return fields.some(field => valueOrNull(formData[field]) !== null);
+}
+
+function resolveMediaTypeForForm(row) {
+    const mediaTypeId = parseNullableInt(row.MediaType_SelectID);
+    const mediaText = String(row.MediaTypeOverall || '').toLowerCase();
+
+    if (mediaTypeId === 1 || mediaText.includes('water')) {
+        return 'water';
+    }
+    if (mediaTypeId === 3 || mediaText.includes('on soil')) {
+        return 'soil_litter';
+    }
+    if (mediaTypeId === 4 || mediaText.includes('mixed')) {
+        return 'mixed_composite';
+    }
+    if (String(row.MediaSubType || '').toLowerCase() === 'terrestrial_soil') {
+        return 'in_soil';
+    }
+    return 'soil_sediment';
+}
+
+function setIfPresent(target, key, value) {
+    if (value !== undefined && value !== null && value !== '') {
+        target[key] = value;
+    }
+}
+
+async function loadDetailRowsForForm(connection, config, parentId) {
+    const columns = await getTableColumns(connection, config.tableName);
+    const requiredColumns = [
+        config.idColumn,
+        config.parentColumn,
+        config.refColumn,
+        config.legacyColumn,
+        config.percentColumn,
+        'Method_PercentEstimate'
+    ];
+    const missingColumns = requiredColumns.filter(column => !columns.has(column));
+
+    if (missingColumns.length > 0) {
+        const error = new Error(
+            `${config.tableName} is missing required detail columns: ${missingColumns.join(', ')}.`
+        );
+        error.statusCode = 500;
+        throw error;
+    }
+
+    const [rows] = await connection.execute(`
+        SELECT *
+        FROM ${config.tableName}
+        WHERE \`${config.parentColumn}\` = ?
+        ORDER BY \`${config.idColumn}\`
+    `, [parentId]);
+
+    return rows
+        .map(row => {
+            const refNum = row[config.refColumn];
+            const percent = row[config.percentColumn];
+            const hasRef = refNum !== null && refNum !== undefined;
+            const hasPercent = percent !== null && percent !== undefined;
+
+            // A shared-table sibling row has neither field for this config and
+            // is intentionally ignored. A half-populated row is corrupt and
+            // must stop edit loading instead of being converted to an empty group.
+            if (hasRef !== hasPercent) {
+                const error = new Error(
+                    `${config.tableName} contains a row with only one of ` +
+                    `${config.refColumn}/${config.percentColumn}.`
+                );
+                error.statusCode = 500;
+                throw error;
+            }
+            if (!hasRef) {
+                return null;
+            }
+
+            return {
+                ref_num: row[config.refColumn],
+                legacy: row[config.legacyColumn],
+                percent: row[config.percentColumn],
+                method_percent_estimate: row.Method_PercentEstimate
+            };
+        })
+        .filter(Boolean);
 }
 
 async function createPublication(connection, publicationData) {
@@ -686,7 +1351,7 @@ router.post('/add-test-location-data', requireAuth, async (req, res) => {
                 loc.city,
                 loc.state,
                 loc.zipCode,
-                req.session.username
+                req.session.user_id
             ]);
 
             const locationId = locationResult.insertId;
@@ -695,22 +1360,21 @@ router.post('/add-test-location-data', requireAuth, async (req, res) => {
             const [eventResult] = await pool.execute(`
                 INSERT INTO SamplingEvent (
                     SamplingEventUniqueID, LocationID_Num, DeviceInstallationPeriod,
-                    SamplingDate, UserSamplingID, DateEntered
-                ) VALUES (?, ?, 'no', CURDATE(), ?, NOW())
+                    StartYear, StartMonth, StartDay, UserSamplingID, DateEntered
+                ) VALUES (?, ?, 'no', YEAR(CURDATE()), MONTH(CURDATE()), DAY(CURDATE()), ?, NOW())
             `, [locationId, locationId, req.session.user_id]);
 
             // Insert sample details
             await pool.execute(`
                 INSERT INTO SampleDetails (
                     SampleUniqueID, SamplingEvent_Num, MediaType_SelectID,
-                    Micro5mmAndSmaller_Count, FragLargerThan5mm_Count, WholePkg_Count
-                ) VALUES (?, ?, 1, ?, ?, ?)
+                    Micro5mmAndSmaller_Count, FragLargerThan5mm_Count
+                ) VALUES (?, ?, 1, ?, ?)
             `, [
                 locationId,
                 locationId,
                 Math.floor(Math.random() * 100) + 10,
-                Math.floor(Math.random() * 50) + 5,
-                Math.floor(Math.random() * 20) + 1
+                Math.floor(Math.random() * 50) + 5
             ]);
         }
 
@@ -740,9 +1404,16 @@ router.get('/php/get_map_data.php', async (req, res) => {
                 l.\`Lat_DecimalDegree\` as lat,
                 l.\`Long_DecimalDegree\` as lng,
                 mt.MediaTypeOverall as sampleType,
-                DATE(se.SamplingDate) as date,
+                se.StartYear as collection_year,
+                se.StartMonth as collection_month,
+                se.StartDay as collection_day,
+                se.EndYear as end_year,
+                se.EndMonth as end_month,
+                se.EndDay as end_day,
+                se.DeviceInstallationPeriod as device_installation_period,
                 mt.MediaTypeOverall as plasticTypes,
-                (sd.WholePkg_Count + sd.FragLargerThan5mm_Count + sd.Micro5mmAndSmaller_Count) as particleCount
+                (COALESCE(sd.FragLargerThan5mm_Count, 0) +
+                 COALESCE(sd.Micro5mmAndSmaller_Count, 0)) as particleCount
             FROM SampleDetails sd
             LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
             LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
@@ -765,23 +1436,34 @@ router.get('/php/get_map_data.php', async (req, res) => {
         }
 
         // Order by collection date (most recent first)
-        sql += " ORDER BY se.SamplingDate DESC";
+        sql += " ORDER BY se.StartYear DESC, se.StartMonth DESC, se.StartDay DESC, se.SamplingEventUniqueID DESC";
 
         // Execute the query
         const [rows] = await pool.execute(sql, params);
 
         // Format the data to match the PHP response format
-        const formattedData = rows.map(row => ({
-            SampleUniqueID: row.SampleUniqueID,
-            location: row.location || 'Unknown Location',
-            zipCode: row.zipCode || 'N/A',
-            lat: parseFloat(row.lat) || 0,
-            lng: parseFloat(row.lng) || 0,
-            sampleType: row.sampleType || 'Unknown',
-            date: row.date,
-            plasticTypes: row.plasticTypes || 'N/A',
-            particleCount: row.particleCount || 0
-        }));
+        const formattedData = rows.map(row => {
+            const presentedRow = addPartialDatePresentation(row);
+            return {
+                SampleUniqueID: row.SampleUniqueID,
+                location: row.location || 'Unknown Location',
+                zipCode: row.zipCode || 'N/A',
+                lat: parseFloat(row.lat) || 0,
+                lng: parseFloat(row.lng) || 0,
+                sampleType: row.sampleType || 'Unknown',
+                date: presentedRow.collection_date,
+                date_display: presentedRow.collection_date_display,
+                start_year: presentedRow.start_year,
+                start_month: presentedRow.start_month,
+                start_day: presentedRow.start_day,
+                end_year: presentedRow.end_year,
+                end_month: presentedRow.end_month,
+                end_day: presentedRow.end_day,
+                device_installation_period: row.device_installation_period,
+                plasticTypes: row.plasticTypes || 'N/A',
+                particleCount: row.particleCount || 0
+            };
+        });
 
         // Return the data as JSON (matching PHP response format)
         res.json({
@@ -810,7 +1492,13 @@ router.get('/map-data', async (req, res) => {
                 l.\`Long_DecimalDegree\` as longitude,
                 mt.MediaTypeOverall as sample_type,
                 l.LocationName as location_name,
-                se.SamplingDate as collection_date,
+                se.StartYear as collection_year,
+                se.StartMonth as collection_month,
+                se.StartDay as collection_day,
+                se.EndYear as end_year,
+                se.EndMonth as end_month,
+                se.EndDay as end_day,
+                se.DeviceInstallationPeriod as device_installation_period,
                 se.UserSamplingID as created_by
             FROM SampleDetails sd
             LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
@@ -818,12 +1506,12 @@ router.get('/map-data', async (req, res) => {
             LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
             WHERE l.\`Lat_DecimalDegree\` IS NOT NULL
             AND l.\`Long_DecimalDegree\` IS NOT NULL
-            ORDER BY se.SamplingDate DESC
+            ORDER BY se.StartYear DESC, se.StartMonth DESC, se.StartDay DESC, se.SamplingEventUniqueID DESC
         `);
 
         res.json({
             success: true,
-            data: rows
+            data: rows.map(addPartialDatePresentation)
         });
     } catch (error) {
         console.error('Error fetching map data:', error);
@@ -1045,9 +1733,6 @@ router.post('/save-form-data',
         // Validation for required fields - check both possible field names
         body('location_id').optional(),
         body('selected_location_id').optional(),
-        // sample_date is validated manually below because for device-period samples
-        // the primary date comes from device_start_date instead of sample_date.
-        body('sample_date').optional(),
         body('media_type').notEmpty().withMessage('Media type is required')
     ],
     async (req, res) => {
@@ -1080,8 +1765,7 @@ router.post('/save-form-data',
                 });
             }
 
-            // Legacy PackageCategoryDetails validation is hidden in the active UI.
-            // FragmentsPurposes row totals now validate purpose data.
+            // FragmentsPurposes row totals validate purpose data.
 
             const newSaveValidationResult = validateNewSaveRules(formData);
             if (!newSaveValidationResult.isValid) {
@@ -1101,38 +1785,14 @@ router.post('/save-form-data',
                 });
             }
 
-            // Normalize date/time values: treat empty strings as NULL so they
-            // don't get rejected by MySQL date/time columns. Validate the primary
-            // sampling date before opening a transaction.
+            // Validate and normalize the shared Start date and conditional End
+            // date before opening a transaction.
             const normalizeDate = (value) => {
                 if (value === undefined || value === null) return null;
                 const trimmed = String(value).trim();
                 return trimmed === '' ? null : trimmed;
             };
-
-            const isDevicePeriod = formData.device_installation_period === 'yes';
-            const deviceStartDate = normalizeDate(formData.device_start_date);
-            const deviceEndDate = normalizeDate(formData.device_end_date);
-            const singleSampleDate = normalizeDate(formData.sample_date);
-
-            // For a device-period sample the primary SamplingDate (NOT NULL) is the
-            // device installation start date; otherwise it's the single collection date.
-            const primarySamplingDate = isDevicePeriod ? deviceStartDate : singleSampleDate;
-
-            if (!primarySamplingDate) {
-                return res.status(400).json({
-                    success: false,
-                    message: isDevicePeriod
-                        ? 'Device installation start date is required'
-                        : 'Sample date is required'
-                });
-            }
-            if (isDevicePeriod && !deviceEndDate) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Device removal/end date is required'
-                });
-            }
+            const eventDates = normalizeSamplingEventDates(formData);
 
             await connection.beginTransaction();
 
@@ -1158,16 +1818,19 @@ router.post('/save-form-data',
             const samplingEventData = {
                 LocationID_Num: parseInt(locationId),
                 PublicationID_Num: publicationId,
-                SamplingDate: primarySamplingDate,
+                StartYear: eventDates.start.year,
+                StartMonth: eventDates.start.month,
+                StartDay: eventDates.start.day,
+                EndYear: eventDates.end.year,
+                EndMonth: eventDates.end.month,
+                EndDay: eventDates.end.day,
                 UserSamplingID: userId,
-                'AirTemp_C': formData.air_temp ? parseFloat(formData.air_temp) : null,
+                'AirTemp_C': parseNullableFloat(formData.air_temp),
                 'Weather_Current': formData.current_conditions ? await getWeatherTypeId(connection, formData.current_conditions) : null,
                 'Weather_Precedent24': formData.precedent_weather ? await getWeatherTypeId(connection, formData.precedent_weather) : null,
-                'Rainfall_cm_Precedent24': formData.rainfall ? parseFloat(formData.rainfall) : null,
+                'Rainfall_cm_Precedent24': parseNullableFloat(formData.rainfall),
                 SamplerNames: formData.sample_description || null,
-                DeviceInstallationPeriod: formData.device_installation_period || 'no',
-                DeviceStartDate: isDevicePeriod ? deviceStartDate : null,
-                DeviceEndDate: isDevicePeriod ? deviceEndDate : null,
+                DeviceInstallationPeriod: eventDates.mode,
                 SampleTime: normalizeDate(formData.sample_time),
                 WeatherPrecedent24: formData.precedent_weather_24h ? await getWeatherTypeId(connection, formData.precedent_weather_24h) : null,
                 AdditionalNotes: mergedAdditionalNotes
@@ -1184,16 +1847,23 @@ router.post('/save-form-data',
 
             const [samplingEventResult] = await connection.execute(`
                 INSERT INTO SamplingEvent (
-                    SamplingEventUniqueID, LocationID_Num, PublicationID_Num, SamplingDate, UserSamplingID, \`AirTemp_C\`,
+                    SamplingEventUniqueID, LocationID_Num, PublicationID_Num,
+                    StartYear, StartMonth, StartDay, EndYear, EndMonth, EndDay,
+                    UserSamplingID, \`AirTemp_C\`,
                     \`Weather_Current\`, \`Weather_Precedent24\`, \`Rainfall_cm_Precedent24\`, SamplerNames,
-                    DeviceInstallationPeriod, DeviceStartDate, DeviceEndDate, SampleTime,
+                    DeviceInstallationPeriod, SampleTime,
                     WeatherPrecedent24, AdditionalNotes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 samplingEventUniqueId,
                 samplingEventData.LocationID_Num,
                 samplingEventData.PublicationID_Num,
-                samplingEventData.SamplingDate,
+                samplingEventData.StartYear,
+                samplingEventData.StartMonth,
+                samplingEventData.StartDay,
+                samplingEventData.EndYear,
+                samplingEventData.EndMonth,
+                samplingEventData.EndDay,
                 samplingEventData.UserSamplingID,
                 samplingEventData['AirTemp_C'],
                 samplingEventData['Weather_Current'],
@@ -1201,8 +1871,6 @@ router.post('/save-form-data',
                 samplingEventData['Rainfall_cm_Precedent24'],
                 samplingEventData.SamplerNames,
                 samplingEventData.DeviceInstallationPeriod,
-                samplingEventData.DeviceStartDate,
-                samplingEventData.DeviceEndDate,
                 samplingEventData.SampleTime,
                 samplingEventData.WeatherPrecedent24,
                 samplingEventData.AdditionalNotes
@@ -1215,17 +1883,23 @@ router.post('/save-form-data',
             const mediaTypeId = await getMediaTypeId(connection, formData.media_type);
             const waterEnvTypeId = formData.environment_type ? await getWaterEnvTypeId(connection, formData.environment_type) : null;
 
-            // Normalize alternate frontend field names (support both variants)
-            const soilMoistureVal = (formData.soil_moisture ?? formData.soil_moisture_content ?? formData.sediment_moisture);
-            const waterDepthVal = (formData.water_depth ?? formData.total_water_depth ?? formData.sample_water_depth);
-            const samplingDepthVal = (formData.soil_depth ?? formData.sediment_depth); // Map for SamplingDepth
-            const flowVelocityVal = (formData.flow_velocity ?? formData.water_flow_velocity);
-            const suspendedSolidsVal = (formData.suspended_solids ?? formData.total_suspended_solids);
-            const soilDryWeightVal = (formData.soil_dry_weight ?? formData.soil_sample_dry_weight ?? formData.sediment_dry_weight);
-            const soilOrganicMatterVal = (formData.soil_organic_matter ?? formData.sediment_organic_matter);
-            const soilSandVal = (formData.soil_sand ?? formData.sediment_sand);
-            const soilSiltVal = (formData.soil_silt ?? formData.sediment_silt);
-            const soilClayVal = (formData.soil_clay ?? formData.sediment_clay);
+            // Normalize alternate frontend field names (support both variants).
+            // firstPresent (not ??) so that an empty string coming from a
+            // hidden section's input cannot mask the filled variant.
+            const soilMoistureVal = firstPresent(formData, 'soil_moisture', 'soil_moisture_content', 'sediment_moisture');
+            const waterDepthVal = firstPresent(formData, 'water_depth', 'total_water_depth', 'sample_water_depth');
+            const samplingDepthVal = firstPresent(formData, 'soil_depth', 'sediment_depth'); // Map for SamplingDepth
+            const flowVelocityVal = firstPresent(formData, 'flow_velocity', 'water_flow_velocity');
+            const suspendedSolidsVal = firstPresent(formData, 'suspended_solids', 'total_suspended_solids');
+            const soilDryWeightVal = firstPresent(formData, 'soil_dry_weight', 'soil_sample_dry_weight', 'sediment_dry_weight');
+            const soilOrganicMatterVal = firstPresent(formData, 'soil_organic_matter', 'sediment_organic_matter');
+            const soilSandVal = firstPresent(formData, 'soil_sand', 'sediment_sand');
+            const soilSiltVal = firstPresent(formData, 'soil_silt', 'sediment_silt');
+            const soilClayVal = firstPresent(formData, 'soil_clay', 'sediment_clay');
+            const soilTextureVal = await resolveSoilTextureLabel(
+                connection,
+                firstPresent(formData, 'soil_texture', 'soilTexture')
+            );
             const totalSampleAmountVal = firstPresent(
                 formData,
                 'total_sample_amount',
@@ -1242,12 +1916,18 @@ router.post('/save-form-data',
                 'fragments_sample_unit',
                 'packaging_sample_unit'
             );
-            const microplasticsSampleAmountVal = totalSampleAmountVal;
-            const microplasticsSampleUnitVal = sampleUnitVal;
-            const fragmentsSampleAmountVal = totalSampleAmountVal;
-            const fragmentsSampleUnitVal = sampleUnitVal;
-            const packagingSampleAmountVal = totalSampleAmountVal;
-            const packagingSampleUnitVal = sampleUnitVal;
+            const sampleUnitId = sampleUnitVal ? await getSampleUnitId(connection, sampleUnitVal) : null;
+            // Media-specific amounts/units are stored as submitted; the total is
+            // only a fallback so older payloads keep their previous behavior.
+            const microplasticsSampleAmountVal = firstPresent(formData, 'microplastics_sample_amount') ?? totalSampleAmountVal;
+            const fragmentsSampleAmountVal = firstPresent(formData, 'fragments_sample_amount') ?? totalSampleAmountVal;
+            const packagingSampleAmountVal = firstPresent(formData, 'packaging_sample_amount') ?? totalSampleAmountVal;
+            const microplasticsUnitVal = firstPresent(formData, 'microplastics_sample_unit');
+            const fragmentsUnitVal = firstPresent(formData, 'fragments_sample_unit');
+            const packagingUnitVal = firstPresent(formData, 'packaging_sample_unit');
+            const microplasticsSampleUnitId = microplasticsUnitVal ? await getSampleUnitId(connection, microplasticsUnitVal) : sampleUnitId;
+            const fragmentsSampleUnitId = fragmentsUnitVal ? await getSampleUnitId(connection, fragmentsUnitVal) : sampleUnitId;
+            const packagingSampleUnitId = packagingUnitVal ? await getSampleUnitId(connection, packagingUnitVal) : sampleUnitId;
 
             // Additional field normalization for new columns
             const turbidityVal = formData.turbidity;
@@ -1266,44 +1946,41 @@ router.post('/save-form-data',
             const sampleDetailsData = {
                 SamplingEvent_Num: samplingEventId,
                 MediaType_SelectID: mediaTypeId,
-                WholePkg_Count: formData.packaging_count ? parseInt(formData.packaging_count) : null,
-                FragLargerThan5mm_Count: formData.fragments_count ? parseInt(formData.fragments_count) : null,
-                Micro5mmAndSmaller_Count: formData.microplastics_count ? parseInt(formData.microplastics_count) : null,
+                FragLargerThan5mm_Count: getFragmentDebrisCount(formData),
+                Micro5mmAndSmaller_Count: parseNullableInt(formData.microplastics_count),
                 WaterEnvType_SelectID: waterEnvTypeId,
-                'SoilMoisture_Percent': soilMoistureVal ? parseFloat(soilMoistureVal) : null,
-                StorageLocation: 1, // Default storage location
+                'SoilMoisture_Percent': parseNullableFloat(soilMoistureVal),
                 // Additional fields from formpage2-5
                 MediaSubType: getMediaSubType(formData),
-                LandscapeType: getLandscapeType(formData),
                 MixedMediaDescription: formData.mixed_media_description || null,
-                VolumeSampled: formData.volume_sampled ? parseFloat(formData.volume_sampled) : null,
-                WaterDepth: waterDepthVal ? parseFloat(waterDepthVal) : null,
-                SamplingDepth: samplingDepthVal ? parseFloat(samplingDepthVal) : null,
-                FlowVelocity: flowVelocityVal ? parseFloat(flowVelocityVal) : null,
-                SuspendedSolids: suspendedSolidsVal ? parseFloat(suspendedSolidsVal) : null,
-                Conductivity: formData.conductivity ? parseFloat(formData.conductivity) : null,
-                SoilDryWeight: soilDryWeightVal ? parseFloat(soilDryWeightVal) : null,
-                SoilOrganicMatter: soilOrganicMatterVal ? parseFloat(soilOrganicMatterVal) : null,
-                SoilSand: soilSandVal ? parseFloat(soilSandVal) : null,
-                SoilSilt: soilSiltVal ? parseFloat(soilSiltVal) : null,
-                SoilClay: soilClayVal ? parseFloat(soilClayVal) : null,
-                SoilTexture: firstPresent(formData, 'soil_texture', 'soilTexture'),
-                ReplicatesCount: formData.replicates_count ? parseInt(formData.replicates_count) : null,
+                VolumeSampled: parseNullableFloat(formData.volume_sampled),
+                WaterDepth: parseNullableFloat(waterDepthVal),
+                SamplingDepth: parseNullableFloat(samplingDepthVal),
+                FlowVelocity: parseNullableFloat(flowVelocityVal),
+                SuspendedSolids: parseNullableFloat(suspendedSolidsVal),
+                Conductivity: parseNullableFloat(formData.conductivity),
+                SoilDryWeight: parseNullableFloat(soilDryWeightVal),
+                SoilOrganicMatter: parseNullableFloat(soilOrganicMatterVal),
+                SoilSand: parseNullableFloat(soilSandVal),
+                SoilSilt: parseNullableFloat(soilSiltVal),
+                SoilClay: parseNullableFloat(soilClayVal),
+                SoilTexture: soilTextureVal,
+                ReplicatesCount: parseNullableInt(formData.replicates_count),
                 TotalSampleAmount: parseNullableFloat(totalSampleAmountVal),
-                SampleUnit: sampleUnitVal || null,
+                SampleUnit_Num: sampleUnitId,
                 MicroplasticsSampleAmount: parseNullableFloat(microplasticsSampleAmountVal),
-                MicroplasticsSampleUnit: microplasticsSampleUnitVal || null,
+                MicroplasticsSampleUnit_Num: microplasticsSampleUnitId,
                 FragmentsSampleAmount: parseNullableFloat(fragmentsSampleAmountVal),
-                FragmentsSampleUnit: fragmentsSampleUnitVal || null,
+                FragmentsSampleUnit_Num: fragmentsSampleUnitId,
                 PackagingSampleAmount: parseNullableFloat(packagingSampleAmountVal),
-                PackagingSampleUnit: packagingSampleUnitVal || null,
+                PackagingSampleUnit_Num: packagingSampleUnitId,
                 // New columns added by migration
-                Turbidity: turbidityVal ? parseFloat(turbidityVal) : null,
-                DissolvedOxygen: dissolvedOxygenVal ? parseFloat(dissolvedOxygenVal) : null,
-                SampleWaterDepth: sampleWaterDepthVal ? parseFloat(sampleWaterDepthVal) : null,
-                SurfaceAreaSampled: surfaceAreaSampledVal ? parseFloat(surfaceAreaSampledVal) : null,
-                PermeableSurfaces: permeableSurfacesVal ? parseFloat(permeableSurfacesVal) : null,
-                ImpermeableSurfaces: impermeableSurfacesVal ? parseFloat(impermeableSurfacesVal) : null,
+                Turbidity: parseNullableFloat(turbidityVal),
+                DissolvedOxygen: parseNullableFloat(dissolvedOxygenVal),
+                SampleWaterDepth: parseNullableFloat(sampleWaterDepthVal),
+                SurfaceAreaSampled: parseNullableFloat(surfaceAreaSampledVal),
+                PermeableSurfaces: parseNullableFloat(permeableSurfacesVal),
+                ImpermeableSurfaces: parseNullableFloat(impermeableSurfacesVal),
                 WaterTypeOtherDescription: waterTypeOtherDesc || null,
                 SedimentTypeOtherDescription: sedimentTypeOtherDesc || null,
                 MediaAdditionalNotes: mediaAdditionalNotes
@@ -1322,14 +1999,11 @@ router.post('/save-form-data',
                 SampleUniqueID: sampleUniqueId,
                 SamplingEvent_Num: sampleDetailsData.SamplingEvent_Num,
                 MediaType_SelectID: sampleDetailsData.MediaType_SelectID,
-                WholePkg_Count: sampleDetailsData.WholePkg_Count,
                 FragLargerThan5mm_Count: sampleDetailsData.FragLargerThan5mm_Count,
                 Micro5mmAndSmaller_Count: sampleDetailsData.Micro5mmAndSmaller_Count,
                 WaterEnvType_SelectID: sampleDetailsData.WaterEnvType_SelectID,
                 SoilMoisture_Percent: sampleDetailsData.SoilMoisture_Percent,
-                StorageLocation: sampleDetailsData.StorageLocation,
                 MediaSubType: sampleDetailsData.MediaSubType,
-                LandscapeType: sampleDetailsData.LandscapeType,
                 MixedMediaDescription: sampleDetailsData.MixedMediaDescription,
                 VolumeSampled: sampleDetailsData.VolumeSampled,
                 WaterDepth: sampleDetailsData.WaterDepth,
@@ -1345,13 +2019,13 @@ router.post('/save-form-data',
                 SoilTexture: sampleDetailsData.SoilTexture,
                 ReplicatesCount: sampleDetailsData.ReplicatesCount,
                 TotalSampleAmount: sampleDetailsData.TotalSampleAmount,
-                SampleUnit: sampleDetailsData.SampleUnit,
+                SampleUnit_Num: sampleDetailsData.SampleUnit_Num,
                 MicroplasticsSampleAmount: sampleDetailsData.MicroplasticsSampleAmount,
-                MicroplasticsSampleUnit: sampleDetailsData.MicroplasticsSampleUnit,
+                MicroplasticsSampleUnit_Num: sampleDetailsData.MicroplasticsSampleUnit_Num,
                 FragmentsSampleAmount: sampleDetailsData.FragmentsSampleAmount,
-                FragmentsSampleUnit: sampleDetailsData.FragmentsSampleUnit,
+                FragmentsSampleUnit_Num: sampleDetailsData.FragmentsSampleUnit_Num,
                 PackagingSampleAmount: sampleDetailsData.PackagingSampleAmount,
-                PackagingSampleUnit: sampleDetailsData.PackagingSampleUnit,
+                PackagingSampleUnit_Num: sampleDetailsData.PackagingSampleUnit_Num,
                 Turbidity: sampleDetailsData.Turbidity,
                 DissolvedOxygen: sampleDetailsData.DissolvedOxygen,
                 SampleWaterDepth: sampleDetailsData.SampleWaterDepth,
@@ -1370,35 +2044,16 @@ router.post('/save-form-data',
             let fragmentUniqueId = null;
 
             // Step 3: Insert microplastics details if provided (complete fields)
-            const microDetailRows = [
-                ...getDetailRows(formData, 'micro_color_details', 'microColorDetails'),
-                ...getDetailRows(formData, 'micro_shape_details', 'microShapeDetails'),
-                ...getDetailRows(formData, 'micro_texture_details', 'microTextureDetails'),
-                ...getDetailRows(formData, 'micro_opacity_details', 'microOpacityDetails'),
-                ...getDetailRows(formData, 'micro_size_details', 'microSizeDetails')
-            ];
-            const shouldInsertMicroplastics = formData.has_quantitative_data === 'yes' && (
-                parseNullableInt(formData.microplastics_count) > 0 ||
-                parseNullableFloat(firstPresent(formData, 'micro_mass_mp_total', 'micro_massMPTotal')) > 0 ||
-                firstPresent(formData, 'micro_method_polymer_num', 'micro_methodPolymerNum') ||
-                microDetailRows.length > 0 ||
-                hasPolymerPercentages(formData, 'mp_polymer_')
-            );
+            const shouldInsertMicroplastics = hasMicroplasticsDetailData(formData);
 
             if (shouldInsertMicroplastics) {
                 console.log('Inserting microplastics details...');
 
-                // Helper to safely pull numeric values with optional fallback keys
-                const pickInt = (...keys) => {
-                    for (const key of keys) {
-                        const raw = formData[key];
-                        if (raw !== undefined && raw !== null && raw !== '') {
-                            const parsed = parseInt(raw);
-                            if (!isNaN(parsed)) return parsed;
-                        }
-                    }
-                    return null;
-                };
+                const validatedMicroPolymerMethod = await validateSubmittedPolymerMethod(
+                    connection,
+                    formData,
+                    'microplastics'
+                );
 
                 // Generate a unique ID for microplastics
                 const [maxMicroIdResult] = await connection.execute(
@@ -1411,20 +2066,20 @@ router.post('/save-form-data',
                     SampleDetails_Num: sampleDetailsId,
                     Micro5mmAndSmaller_Count: parseNullableInt(formData.microplastics_count),
                     Mass_MP_Total: parseNullableFloat(firstPresent(formData, 'micro_mass_mp_total', 'micro_massMPTotal')),
-                    Method_Polymer_Num: parseNullableInt(firstPresent(formData, 'micro_method_polymer_num', 'micro_methodPolymerNum')),
+                    Method_Polymer_Num: validatedMicroPolymerMethod,
                     Method_Polymer_Other: firstPresent(formData, 'micro_method_polymer_other', 'micro_methodPolymerOther'),
-                    PercentSize_LessThan1um: formData.mp_size_lt_1um ? parseInt(formData.mp_size_lt_1um) : null,
-                    PercentSize_1_20um: formData.mp_size_1_20um ? parseInt(formData.mp_size_1_20um) : null,
-                    PercentSize_20_100um: formData.mp_size_20_100um ? parseInt(formData.mp_size_20_100um) : null,
-                    PercentSize_100um_1mm: formData.mp_size_100um_1mm ? parseInt(formData.mp_size_100um_1mm) : null,
-                    PercentSize_1_5mm: formData.mp_size_1_5mm ? parseInt(formData.mp_size_1_5mm) : null,
-                    PercentForm_fiber: formData.mp_form_fiber ? parseInt(formData.mp_form_fiber) : null,
-                    PercentForm_Pellet: formData.mp_form_pellet ? parseInt(formData.mp_form_pellet) : null,
-                    PercentForm_Fragment: formData.mp_form_fragment ? parseInt(formData.mp_form_fragment) : null,
-                    PercentColor_Clear: pickInt('mp_color_clear', 'fragment_color_clear'),
-                    PercentColor_OpaqueLight: pickInt('mp_color_opaque_light', 'fragment_color_opaque_light'),
-                    PercentColor_OpaqueDark: pickInt('mp_color_opaque_dark', 'fragment_color_opaque_dark'),
-                    PercentColor_Mixed: pickInt('mp_color_mixed', 'fragment_color_mixed')
+                    PercentSize_LessThan1um: parseNullableInt(formData.mp_size_lt_1um),
+                    PercentSize_1_20um: parseNullableInt(formData.mp_size_1_20um),
+                    PercentSize_20_100um: parseNullableInt(formData.mp_size_20_100um),
+                    PercentSize_100um_1mm: parseNullableInt(formData.mp_size_100um_1mm),
+                    PercentSize_1_5mm: parseNullableInt(formData.mp_size_1_5mm),
+                    PercentForm_fiber: parseNullableInt(formData.mp_form_fiber),
+                    PercentForm_Pellet: parseNullableInt(formData.mp_form_pellet),
+                    PercentForm_Fragment: parseNullableInt(formData.mp_form_fragment),
+                    PercentColor_Clear: parseNullableInt(formData.mp_color_clear),
+                    PercentColor_OpaqueLight: parseNullableInt(formData.mp_color_opaque_light),
+                    PercentColor_OpaqueDark: parseNullableInt(formData.mp_color_opaque_dark),
+                    PercentColor_Mixed: parseNullableInt(formData.mp_color_mixed)
                 });
                 console.log('Microplastics details inserted with ID:', microUniqueId);
 
@@ -1433,23 +2088,16 @@ router.post('/save-form-data',
             }
 
             // Step 4: Insert fragments details if provided (complete fields)
-            const fragmentDetailRows = [
-                ...getDetailRows(formData, 'fragments_color_details', 'fragmentsColorDetails'),
-                ...getDetailRows(formData, 'fragments_form_details', 'fragmentsFormDetails'),
-                ...getDetailRows(formData, 'fragments_opacity_details', 'fragmentsOpacityDetails'),
-                ...getDetailRows(formData, 'fragments_purpose_details', 'fragmentsPurposeDetails')
-            ];
-            const shouldInsertFragments = formData.has_quantitative_data === 'yes' && (
-                parseNullableInt(formData.fragments_count) > 0 ||
-                parseNullableInt(formData.packaging_count) > 0 ||
-                parseNullableFloat(firstPresent(formData, 'fragments_mass_debris_total', 'fragments_massDebrisTotal')) > 0 ||
-                firstPresent(formData, 'fragments_method_polymer_num', 'fragments_methodPolymerNum') ||
-                fragmentDetailRows.length > 0 ||
-                hasPolymerPercentages(formData, 'fragment_polymer_')
-            );
+            const shouldInsertFragments = hasFragmentsDetailData(formData);
 
             if (shouldInsertFragments) {
                 console.log('Inserting fragments details...');
+
+                const validatedFragmentsPolymerMethod = await validateSubmittedPolymerMethod(
+                    connection,
+                    formData,
+                    'fragments'
+                );
 
                 // Generate a unique ID for fragments
                 const [maxFragmentIdResult] = await connection.execute(
@@ -1463,18 +2111,18 @@ router.post('/save-form-data',
                     Mass_Debris_Total: parseNullableFloat(firstPresent(formData, 'fragments_mass_debris_total', 'fragments_massDebrisTotal')),
                     PurposeKnown_Count: parseNullableInt(formData.packaging_count),
                     PurposeUnknown_Count: parseNullableInt(formData.fragments_count),
-                    Method_Polymer_Num: parseNullableInt(firstPresent(formData, 'fragments_method_polymer_num', 'fragments_methodPolymerNum')),
+                    Method_Polymer_Num: validatedFragmentsPolymerMethod,
                     Method_Polymer_Other: firstPresent(formData, 'fragments_method_polymer_other', 'fragments_methodPolymerOther'),
-                    PercentColor_Clear: formData.fragment_color_clear ? parseInt(formData.fragment_color_clear) : null,
-                    PercentColor_Op_Color: formData.fragment_color_opaque_light ? parseInt(formData.fragment_color_opaque_light) : null,
-                    PercentColor_Op_Dk: formData.fragment_color_opaque_dark ? parseInt(formData.fragment_color_opaque_dark) : null,
-                    PercentColor_Mixed: formData.fragment_color_mixed ? parseInt(formData.fragment_color_mixed) : null,
-                    PercentForm_Fiber: formData.fragment_form_fiber ? parseInt(formData.fragment_form_fiber) : null,
-                    PercentForm_Pellet: formData.fragment_form_pellet ? parseInt(formData.fragment_form_pellet) : null,
-                    PercentForm_Film: formData.fragment_form_film ? parseInt(formData.fragment_form_film) : null,
-                    PercentForm_Foam: formData.fragment_form_foam ? parseInt(formData.fragment_form_foam) : null,
-                    PercentForm_HardPlastic: formData.fragment_form_hardplastic ? parseInt(formData.fragment_form_hardplastic) : null,
-                    PercentForm_Other: formData.fragment_form_other ? parseInt(formData.fragment_form_other) : null
+                    PercentColor_Clear: parseNullableInt(formData.fragment_color_clear),
+                    PercentColor_Op_Color: parseNullableInt(formData.fragment_color_opaque_light),
+                    PercentColor_Op_Dk: parseNullableInt(formData.fragment_color_opaque_dark),
+                    PercentColor_Mixed: parseNullableInt(formData.fragment_color_mixed),
+                    PercentForm_Fiber: parseNullableInt(formData.fragment_form_fiber),
+                    PercentForm_Pellet: parseNullableInt(formData.fragment_form_pellet),
+                    PercentForm_Film: parseNullableInt(formData.fragment_form_film),
+                    PercentForm_Foam: parseNullableInt(formData.fragment_form_foam),
+                    PercentForm_HardPlastic: parseNullableInt(formData.fragment_form_hardplastic),
+                    PercentForm_Other: parseNullableInt(formData.fragment_form_other)
                 });
                 console.log('Fragments details inserted with ID:', fragmentUniqueId);
 
@@ -1568,115 +2216,6 @@ router.post('/save-form-data',
                 }, microUniqueId, getDetailRows(formData, 'micro_texture_details', 'microTextureDetails'));
             }
 
-            // Step 5: Insert legacy packaging details only when legacy category inputs are present.
-            const legacyPackageCategoryFields = [
-                'packaging_count_single_use',
-                'packaging_count_multi_use',
-                'packaging_count_other_container',
-                'packaging_count_bag',
-                'packaging_count_packing',
-                'packaging_count_other',
-                'packaging_count_unknown'
-            ];
-            const hasLegacyPackageCategoryInput = legacyPackageCategoryFields.some(field => parseNullableInt(formData[field]) > 0);
-            if (formData.has_quantitative_data === 'yes' && formData.packaging_count && parseInt(formData.packaging_count) > 0 && hasLegacyPackageCategoryInput) {
-                console.log('Inserting packaging details...');
-
-                // Category mapping for the new UI structure
-                const categoryMap = [
-                    { key: 'single_use', field: 'packaging_count_single_use', purposeCode: 'single_use' },
-                    { key: 'multi_use', field: 'packaging_count_multi_use', purposeCode: 'multi_use' },
-                    { key: 'other_container', field: 'packaging_count_other_container', purposeCode: 'other_container' },
-                    { key: 'bag', field: 'packaging_count_bag', purposeCode: 'bag' },
-                    { key: 'packing', field: 'packaging_count_packing', purposeCode: 'packing' },
-                    { key: 'other_purpose', field: 'packaging_count_other', purposeCode: 'other_purpose' },
-                    { key: 'unknown_purpose', field: 'packaging_count_unknown', purposeCode: 'unknown_purpose' }
-                ];
-
-                // Helper to safely parse int
-                const safeInt = (val) => {
-                    const parsed = parseInt(val);
-                    return Number.isFinite(parsed) ? parsed : 0;
-                };
-
-                // Insert into PackageCategoryDetails for each category with data
-                for (const cat of categoryMap) {
-                    const countVal = safeInt(formData[cat.field]);
-                    if (countVal <= 0) continue;
-
-                    // Build the detail object for this category
-                    const prefix = cat.key;
-                    const detailData = {
-                        SampleDetails_Num: sampleDetailsId,
-                        PurposeCategory: prefix,
-                        CategoryCount: countVal,
-                        // Recycle codes
-                        RecycleCode_0: safeInt(formData[`${prefix}_recycle_0`]),
-                        RecycleCode_1: safeInt(formData[`${prefix}_recycle_1`]),
-                        RecycleCode_2: safeInt(formData[`${prefix}_recycle_2`]),
-                        RecycleCode_3: safeInt(formData[`${prefix}_recycle_3`]),
-                        RecycleCode_4: safeInt(formData[`${prefix}_recycle_4`]),
-                        RecycleCode_5: safeInt(formData[`${prefix}_recycle_5`]),
-                        RecycleCode_6: safeInt(formData[`${prefix}_recycle_6`]),
-                        RecycleCode_7: safeInt(formData[`${prefix}_recycle_7`]),
-                        // Colors
-                        Color_Clear: safeInt(formData[`${prefix}_color_clear`]),
-                        Color_Black: safeInt(formData[`${prefix}_color_black`]),
-                        Color_Blue: safeInt(formData[`${prefix}_color_blue`]),
-                        Color_Green: safeInt(formData[`${prefix}_color_green`]),
-                        Color_Pink: safeInt(formData[`${prefix}_color_pink`]),
-                        Color_Purple: safeInt(formData[`${prefix}_color_purple`]),
-                        Color_Red: safeInt(formData[`${prefix}_color_red`]),
-                        Color_White: safeInt(formData[`${prefix}_color_white`]),
-                        Color_Yellow: safeInt(formData[`${prefix}_color_yellow`]),
-                        Color_Other: safeInt(formData[`${prefix}_color_other`]),
-                        // Opacity
-                        Opacity_Clear: safeInt(formData[`${prefix}_opacity_clear`]),
-                        Opacity_Light: safeInt(formData[`${prefix}_opacity_light`]),
-                        Opacity_Dark: safeInt(formData[`${prefix}_opacity_dark`]),
-                        Opacity_Mixed: safeInt(formData[`${prefix}_opacity_mixed`])
-                    };
-
-                    await connection.execute(`
-                        INSERT INTO PackageCategoryDetails (
-                            SampleDetails_Num, PurposeCategory, CategoryCount,
-                            RecycleCode_0, RecycleCode_1, RecycleCode_2, RecycleCode_3,
-                            RecycleCode_4, RecycleCode_5, RecycleCode_6, RecycleCode_7,
-                            Color_Clear, Color_Black, Color_Blue, Color_Green,
-                            Color_Pink, Color_Purple, Color_Red, Color_White, Color_Yellow, Color_Other,
-                            Opacity_Clear, Opacity_Light, Opacity_Dark, Opacity_Mixed
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    `, [
-                        detailData.SampleDetails_Num,
-                        detailData.PurposeCategory,
-                        detailData.CategoryCount,
-                        detailData.RecycleCode_0,
-                        detailData.RecycleCode_1,
-                        detailData.RecycleCode_2,
-                        detailData.RecycleCode_3,
-                        detailData.RecycleCode_4,
-                        detailData.RecycleCode_5,
-                        detailData.RecycleCode_6,
-                        detailData.RecycleCode_7,
-                        detailData.Color_Clear,
-                        detailData.Color_Black,
-                        detailData.Color_Blue,
-                        detailData.Color_Green,
-                        detailData.Color_Pink,
-                        detailData.Color_Purple,
-                        detailData.Color_Red,
-                        detailData.Color_White,
-                        detailData.Color_Yellow,
-                        detailData.Color_Other,
-                        detailData.Opacity_Clear,
-                        detailData.Opacity_Light,
-                        detailData.Opacity_Dark,
-                        detailData.Opacity_Mixed
-                    ]);
-                    console.log(`Inserted packaging category '${prefix}' with count ${countVal}`);
-                }
-            }
-
             await connection.commit();
             console.log('Transaction committed successfully');
 
@@ -1734,6 +2273,40 @@ async function getMediaTypeId(connection, mediaType) {
     return mediaTypeMapping[mediaType] || 1; // Default to 1 if not found
 }
 
+async function getSampleUnitId(connection, unitValue) {
+    const normalizedUnit = String(unitValue || '').trim();
+    if (!normalizedUnit) return null;
+
+    const [rows] = await connection.execute(`
+        SELECT UnitsUniqueID
+        FROM Units_Ref
+        WHERE Units_Type = 'Sample_Quantity'
+          AND (Units_Code = ? OR UnitsUniqueID = ?)
+        LIMIT 1
+    `, [normalizedUnit, parseNullableInt(normalizedUnit)]);
+
+    if (rows.length === 0) {
+        const error = new Error(`Invalid sample unit: ${normalizedUnit}`);
+        error.statusCode = 400;
+        throw error;
+    }
+
+    return rows[0].UnitsUniqueID;
+}
+
+async function resolveSoilTextureLabel(connection, value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+    if (!/^\d+$/.test(raw)) return raw;
+    // The soil-texture selects submit the SoilTexture_Ref ID; store the label
+    // so SampleDetails.SoilTexture reads consistently for both media paths.
+    const [rows] = await connection.execute(
+        'SELECT SoilTexture_Code FROM SoilTexture_Ref WHERE SoilTextureUniqueID = ?',
+        [parseInt(raw, 10)]
+    );
+    return rows.length > 0 ? String(rows[0].SoilTexture_Code).trim() : raw;
+}
+
 async function getWaterEnvTypeId(connection, environmentType) {
     // First try to find exact match in the reference table
     const [rows] = await connection.execute(
@@ -1764,18 +2337,220 @@ function getMediaSubType(formData) {
         return formData.water_type || null;
     } else if (formData.media_type === 'soil_sediment') {
         return formData.sediment_type || null;
+    } else if (formData.media_type === 'in_soil') {
+        return 'terrestrial_soil';
     }
     return null;
 }
 
-function getLandscapeType(formData) {
-    // Return the landscape type based on media type
-    if (formData.media_type === 'in_soil') {
-        return formData.soil_landscape_type || null;
-    } else if (formData.media_type === 'soil_litter') {
-        return formData.surface_landscape_type || null;
+function hasOwnAny(formData, ...keys) {
+    return keys.some(key => Object.prototype.hasOwnProperty.call(formData, key));
+}
+
+function getPolymerPercentageFieldNames(fieldPrefix, polymerCode) {
+    const normalizedCode = normalizeRefCodeForField(polymerCode);
+    return [...new Set([
+        `${fieldPrefix}${normalizedCode}`,
+        `${fieldPrefix}${String(polymerCode || '').trim().toLowerCase()}`
+    ])];
+}
+
+function findPolymerPercentageField(formData, fieldPrefix, polymerCode) {
+    const candidates = getPolymerPercentageFieldNames(fieldPrefix, polymerCode);
+
+    for (const fieldName of candidates) {
+        if (Object.prototype.hasOwnProperty.call(formData, fieldName)) {
+            return { fieldName, rawValue: formData[fieldName] };
+        }
     }
+
     return null;
+}
+
+function collectSubmittedPolymerFields(formData, fieldPrefix, polymerRefs) {
+    const fieldOwners = new Map();
+    for (const polymer of polymerRefs) {
+        const polymerId = String(polymer.PolymerUniqueID ?? '');
+        const fieldNames = getPolymerPercentageFieldNames(fieldPrefix, polymer.Polymer_Code);
+        for (const fieldName of fieldNames) {
+            const existingOwner = fieldOwners.get(fieldName);
+            if (existingOwner && existingOwner !== polymerId) {
+                const error = new Error(
+                    `Polymer reference codes collide at form field ${fieldName}. ` +
+                    'No polymer data was saved.'
+                );
+                error.statusCode = 500;
+                throw error;
+            }
+            fieldOwners.set(fieldName, polymerId);
+        }
+    }
+
+    const allowedFields = new Set(
+        polymerRefs.flatMap(polymer =>
+            getPolymerPercentageFieldNames(fieldPrefix, polymer.Polymer_Code)
+        )
+    );
+    const unknownFields = getSubmittedPolymerPercentageFields(formData, fieldPrefix)
+        .filter(fieldName => !allowedFields.has(fieldName));
+
+    if (unknownFields.length > 0) {
+        const error = new Error(
+            `Unknown polymer percentage field(s): ${unknownFields.join(', ')}. ` +
+            'No polymer data was saved.'
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+
+    return polymerRefs
+        .map(polymer => ({
+            polymer,
+            code: polymer.Polymer_Code || '',
+            field: findPolymerPercentageField(formData, fieldPrefix, polymer.Polymer_Code)
+        }))
+        .filter(entry => entry.field);
+}
+
+function assertSubmittedPolymerTotal(percentages, type) {
+    if (percentages.length === 0) {
+        return;
+    }
+
+    const total = percentages.reduce((sum, entry) => sum + entry.percentage, 0);
+    if (!isPercentageTotalValid(total)) {
+        const error = new Error(
+            `${type} polymer percentages sum to ${total.toFixed(4)}% ` +
+            `(expected 100% ± ${PERCENTAGE_TOLERANCE}%).`
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+}
+
+async function assertDecimalPercentageStorage(connection, tableName, columnName = 'Percentage') {
+    const [rows] = await connection.execute(`
+        SELECT DATA_TYPE, NUMERIC_PRECISION, NUMERIC_SCALE
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+          AND COLUMN_NAME = ?
+        LIMIT 1
+    `, [tableName, columnName]);
+
+    const column = rows[0];
+    const numericPrecision = Number(column?.NUMERIC_PRECISION);
+    const numericScale = Number(column?.NUMERIC_SCALE);
+    const supportsRequiredPrecision = column &&
+        ['decimal', 'numeric'].includes(String(column.DATA_TYPE).toLowerCase()) &&
+        numericScale >= PERCENTAGE_DECIMAL_PLACES &&
+        numericPrecision - numericScale >= 3;
+
+    if (!supportsRequiredPrecision) {
+        const error = new Error(
+            `${tableName}.${columnName} must be DECIMAL with room for 100 and at least ` +
+            `${PERCENTAGE_DECIMAL_PLACES} decimal places. ` +
+            'Run db/20260720_preserve_percentage_precision.sql before saving detail percentages.'
+        );
+        error.statusCode = 500;
+        throw error;
+    }
+}
+
+async function assertAutoIncrementColumn(connection, tableName, columnName) {
+    const [rows] = await connection.execute(`
+        SELECT EXTRA
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+          AND COLUMN_NAME = ?
+        LIMIT 1
+    `, [tableName, columnName]);
+
+    const isAutoIncrement = String(rows[0]?.EXTRA || '')
+        .toLowerCase()
+        .split(/\s+/)
+        .includes('auto_increment');
+    if (!isAutoIncrement) {
+        const error = new Error(
+            `${tableName}.${columnName} must be AUTO_INCREMENT. ` +
+            'Run db/20260720_preserve_percentage_precision.sql before saving detail percentages.'
+        );
+        error.statusCode = 500;
+        throw error;
+    }
+}
+
+async function assertStoredPolymerDetails(
+    connection,
+    tableName,
+    foreignKey,
+    parentId,
+    type,
+    expectedEntries,
+    expectedMethod
+) {
+    const [rows] = await connection.execute(`
+        SELECT PolymerID_Num, PolymerType_Legacy, Percentage, Method_PercentEstimate
+        FROM ${tableName}
+        WHERE ${foreignKey} = ?
+    `, [parentId]);
+
+    const failVerification = detail => {
+        const error = new Error(`${type} polymer percentages were not stored exactly: ${detail}`);
+        error.statusCode = 500;
+        throw error;
+    };
+
+    if (rows.length !== expectedEntries.length) {
+        failVerification(`expected ${expectedEntries.length} rows but found ${rows.length}.`);
+    }
+
+    const storedByPolymerId = new Map();
+    for (const row of rows) {
+        const polymerId = String(row.PolymerID_Num);
+        if (storedByPolymerId.has(polymerId)) {
+            failVerification(`polymer ID ${polymerId} was stored more than once.`);
+        }
+        storedByPolymerId.set(polymerId, row);
+    }
+
+    for (const { polymer, field, percentage } of expectedEntries) {
+        const polymerId = String(polymer.PolymerUniqueID);
+        const stored = storedByPolymerId.get(polymerId);
+        if (!stored) {
+            failVerification(`polymer ${polymer.Polymer_Code} is missing.`);
+        }
+
+        const expectedPercentage = toDatabasePercentage(percentage, field.fieldName);
+        const storedPercentage = toDatabasePercentage(
+            stored.Percentage,
+            `${tableName}.Percentage for ${polymer.Polymer_Code}`
+        );
+        if (storedPercentage !== expectedPercentage) {
+            failVerification(
+                `polymer ${polymer.Polymer_Code} expected ${expectedPercentage}% ` +
+                `but found ${storedPercentage}%.`
+            );
+        }
+
+        if (String(stored.PolymerType_Legacy || '') !== String(polymer.Polymer_Code || '')) {
+            failVerification(`polymer ${polymer.Polymer_Code} was stored under the wrong legacy code.`);
+        }
+
+        if (String(stored.Method_PercentEstimate ?? '') !== String(expectedMethod ?? '')) {
+            failVerification(`polymer ${polymer.Polymer_Code} has the wrong percent-estimation method.`);
+        }
+    }
+
+    const storedTotal = rows.reduce((total, row) => total + Number(row.Percentage || 0), 0);
+
+    if (!isPercentageTotalValid(storedTotal)) {
+        failVerification(
+            `database total is ${storedTotal.toFixed(4)}% ` +
+            `(expected 100% ± ${PERCENTAGE_TOLERANCE}%).`
+        );
+    }
 }
 
 async function insertPolymerDetails(connection, parentId, formData, type) {
@@ -1786,69 +2561,796 @@ async function insertPolymerDetails(connection, parentId, formData, type) {
     const methodPercentEstimate = type === 'microplastics'
         ? firstPresent(formData, 'micro_method_percent_estimate')
         : firstPresent(formData, 'fragments_method_percent_estimate');
+    const [polymerRefs] = await connection.query('SELECT * FROM PolymerType_Ref');
+    const submittedFields = collectSubmittedPolymerFields(formData, fieldPrefix, polymerRefs);
+    const percentagesToInsert = [];
 
-    try {
-        // Fetch polymer references
-        const [polymerRefs] = await connection.query('SELECT * FROM PolymerType_Ref');
+    for (const { polymer, field } of submittedFields) {
+        const percentage = parsePercentage(field.rawValue, field.fieldName);
+        if (percentage === null) continue;
 
-        for (const polymer of polymerRefs) {
-            // Match the field name convention (lowercase code)
-            // Ensure we handle special characters if necessary, but assuming simple codes for now
-            // If DB code is 'PE-UHMW', we might need to normalize.
-            // For now assume direct lowercase mapping or frontend matches backend generation.
-            const code = polymer.Polymer_Code.toLowerCase().replace(/[^a-z0-9]/g, '_');
-            // Note: The previous hardcoded list had 'pe_uhmw', so we normalize to snake_case if needed or just use code.
-            // Let's stick to simple lowercase for now, but if the code has hyphens, we might need to check.
-            // Actually, if we update the frontend to use the same logic, it will match.
-
-            // However, to maintain backward compatibility with existing hardcoded frontend (until I update it):
-            // The existing list has: pete, hdpe, pvc, ldpe, pp, ps, other, pa, pc, rubber, pla, abs, eva, pb, pe_uhmw, pmma, hips, eps, bitumen, pan
-            // If DB has 'PE-UHMW', lowercase is 'pe-uhmw'. Existing field is 'pe_uhmw'.
-            // I'll try to match both just in case.
-
-            let fieldName = `${fieldPrefix}${code}`;
-            let percentage = formData[fieldName];
-
-            if (!percentage && code.includes('-')) {
-                 fieldName = `${fieldPrefix}${code.replace(/-/g, '_')}`;
-                 percentage = formData[fieldName];
-            }
-            // Also try exact code if different
-            if (!percentage) {
-                 fieldName = `${fieldPrefix}${polymer.Polymer_Code.toLowerCase()}`;
-                 percentage = formData[fieldName];
-            }
-
-            if (percentage && parseInt(percentage) > 0) {
-                try {
-                    const [maxIdResult] = await connection.execute(
-                        `SELECT MAX(${idColumn}) as maxId FROM ${tableName}`
-                    );
-                    const polymerDetailsId = (maxIdResult[0].maxId || 0) + 1;
-
-                    await connection.execute(`
-                        INSERT INTO ${tableName} (
-                            ${idColumn}, ${foreignKey}, PolymerID_Num, PolymerType_Legacy,
-                            Percentage, Method_PercentEstimate, DateEntered
-                        ) VALUES (?, ?, ?, ?, ?, ?, NOW())
-                    `, [
-                        polymerDetailsId,
-                        parentId,
-                        polymer.PolymerUniqueID,
-                        polymer.Polymer_Code,
-                        parseInt(percentage),
-                        methodPercentEstimate
-                    ]);
-
-                    console.log(`Inserted ${type} polymer detail: ID ${polymer.PolymerUniqueID} (${code}) = ${percentage}%`);
-                } catch (error) {
-                    console.error(`Error inserting polymer details for ${code}:`, error);
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Error processing polymer details:', error);
+        percentagesToInsert.push({ polymer, field, percentage });
     }
+
+    if (percentagesToInsert.length === 0) {
+        return;
+    }
+
+    const appliesColumn = type === 'microplastics' ? 'AppliesTo_MP' : 'AppliesTo_Debris';
+    await validateSubmittedPolymerMethod(connection, formData, type);
+    const validatedPercentMethod = await assertMethodReference(
+        connection,
+        methodPercentEstimate,
+        'Percent',
+        appliesColumn,
+        `${type} polymer percent-estimation method`
+    );
+
+    assertSubmittedPolymerTotal(percentagesToInsert, type);
+    await assertDecimalPercentageStorage(connection, tableName);
+    await assertAutoIncrementColumn(connection, tableName, idColumn);
+
+    for (const { polymer, field, percentage } of percentagesToInsert) {
+        try {
+            await connection.execute(`
+                INSERT INTO ${tableName} (
+                    ${foreignKey}, PolymerID_Num, PolymerType_Legacy,
+                    Percentage, Method_PercentEstimate, DateEntered
+                ) VALUES (?, ?, ?, ?, ?, NOW())
+            `, [
+                parentId,
+                polymer.PolymerUniqueID,
+                polymer.Polymer_Code,
+                toDatabasePercentage(percentage, field.fieldName),
+                validatedPercentMethod
+            ]);
+        } catch (error) {
+            error.message = `Failed to store ${type} polymer ${polymer.Polymer_Code}: ${error.message}`;
+            throw error;
+        }
+    }
+
+    await assertStoredPolymerDetails(
+        connection,
+        tableName,
+        foreignKey,
+        parentId,
+        type,
+        percentagesToInsert,
+        validatedPercentMethod
+    );
+}
+
+async function loadPolymerFieldsForForm(connection, tableName, parentId, prefix, candidateParentColumns, methodFieldName = null) {
+    const formFields = {};
+
+    const columns = await getTableColumns(connection, tableName);
+    const parentColumn = candidateParentColumns.find(column => columns.has(column));
+    const requiredColumns = ['PolymerID_Num', 'PolymerType_Legacy', 'Percentage'];
+    if (methodFieldName) {
+        requiredColumns.push('Method_PercentEstimate');
+    }
+    const missingColumns = requiredColumns.filter(column => !columns.has(column));
+
+    if (!parentColumn || missingColumns.length > 0) {
+        const details = [
+            !parentColumn ? `one of ${candidateParentColumns.join('/')}` : null,
+            ...missingColumns
+        ].filter(Boolean);
+        const error = new Error(`${tableName} is missing required polymer columns: ${details.join(', ')}.`);
+        error.statusCode = 500;
+        throw error;
+    }
+
+    const [rows] = await connection.execute(`
+        SELECT pd.*, pr.Polymer_Code
+        FROM ${tableName} pd
+        LEFT JOIN PolymerType_Ref pr ON pd.PolymerID_Num = pr.PolymerUniqueID
+        WHERE pd.\`${parentColumn}\` = ?
+    `, [parentId]);
+
+    const seenPolymerIds = new Set();
+    const fieldOwners = new Map();
+    const methods = new Set();
+
+    for (const row of rows) {
+        const referenceCode = row.Polymer_Code || '';
+        const legacyCode = row.PolymerType_Legacy || '';
+        const code = referenceCode || legacyCode;
+        const normalizedCode = normalizeRefCodeForField(code);
+        if (!normalizedCode) {
+            const error = new Error(`${tableName} contains a polymer row without an identifiable code.`);
+            error.statusCode = 500;
+            throw error;
+        }
+
+        if (referenceCode && legacyCode &&
+            normalizeRefCodeForField(referenceCode) !== normalizeRefCodeForField(legacyCode)) {
+            const error = new Error(
+                `${tableName} contains a polymer row whose reference and legacy codes disagree.`
+            );
+            error.statusCode = 500;
+            throw error;
+        }
+
+        const polymerIdentity = row.PolymerID_Num === null || row.PolymerID_Num === undefined
+            ? `legacy:${normalizedCode}`
+            : `id:${row.PolymerID_Num}`;
+        if (seenPolymerIds.has(polymerIdentity)) {
+            const error = new Error(`${tableName} contains duplicate polymer ${code}.`);
+            error.statusCode = 500;
+            throw error;
+        }
+        seenPolymerIds.add(polymerIdentity);
+
+        const fieldName = `${prefix}${normalizedCode}`;
+        if (fieldOwners.has(fieldName)) {
+            const error = new Error(
+                `${tableName} contains polymer codes that collide at form field ${fieldName}.`
+            );
+            error.statusCode = 500;
+            throw error;
+        }
+        fieldOwners.set(fieldName, polymerIdentity);
+
+        let percentage;
+        try {
+            percentage = parsePercentage(row.Percentage, `${tableName}.${fieldName}`);
+        } catch (error) {
+            error.statusCode = 500;
+            throw error;
+        }
+        if (percentage === null) {
+            const error = new Error(`${tableName}.${fieldName} is missing its percentage.`);
+            error.statusCode = 500;
+            throw error;
+        }
+
+        formFields[fieldName] = toDatabasePercentage(percentage, `${tableName}.${fieldName}`);
+        methods.add(String(row.Method_PercentEstimate ?? ''));
+    }
+
+    if (methods.size > 1) {
+        const error = new Error(`${tableName} contains inconsistent percent-estimation methods.`);
+        error.statusCode = 500;
+        throw error;
+    }
+    if (methodFieldName && methods.size === 1) {
+        const [method] = methods;
+        setIfPresent(formFields, methodFieldName, method);
+    }
+
+    return formFields;
+}
+
+async function replacePolymerDetails(connection, options) {
+    const {
+        tableName,
+        idColumnCandidates,
+        parentColumnCandidates,
+        parentId,
+        fieldPrefix,
+        methodPercentEstimate
+    } = options;
+
+    if (!parentId) {
+        return;
+    }
+
+    const [polymerRefs] = await connection.query('SELECT * FROM PolymerType_Ref');
+    const submittedFields = collectSubmittedPolymerFields(
+        options.formData,
+        fieldPrefix,
+        polymerRefs
+    );
+
+    // A missing group means "leave it unchanged". An explicitly submitted
+    // group whose known fields are blank means "clear it".
+    if (submittedFields.length === 0) {
+        return false;
+    }
+
+    const columns = await getTableColumns(connection, tableName);
+    const parentColumn = parentColumnCandidates.find(column => columns.has(column));
+    const idColumn = idColumnCandidates.find(column => columns.has(column));
+    const requiredColumns = [
+        'PolymerID_Num',
+        'PolymerType_Legacy',
+        'Percentage',
+        'Method_PercentEstimate'
+    ];
+
+    if (!parentColumn || requiredColumns.some(column => !columns.has(column))) {
+        const error = new Error(`${tableName} is missing required polymer detail columns.`);
+        error.statusCode = 500;
+        throw error;
+    }
+
+    const percentagesToInsert = [];
+    let validatedPercentMethod = null;
+
+    for (const { polymer, code, field } of submittedFields) {
+
+        const percentage = parsePercentage(field.rawValue, field.fieldName);
+
+        if (percentage === null) {
+            continue;
+        }
+
+        percentagesToInsert.push({ polymer, code, field, percentage });
+    }
+
+    if (percentagesToInsert.length > 0) {
+        const type = fieldPrefix === 'mp_polymer_' ? 'microplastics' : 'fragments';
+        const appliesColumn = type === 'microplastics' ? 'AppliesTo_MP' : 'AppliesTo_Debris';
+        await validateSubmittedPolymerMethod(connection, options.formData, type);
+        validatedPercentMethod = await assertMethodReference(
+            connection,
+            methodPercentEstimate,
+            'Percent',
+            appliesColumn,
+            `${type} polymer percent-estimation method`
+        );
+        assertSubmittedPolymerTotal(percentagesToInsert, type);
+        await assertDecimalPercentageStorage(connection, tableName);
+        if (!idColumn) {
+            const error = new Error(`${tableName} is missing its polymer detail ID column.`);
+            error.statusCode = 500;
+            throw error;
+        }
+        await assertAutoIncrementColumn(connection, tableName, idColumn);
+    }
+
+    await connection.execute(
+        `DELETE FROM ${tableName} WHERE \`${parentColumn}\` = ?`,
+        [parentId]
+    );
+
+    for (const { polymer, code, field, percentage } of percentagesToInsert) {
+
+        const dataMap = {
+            [parentColumn]: parentId,
+            PolymerID_Num: polymer.PolymerUniqueID,
+            PolymerType_Legacy: code,
+            Percentage: toDatabasePercentage(percentage, field.fieldName),
+            Method_PercentEstimate: validatedPercentMethod ?? '',
+            DateEntered: new Date()
+        };
+
+        await insertFromMap(connection, tableName, dataMap, columns);
+    }
+
+    if (percentagesToInsert.length > 0) {
+        const type = fieldPrefix === 'mp_polymer_' ? 'microplastics' : 'fragments';
+        await assertStoredPolymerDetails(
+            connection,
+            tableName,
+            parentColumn,
+            parentId,
+            type,
+            percentagesToInsert,
+            validatedPercentMethod
+        );
+    }
+
+    return true;
+}
+
+async function buildSampleFormData(connection, sampleId, userId) {
+    const [rows] = await connection.execute(`
+        SELECT
+            sd.*,
+            se.*,
+            l.*,
+            mt.MediaTypeOverall,
+            wt.WaterEnv_Name,
+            sampleUnit.Units_Code AS SampleUnitCode,
+            microUnit.Units_Code AS MicroplasticsSampleUnitCode,
+            fragmentUnit.Units_Code AS FragmentsSampleUnitCode,
+            packagingUnit.Units_Code AS PackagingSampleUnitCode
+        FROM SampleDetails sd
+        INNER JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
+        LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
+        LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
+        LEFT JOIN WaterEnvType_Ref wt ON sd.WaterEnvType_SelectID = wt.WaterEnv_UniqueID
+        LEFT JOIN Units_Ref sampleUnit ON sd.SampleUnit_Num = sampleUnit.UnitsUniqueID
+        LEFT JOIN Units_Ref microUnit ON sd.MicroplasticsSampleUnit_Num = microUnit.UnitsUniqueID
+        LEFT JOIN Units_Ref fragmentUnit ON sd.FragmentsSampleUnit_Num = fragmentUnit.UnitsUniqueID
+        LEFT JOIN Units_Ref packagingUnit ON sd.PackagingSampleUnit_Num = packagingUnit.UnitsUniqueID
+        WHERE sd.SampleUniqueID = ? AND se.UserSamplingID = ?
+        LIMIT 1
+    `, [sampleId, userId]);
+
+    if (rows.length === 0) {
+        return null;
+    }
+
+    const row = rows[0];
+    const formData = {
+        edit_mode: 'true',
+        sample_id: String(sampleId),
+        sampling_event_id: String(row.SamplingEvent_Num),
+        location_id: row.LocationID_Num ? String(row.LocationID_Num) : '',
+        location_type: 'existing',
+        location_name: row.LocationName || '',
+        location_shortcode: row.UserLocID_txt || '',
+        location_description: row.Location_Desc || '',
+        latitude: row.Lat_DecimalDegree ?? row['Lat-DecimalDegree'] ?? '',
+        longitude: row.Long_DecimalDegree ?? row['Long-DecimalDegree'] ?? '',
+        acres: row.Area_acres ?? row['Area-acres'] ?? '',
+        streetaddress: row.StreetAddress || '',
+        city: row.City || '',
+        state: row.State || '',
+        country: row.Country || '',
+        zip_code: row.ZipCode || '',
+        land_use_cover: row.LandUseCover || '',
+        device_installation_period: row.DeviceInstallationPeriod || 'no',
+        sample_time: formatTimeForInput(row.SampleTime) || '',
+        sample_description: row.SamplerNames || '',
+        publication_id_num: row.PublicationID_Num ? String(row.PublicationID_Num) : '',
+        publication_present: row.PublicationID_Num ? 'yes' : 'no',
+        air_temp: row.AirTemp_C ?? row['AirTemp-C'] ?? '',
+        rainfall: row.Rainfall_cm_Precedent24 ?? row['Rainfall-cm-Precedent24'] ?? '',
+        additional_notes: row.AdditionalNotes || '',
+        media_type: resolveMediaTypeForForm(row),
+        environment_type: row.WaterEnv_Name || '',
+        volume_sampled: row.VolumeSampled ?? '',
+        total_water_depth: row.WaterDepth ?? '',
+        sample_water_depth: row.SampleWaterDepth ?? '',
+        water_flow_velocity: row.FlowVelocity ?? '',
+        turbidity: row.Turbidity ?? '',
+        total_suspended_solids: row.SuspendedSolids ?? '',
+        dissolved_oxygen: row.DissolvedOxygen ?? '',
+        conductivity: row.Conductivity ?? '',
+        soil_texture: row.SoilTexture ?? '',
+        surface_area_sampled: row.SurfaceAreaSampled ?? '',
+        permeable_surfaces: row.PermeableSurfaces ?? '',
+        impermeable_surfaces: row.ImpermeableSurfaces ?? '',
+        replicates_count: row.ReplicatesCount ?? '',
+        total_sample_amount: row.TotalSampleAmount ?? row.MicroplasticsSampleAmount ?? row.FragmentsSampleAmount ?? row.PackagingSampleAmount ?? '',
+        sample_unit: row.SampleUnitCode || row.MicroplasticsSampleUnitCode || row.FragmentsSampleUnitCode || row.PackagingSampleUnitCode || '',
+        microplastics_sample_amount: row.MicroplasticsSampleAmount ?? '',
+        microplastics_sample_unit: row.MicroplasticsSampleUnitCode || '',
+        fragments_sample_amount: row.FragmentsSampleAmount ?? '',
+        fragments_sample_unit: row.FragmentsSampleUnitCode || '',
+        packaging_sample_amount: row.PackagingSampleAmount ?? '',
+        packaging_sample_unit: row.PackagingSampleUnitCode || '',
+        microplastics_count: row.Micro5mmAndSmaller_Count ?? '',
+        fragments_count: row.FragLargerThan5mm_Count ?? '',
+        packaging_count: ''
+    };
+
+    formData.start_year = row.StartYear ?? '';
+    formData.start_month = row.StartMonth ?? '';
+    formData.start_day = row.StartDay ?? '';
+    formData.end_year = row.EndYear ?? '';
+    formData.end_month = row.EndMonth ?? '';
+    formData.end_day = row.EndDay ?? '';
+
+    if (formData.media_type === 'water') {
+        formData.water_type = row.MediaSubType || '';
+        formData.water_type_other_description = row.WaterTypeOtherDescription || '';
+        formData.water_additional_notes = row.MediaAdditionalNotes || '';
+    } else if (formData.media_type === 'soil_sediment') {
+        formData.sediment_type = row.MediaSubType || '';
+        formData.sediment_type_other_description = row.SedimentTypeOtherDescription || '';
+        formData.sediment_depth = row.SamplingDepth ?? '';
+        formData.sediment_dry_weight = row.SoilDryWeight ?? '';
+        formData.sediment_organic_matter = row.SoilOrganicMatter ?? '';
+        formData.sediment_moisture = row.SoilMoisture_Percent ?? row['SoilMoisture%'] ?? '';
+        formData.sediment_sand = row.SoilSand ?? '';
+        formData.sediment_silt = row.SoilSilt ?? '';
+        formData.sediment_clay = row.SoilClay ?? '';
+        formData.sediment_additional_notes = row.MediaAdditionalNotes || '';
+    } else if (formData.media_type === 'in_soil') {
+        formData.soil_depth = row.SamplingDepth ?? '';
+        formData.soil_sample_dry_weight = row.SoilDryWeight ?? '';
+        formData.soil_organic_matter = row.SoilOrganicMatter ?? '';
+        formData.soil_moisture = row.SoilMoisture_Percent ?? row['SoilMoisture%'] ?? '';
+        formData.soil_sand = row.SoilSand ?? '';
+        formData.soil_silt = row.SoilSilt ?? '';
+        formData.soil_clay = row.SoilClay ?? '';
+        formData.soil_additional_notes = row.MediaAdditionalNotes || '';
+    } else if (formData.media_type === 'soil_litter') {
+        formData.surface_additional_notes = row.MediaAdditionalNotes || '';
+    } else if (formData.media_type === 'mixed_composite') {
+        formData.mixed_media_description = row.MixedMediaDescription || '';
+        formData.mixed_additional_notes = row.MediaAdditionalNotes || '';
+    }
+
+    const hasAdditionalInfo = hasAnyFormValue(formData, [
+        'environment_type', 'volume_sampled', 'total_water_depth', 'sample_water_depth',
+        'water_flow_velocity', 'turbidity', 'total_suspended_solids', 'dissolved_oxygen',
+        'conductivity', 'sediment_depth', 'sediment_dry_weight', 'sediment_organic_matter',
+        'soil_depth', 'soil_sample_dry_weight', 'soil_organic_matter', 'surface_area_sampled',
+        'permeable_surfaces', 'impermeable_surfaces', 'water_additional_notes',
+        'sediment_additional_notes', 'soil_additional_notes', 'surface_additional_notes',
+        'mixed_additional_notes'
+    ]);
+    formData.additional_info = hasAdditionalInfo ? 'yes' : 'no';
+
+    const [microRows] = await connection.execute(
+        'SELECT * FROM MicroplasticsInSample WHERE SampleDetails_Num = ? LIMIT 1',
+        [sampleId]
+    );
+    const micro = microRows[0];
+    let microUniqueId = null;
+    if (micro) {
+        microUniqueId = micro.Micro_UniqueID;
+        setIfPresent(formData, 'microplastics_count', micro.Micro5mmAndSmaller_Count);
+        setIfPresent(formData, 'micro_mass_mp_total', micro.Mass_MP_Total);
+        setIfPresent(formData, 'micro_method_polymer_num', micro.Method_Polymer_Num);
+        setIfPresent(formData, 'micro_method_polymer_other', micro.Method_Polymer_Other);
+    }
+
+    const [fragmentRows] = await connection.execute(
+        'SELECT * FROM FragmentsInSample WHERE SampleDetails_Num = ? LIMIT 1',
+        [sampleId]
+    );
+    const fragment = fragmentRows[0];
+    let fragmentUniqueId = null;
+    if (fragment) {
+        fragmentUniqueId = fragment.Fragment_UniqueID;
+        formData.fragments_count = fragment.PurposeUnknown_Count ?? '';
+        formData.packaging_count = fragment.PurposeKnown_Count ?? '';
+        setIfPresent(formData, 'fragments_mass_debris_total', fragment.Mass_Debris_Total);
+        setIfPresent(formData, 'fragments_method_polymer_num', fragment.Method_Polymer_Num);
+        setIfPresent(formData, 'fragments_method_polymer_other', fragment.Method_Polymer_Other);
+    }
+
+    if (microUniqueId) {
+        Object.assign(formData, await loadPolymerFieldsForForm(
+            connection,
+            'MicroplasticsPolymerDetails',
+            microUniqueId,
+            'mp_polymer_',
+            ['MicroInSample_Num', 'Micro_UniqueID'],
+            'micro_method_percent_estimate'
+        ));
+    }
+
+    if (fragmentUniqueId) {
+        Object.assign(formData, await loadPolymerFieldsForForm(
+            connection,
+            'FragmentsPolymerDetails',
+            fragmentUniqueId,
+            'fragment_polymer_',
+            ['FragInSample_Num', 'Fragment_UniqueID'],
+            'fragments_method_percent_estimate'
+        ));
+    }
+
+    const detailConfigs = [
+        { key: 'fragments_color_details', tableName: 'FragmentsColorDetails', idColumn: 'FragmentColor_UniqueID', parentColumn: 'FragInSample_Num', refColumn: 'FragColor_Num', legacyColumn: 'FragColor_Legacy', percentColumn: 'FragColorPercent', parentId: fragmentUniqueId },
+        { key: 'fragments_form_details', tableName: 'FragmentsFormDetails', idColumn: 'FragForm_UniqueID', parentColumn: 'FragInSample_Num', refColumn: 'FragForm_Num', legacyColumn: 'FragForm_Legacy', percentColumn: 'FragFormPercent', parentId: fragmentUniqueId },
+        { key: 'fragments_opacity_details', tableName: 'FragmentsOpacityDetails', idColumn: 'FragOpacity_UniqueID', parentColumn: 'FragInSample_Num', refColumn: 'FragOpacity_Num', legacyColumn: 'FragOpacity_Legacy', percentColumn: 'FragOpacityPercent', parentId: fragmentUniqueId },
+        { key: 'fragments_purpose_details', tableName: 'FragmentsPurposes', idColumn: 'FragPurposeUniqueID', parentColumn: 'FragInSample_Num', refColumn: 'Purpose_Num', legacyColumn: 'Purpose_Legacy', percentColumn: 'Percent_Purpose', parentId: fragmentUniqueId },
+        { key: 'micro_color_details', tableName: 'MicroplasticsColorDetails', idColumn: 'MicroColor_UniqueID', parentColumn: 'MicroInSample_Num', refColumn: 'MicroColor_Num', legacyColumn: 'MicroColor_Legacy', percentColumn: 'MicroColorPercent', parentId: microUniqueId },
+        { key: 'micro_opacity_details', tableName: 'MicroplasticsOpacityDetails', idColumn: 'MicroOpacityUniqueID', parentColumn: 'MicroInSample_Num', refColumn: 'MicroOpacity_Num', legacyColumn: 'MicroOpacity_Legacy', percentColumn: 'MicroOpacityPercent', parentId: microUniqueId },
+        { key: 'micro_size_details', tableName: 'MicroplasticsSizeDetails', idColumn: 'MicroplasticsSize_UniqueID', parentColumn: 'MicroInSample_Num', refColumn: 'MicroSize_Num', legacyColumn: 'MicroSize_Legacy', percentColumn: 'MicroSizePercent', parentId: microUniqueId },
+        { key: 'micro_shape_details', tableName: 'MicroplasticsFormDetails', idColumn: 'MicroForm_UniqueID', parentColumn: 'MicroInSample_Num', refColumn: 'MicroShape_Num', legacyColumn: 'MicroShape_Legacy', percentColumn: 'MicroShape_Percent', parentId: microUniqueId },
+        { key: 'micro_texture_details', tableName: 'MicroplasticsFormDetails', idColumn: 'MicroForm_UniqueID', parentColumn: 'MicroInSample_Num', refColumn: 'MicroTexture_Num', legacyColumn: 'MicroTexture_Legacy', percentColumn: 'MicroTexture_Percent', parentId: microUniqueId }
+    ];
+
+    for (const config of detailConfigs) {
+        if (!config.parentId) continue;
+        const rowsForDetail = await loadDetailRowsForForm(connection, config, config.parentId);
+        // Include [] explicitly so shared shape/texture groups can round-trip
+        // together and the client can distinguish "loaded empty" from omitted.
+        formData[config.key] = rowsForDetail;
+    }
+
+    const hasQuantitativeData = hasAnyFormValue(formData, [
+        'total_sample_amount', 'sample_unit', 'microplastics_count', 'fragments_count',
+        'packaging_count', 'micro_mass_mp_total', 'fragments_mass_debris_total'
+    ]) || hasMicroplasticsDetailData(formData) || hasFragmentsDetailData(formData);
+    formData.has_quantitative_data = hasQuantitativeData ? 'yes' : 'no';
+
+    return formData;
+}
+
+async function upsertChildRow(connection, tableName, idColumn, sampleId, dataMap) {
+    const [rows] = await connection.execute(
+        `SELECT \`${idColumn}\` as id FROM ${tableName} WHERE SampleDetails_Num = ? LIMIT 1`,
+        [sampleId]
+    );
+
+    if (rows.length > 0) {
+        await updateFromMap(connection, tableName, dataMap, `\`${idColumn}\` = ?`, [rows[0].id]);
+        return rows[0].id;
+    }
+
+    const nextId = await nextTableId(connection, tableName, idColumn);
+    await insertFromMap(connection, tableName, {
+        [idColumn]: nextId,
+        SampleDetails_Num: sampleId,
+        ...dataMap
+    });
+    return nextId;
+}
+
+async function updateSampleFromFormData(connection, sampleId, userId, formData) {
+    const [ownerRows] = await connection.execute(`
+        SELECT sd.SampleUniqueID, sd.SamplingEvent_Num
+        FROM SampleDetails sd
+        INNER JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
+        WHERE sd.SampleUniqueID = ? AND se.UserSamplingID = ?
+        LIMIT 1
+    `, [sampleId, userId]);
+
+    if (ownerRows.length === 0) {
+        return false;
+    }
+
+    const samplingEventId = ownerRows[0].SamplingEvent_Num;
+    const eventDates = normalizeSamplingEventDates(formData);
+
+    const publicationId = await resolvePublicationId(connection, formData);
+    const mediaTypeId = await getMediaTypeId(connection, formData.media_type);
+    const waterEnvTypeId = formData.environment_type ? await getWaterEnvTypeId(connection, formData.environment_type) : null;
+    const totalSampleAmountVal = firstPresent(
+        formData,
+        'total_sample_amount',
+        'totalSampleAmount',
+        'microplastics_sample_amount',
+        'fragments_sample_amount',
+        'packaging_sample_amount'
+    );
+    const sampleUnitVal = firstPresent(
+        formData,
+        'sample_unit',
+        'sampleUnit',
+        'microplastics_sample_unit',
+        'fragments_sample_unit',
+        'packaging_sample_unit'
+    );
+    const sampleUnitId = sampleUnitVal ? await getSampleUnitId(connection, sampleUnitVal) : null;
+    // Media-specific amounts/units are stored as submitted; the total remains a
+    // fallback for older payloads. firstPresent (not ??) so an empty string from
+    // a hidden section's input cannot mask the filled variant.
+    const microplasticsSampleAmountVal = firstPresent(formData, 'microplastics_sample_amount') ?? totalSampleAmountVal;
+    const fragmentsSampleAmountVal = firstPresent(formData, 'fragments_sample_amount') ?? totalSampleAmountVal;
+    const packagingSampleAmountVal = firstPresent(formData, 'packaging_sample_amount') ?? totalSampleAmountVal;
+    const microplasticsUnitVal = firstPresent(formData, 'microplastics_sample_unit');
+    const fragmentsUnitVal = firstPresent(formData, 'fragments_sample_unit');
+    const packagingUnitVal = firstPresent(formData, 'packaging_sample_unit');
+    const microplasticsSampleUnitId = microplasticsUnitVal ? await getSampleUnitId(connection, microplasticsUnitVal) : sampleUnitId;
+    const fragmentsSampleUnitId = fragmentsUnitVal ? await getSampleUnitId(connection, fragmentsUnitVal) : sampleUnitId;
+    const packagingSampleUnitId = packagingUnitVal ? await getSampleUnitId(connection, packagingUnitVal) : sampleUnitId;
+    const soilMoistureVal = firstPresent(formData, 'soil_moisture', 'soil_moisture_content', 'sediment_moisture');
+    const waterDepthVal = firstPresent(formData, 'water_depth', 'total_water_depth', 'sample_water_depth');
+    const samplingDepthVal = firstPresent(formData, 'soil_depth', 'sediment_depth');
+    const flowVelocityVal = firstPresent(formData, 'flow_velocity', 'water_flow_velocity');
+    const suspendedSolidsVal = firstPresent(formData, 'suspended_solids', 'total_suspended_solids');
+    const soilDryWeightVal = firstPresent(formData, 'soil_dry_weight', 'soil_sample_dry_weight', 'sediment_dry_weight');
+    const soilOrganicMatterVal = firstPresent(formData, 'soil_organic_matter', 'sediment_organic_matter');
+    const soilSandVal = firstPresent(formData, 'soil_sand', 'sediment_sand');
+    const soilSiltVal = firstPresent(formData, 'soil_silt', 'sediment_silt');
+    const soilClayVal = firstPresent(formData, 'soil_clay', 'sediment_clay');
+    const soilTextureVal = await resolveSoilTextureLabel(
+        connection,
+        firstPresent(formData, 'soil_texture', 'soilTexture')
+    );
+    const mediaAdditionalNotes = formData.water_additional_notes || formData.sediment_additional_notes ||
+        formData.soil_additional_notes || formData.surface_additional_notes ||
+        formData.mixed_additional_notes || null;
+
+    await updateFromMap(connection, 'SamplingEvent', {
+        LocationID_Num: parseNullableInt(formData.location_id),
+        PublicationID_Num: publicationId,
+        StartYear: eventDates.start.year,
+        StartMonth: eventDates.start.month,
+        StartDay: eventDates.start.day,
+        EndYear: eventDates.end.year,
+        EndMonth: eventDates.end.month,
+        EndDay: eventDates.end.day,
+        AirTemp_C: parseNullableFloat(formData.air_temp),
+        Weather_Current: formData.current_conditions ? await getWeatherTypeId(connection, formData.current_conditions) : null,
+        Weather_Precedent24: formData.precedent_weather ? await getWeatherTypeId(connection, formData.precedent_weather) : null,
+        Rainfall_cm_Precedent24: parseNullableFloat(formData.rainfall),
+        SamplerNames: valueOrNull(formData.sample_description),
+        DeviceInstallationPeriod: eventDates.mode,
+        SampleTime: valueOrNull(formData.sample_time),
+        WeatherPrecedent24: formData.precedent_weather_24h ? await getWeatherTypeId(connection, formData.precedent_weather_24h) : null,
+        AdditionalNotes: valueOrNull(formData.additional_notes)
+    }, 'SamplingEventUniqueID = ? AND UserSamplingID = ?', [samplingEventId, userId]);
+
+    await updateFromMap(connection, 'SampleDetails', {
+        MediaType_SelectID: mediaTypeId,
+        FragLargerThan5mm_Count: getFragmentDebrisCount(formData),
+        Micro5mmAndSmaller_Count: parseNullableInt(formData.microplastics_count),
+        WaterEnvType_SelectID: waterEnvTypeId,
+        SoilMoisture_Percent: parseNullableFloat(soilMoistureVal),
+        MediaSubType: getMediaSubType(formData),
+        MixedMediaDescription: valueOrNull(formData.mixed_media_description),
+        VolumeSampled: parseNullableFloat(formData.volume_sampled),
+        WaterDepth: parseNullableFloat(waterDepthVal),
+        SamplingDepth: parseNullableFloat(samplingDepthVal),
+        FlowVelocity: parseNullableFloat(flowVelocityVal),
+        SuspendedSolids: parseNullableFloat(suspendedSolidsVal),
+        Conductivity: parseNullableFloat(formData.conductivity),
+        SoilDryWeight: parseNullableFloat(soilDryWeightVal),
+        SoilOrganicMatter: parseNullableFloat(soilOrganicMatterVal),
+        SoilSand: parseNullableFloat(soilSandVal),
+        SoilSilt: parseNullableFloat(soilSiltVal),
+        SoilClay: parseNullableFloat(soilClayVal),
+        SoilTexture: soilTextureVal,
+        ReplicatesCount: parseNullableInt(formData.replicates_count),
+        TotalSampleAmount: parseNullableFloat(totalSampleAmountVal),
+        SampleUnit_Num: sampleUnitId,
+        MicroplasticsSampleAmount: parseNullableFloat(microplasticsSampleAmountVal),
+        MicroplasticsSampleUnit_Num: microplasticsSampleUnitId,
+        FragmentsSampleAmount: parseNullableFloat(fragmentsSampleAmountVal),
+        FragmentsSampleUnit_Num: fragmentsSampleUnitId,
+        PackagingSampleAmount: parseNullableFloat(packagingSampleAmountVal),
+        PackagingSampleUnit_Num: packagingSampleUnitId,
+        Turbidity: parseNullableFloat(formData.turbidity),
+        DissolvedOxygen: parseNullableFloat(formData.dissolved_oxygen),
+        SampleWaterDepth: parseNullableFloat(formData.sample_water_depth),
+        SurfaceAreaSampled: parseNullableFloat(formData.surface_area_sampled),
+        PermeableSurfaces: parseNullableFloat(formData.permeable_surfaces),
+        ImpermeableSurfaces: parseNullableFloat(formData.impermeable_surfaces),
+        WaterTypeOtherDescription: valueOrNull(formData.water_type_other_description),
+        SedimentTypeOtherDescription: valueOrNull(formData.sediment_type_other_description),
+        MediaAdditionalNotes: mediaAdditionalNotes
+    }, 'SampleUniqueID = ?', [sampleId]);
+
+    const microPolymerMethodSubmitted = hasOwnAny(
+        formData,
+        'micro_method_polymer_num',
+        'micro_methodPolymerNum'
+    );
+    const fragmentsPolymerMethodSubmitted = hasOwnAny(
+        formData,
+        'fragments_method_polymer_num',
+        'fragments_methodPolymerNum'
+    );
+    const microPolymerFieldsSubmitted =
+        getSubmittedPolymerPercentageFields(formData, 'mp_polymer_').length > 0;
+    const fragmentsPolymerFieldsSubmitted =
+        getSubmittedPolymerPercentageFields(formData, 'fragment_polymer_').length > 0;
+    const validatedMicroPolymerMethod = microPolymerMethodSubmitted
+        ? await validateSubmittedPolymerMethod(connection, formData, 'microplastics')
+        : undefined;
+    const validatedFragmentsPolymerMethod = fragmentsPolymerMethodSubmitted
+        ? await validateSubmittedPolymerMethod(connection, formData, 'fragments')
+        : undefined;
+
+    if (microPolymerMethodSubmitted && validatedMicroPolymerMethod === null &&
+        !microPolymerFieldsSubmitted) {
+        const error = new Error(
+            'To clear the microplastics polymer method, submit the polymer percentage group explicitly.'
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+    if (fragmentsPolymerMethodSubmitted && validatedFragmentsPolymerMethod === null &&
+        !fragmentsPolymerFieldsSubmitted) {
+        const error = new Error(
+            'To clear the fragments polymer method, submit the polymer percentage group explicitly.'
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const microChildData = {
+        Micro5mmAndSmaller_Count: parseNullableInt(formData.microplastics_count),
+        Mass_MP_Total: parseNullableFloat(firstPresent(formData, 'micro_mass_mp_total', 'micro_massMPTotal'))
+    };
+    if (microPolymerMethodSubmitted) {
+        microChildData.Method_Polymer_Num = validatedMicroPolymerMethod;
+    }
+    if (hasOwnAny(formData, 'micro_method_polymer_other', 'micro_methodPolymerOther')) {
+        microChildData.Method_Polymer_Other = firstPresent(
+            formData,
+            'micro_method_polymer_other',
+            'micro_methodPolymerOther'
+        );
+    }
+
+    const microUniqueId = await upsertChildRow(
+        connection,
+        'MicroplasticsInSample',
+        'Micro_UniqueID',
+        sampleId,
+        microChildData
+    );
+
+    const fragmentsChildData = {
+        Mass_Debris_Total: parseNullableFloat(firstPresent(formData, 'fragments_mass_debris_total', 'fragments_massDebrisTotal')),
+        PurposeKnown_Count: parseNullableInt(formData.packaging_count),
+        PurposeUnknown_Count: parseNullableInt(formData.fragments_count)
+    };
+    if (fragmentsPolymerMethodSubmitted) {
+        fragmentsChildData.Method_Polymer_Num = validatedFragmentsPolymerMethod;
+    }
+    if (hasOwnAny(formData, 'fragments_method_polymer_other', 'fragments_methodPolymerOther')) {
+        fragmentsChildData.Method_Polymer_Other = firstPresent(
+            formData,
+            'fragments_method_polymer_other',
+            'fragments_methodPolymerOther'
+        );
+    }
+
+    const fragmentUniqueId = await upsertChildRow(
+        connection,
+        'FragmentsInSample',
+        'Fragment_UniqueID',
+        sampleId,
+        fragmentsChildData
+    );
+
+    await replacePolymerDetails(connection, {
+        tableName: 'MicroplasticsPolymerDetails',
+        idColumnCandidates: ['MicroPolymerUniqueID'],
+        parentColumnCandidates: ['MicroInSample_Num', 'Micro_UniqueID'],
+        parentId: microUniqueId,
+        fieldPrefix: 'mp_polymer_',
+        methodPercentEstimate: firstPresent(formData, 'micro_method_percent_estimate'),
+        formData
+    });
+
+    await replacePolymerDetails(connection, {
+        tableName: 'FragmentsPolymerDetails',
+        idColumnCandidates: ['FragPolymerUniqueID'],
+        parentColumnCandidates: ['FragInSample_Num', 'Fragment_UniqueID'],
+        parentId: fragmentUniqueId,
+        fieldPrefix: 'fragment_polymer_',
+        methodPercentEstimate: firstPresent(formData, 'fragments_method_percent_estimate'),
+        formData
+    });
+
+    const detailConfigs = [
+        { key: 'fragments_color_details', camelKey: 'fragmentsColorDetails', tableName: 'FragmentsColorDetails', idColumn: 'FragmentColor_UniqueID', parentColumn: 'FragInSample_Num', refColumn: 'FragColor_Num', legacyColumn: 'FragColor_Legacy', percentColumn: 'FragColorPercent', parentId: fragmentUniqueId },
+        { key: 'fragments_form_details', camelKey: 'fragmentsFormDetails', tableName: 'FragmentsFormDetails', idColumn: 'FragForm_UniqueID', parentColumn: 'FragInSample_Num', refColumn: 'FragForm_Num', legacyColumn: 'FragForm_Legacy', percentColumn: 'FragFormPercent', parentId: fragmentUniqueId },
+        { key: 'fragments_opacity_details', camelKey: 'fragmentsOpacityDetails', tableName: 'FragmentsOpacityDetails', idColumn: 'FragOpacity_UniqueID', parentColumn: 'FragInSample_Num', refColumn: 'FragOpacity_Num', legacyColumn: 'FragOpacity_Legacy', percentColumn: 'FragOpacityPercent', parentId: fragmentUniqueId },
+        { key: 'fragments_purpose_details', camelKey: 'fragmentsPurposeDetails', tableName: 'FragmentsPurposes', idColumn: 'FragPurposeUniqueID', parentColumn: 'FragInSample_Num', refColumn: 'Purpose_Num', legacyColumn: 'Purpose_Legacy', percentColumn: 'Percent_Purpose', parentId: fragmentUniqueId },
+        { key: 'micro_color_details', camelKey: 'microColorDetails', tableName: 'MicroplasticsColorDetails', idColumn: 'MicroColor_UniqueID', parentColumn: 'MicroInSample_Num', refColumn: 'MicroColor_Num', legacyColumn: 'MicroColor_Legacy', percentColumn: 'MicroColorPercent', parentId: microUniqueId },
+        { key: 'micro_opacity_details', camelKey: 'microOpacityDetails', tableName: 'MicroplasticsOpacityDetails', idColumn: 'MicroOpacityUniqueID', parentColumn: 'MicroInSample_Num', refColumn: 'MicroOpacity_Num', legacyColumn: 'MicroOpacity_Legacy', percentColumn: 'MicroOpacityPercent', parentId: microUniqueId },
+        { key: 'micro_size_details', camelKey: 'microSizeDetails', tableName: 'MicroplasticsSizeDetails', idColumn: 'MicroplasticsSize_UniqueID', parentColumn: 'MicroInSample_Num', refColumn: 'MicroSize_Num', legacyColumn: 'MicroSize_Legacy', percentColumn: 'MicroSizePercent', parentId: microUniqueId },
+        { key: 'micro_shape_details', camelKey: 'microShapeDetails', tableName: 'MicroplasticsFormDetails', idColumn: 'MicroForm_UniqueID', parentColumn: 'MicroInSample_Num', refColumn: 'MicroShape_Num', legacyColumn: 'MicroShape_Legacy', percentColumn: 'MicroShape_Percent', parentId: microUniqueId },
+        { key: 'micro_texture_details', camelKey: 'microTextureDetails', tableName: 'MicroplasticsFormDetails', idColumn: 'MicroForm_UniqueID', parentColumn: 'MicroInSample_Num', refColumn: 'MicroTexture_Num', legacyColumn: 'MicroTexture_Legacy', percentColumn: 'MicroTexture_Percent', parentId: microUniqueId }
+    ];
+
+    const wasDetailGroupSubmitted = config =>
+        Object.prototype.hasOwnProperty.call(formData, config.key) ||
+        Object.prototype.hasOwnProperty.call(formData, config.camelKey);
+
+    const shapeSubmitted = wasDetailGroupSubmitted(
+        detailConfigs.find(config => config.key === 'micro_shape_details')
+    );
+    const textureSubmitted = wasDetailGroupSubmitted(
+        detailConfigs.find(config => config.key === 'micro_texture_details')
+    );
+    if (shapeSubmitted !== textureSubmitted) {
+        const error = new Error(
+            'Microplastics shape and texture detail groups must be submitted together during an update.'
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const clearedDetailTables = new Set();
+    for (const config of detailConfigs) {
+        // Omitted groups are left untouched; an explicitly submitted [] means
+        // the user cleared that group.
+        if (!wasDetailGroupSubmitted(config)) continue;
+
+        const clearKey = `${config.tableName}:${config.parentColumn}:${config.parentId}`;
+        const replaced = await replaceDetailRows(
+            connection,
+            config,
+            config.parentId,
+            getDetailRows(formData, config.key, config.camelKey),
+            { deleteExisting: !clearedDetailTables.has(clearKey) }
+        );
+
+        if (replaced) {
+            clearedDetailTables.add(clearKey);
+        }
+    }
+
+    return true;
 }
 
 // Upload and process file data
@@ -1910,7 +3412,13 @@ router.get('/my-samples', requireAuth, async (req, res) => {
                 l.\`Long_DecimalDegree\` as longitude,
                 mt.MediaTypeOverall as sample_type,
                 l.LocationName as location_name,
-                se.SamplingDate as collection_date,
+                se.StartYear as start_year,
+                se.StartMonth as start_month,
+                se.StartDay as start_day,
+                se.EndYear as end_year,
+                se.EndMonth as end_month,
+                se.EndDay as end_day,
+                se.DeviceInstallationPeriod as device_installation_period,
                 COALESCE(
                     sd.TotalSampleAmount,
                     sd.MicroplasticsSampleAmount,
@@ -1918,19 +3426,23 @@ router.get('/my-samples', requireAuth, async (req, res) => {
                     sd.PackagingSampleAmount
                 ) as total_sample_amount,
                 COALESCE(
-                    sd.SampleUnit,
-                    sd.MicroplasticsSampleUnit,
-                    sd.FragmentsSampleUnit,
-                    sd.PackagingSampleUnit
+                    sampleUnit.Units_Code,
+                    microUnit.Units_Code,
+                    fragmentUnit.Units_Code,
+                    packagingUnit.Units_Code
                 ) as sample_unit,
-                l.Location_Desc as notes,
-                se.SamplingDate as created_at
+                COALESCE(se.AdditionalNotes, sd.MediaAdditionalNotes, l.Location_Desc) as notes,
+                se.DateEntered as created_at
             FROM SampleDetails sd
             LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
             LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
             LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
+            LEFT JOIN Units_Ref sampleUnit ON sd.SampleUnit_Num = sampleUnit.UnitsUniqueID
+            LEFT JOIN Units_Ref microUnit ON sd.MicroplasticsSampleUnit_Num = microUnit.UnitsUniqueID
+            LEFT JOIN Units_Ref fragmentUnit ON sd.FragmentsSampleUnit_Num = fragmentUnit.UnitsUniqueID
+            LEFT JOIN Units_Ref packagingUnit ON sd.PackagingSampleUnit_Num = packagingUnit.UnitsUniqueID
             WHERE se.UserSamplingID = ?
-            ORDER BY se.SamplingDate DESC
+            ORDER BY se.StartYear DESC, se.StartMonth DESC, se.StartDay DESC, se.SamplingEventUniqueID DESC
             LIMIT ${offset}, ${limit}
         `;
 
@@ -1948,7 +3460,7 @@ router.get('/my-samples', requireAuth, async (req, res) => {
 
         res.json({
             success: true,
-            data: rows,
+            data: rows.map(addPartialDatePresentation),
             pagination: {
                 page,
                 limit,
@@ -1968,8 +3480,320 @@ router.get('/my-samples', requireAuth, async (req, res) => {
     }
 });
 
-// Update sample data - Remove this endpoint as it references non-existent table
-// router.put('/sample/:id', requireAuth, [...], async (req, res) => { ... });
+// Get one sample owned by the current user
+router.get('/my-samples/:id', requireAuth, async (req, res) => {
+    try {
+        const sampleId = parseNullableInt(req.params.id);
+        if (!sampleId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid sample ID'
+            });
+        }
+
+        const [rows] = await pool.execute(`
+            SELECT
+                sd.SampleUniqueID as id,
+                se.SamplingEventUniqueID as sampling_event_id,
+                l.LocationName as location_name,
+                mt.MediaTypeOverall as sample_type,
+                se.StartYear as start_year,
+                se.StartMonth as start_month,
+                se.StartDay as start_day,
+                se.EndYear as end_year,
+                se.EndMonth as end_month,
+                se.EndDay as end_day,
+                se.DeviceInstallationPeriod as device_installation_period,
+                COALESCE(
+                    sd.TotalSampleAmount,
+                    sd.MicroplasticsSampleAmount,
+                    sd.FragmentsSampleAmount,
+                    sd.PackagingSampleAmount
+                ) as total_sample_amount,
+                COALESCE(
+                    sampleUnit.Units_Code,
+                    microUnit.Units_Code,
+                    fragmentUnit.Units_Code,
+                    packagingUnit.Units_Code
+                ) as sample_unit,
+                COALESCE(se.AdditionalNotes, sd.MediaAdditionalNotes, '') as notes
+            FROM SampleDetails sd
+            INNER JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
+            LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
+            LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
+            LEFT JOIN Units_Ref sampleUnit ON sd.SampleUnit_Num = sampleUnit.UnitsUniqueID
+            LEFT JOIN Units_Ref microUnit ON sd.MicroplasticsSampleUnit_Num = microUnit.UnitsUniqueID
+            LEFT JOIN Units_Ref fragmentUnit ON sd.FragmentsSampleUnit_Num = fragmentUnit.UnitsUniqueID
+            LEFT JOIN Units_Ref packagingUnit ON sd.PackagingSampleUnit_Num = packagingUnit.UnitsUniqueID
+            WHERE sd.SampleUniqueID = ? AND se.UserSamplingID = ?
+            LIMIT 1
+        `, [sampleId, req.session.user_id]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Sample not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: addPartialDatePresentation(rows[0])
+        });
+    } catch (error) {
+        console.error('Error fetching sample:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching sample'
+        });
+    }
+});
+
+// Get one sample as form data for full edit mode
+router.get('/my-samples/:id/form-data', requireAuth, async (req, res) => {
+    const connection = await pool.getConnection();
+
+    try {
+        const sampleId = parseNullableInt(req.params.id);
+        if (!sampleId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid sample ID'
+            });
+        }
+
+        const formData = await buildSampleFormData(connection, sampleId, req.session.user_id);
+        if (!formData) {
+            return res.status(404).json({
+                success: false,
+                message: 'Sample not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                sampleId,
+                formData
+            }
+        });
+    } catch (error) {
+        console.error('Error building sample edit form data:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error loading sample for editing'
+        });
+    } finally {
+        connection.release();
+    }
+});
+
+// Update one sample from full edit form data
+router.put('/my-samples/:id/form-data', requireAuth, async (req, res) => {
+    const connection = await pool.getConnection();
+
+    try {
+        const sampleId = parseNullableInt(req.params.id);
+        if (!sampleId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid sample ID'
+            });
+        }
+
+        const formData = req.body || {};
+
+        const percentageValidationResult = validatePercentageGroups(formData, {
+            includeLegacyColumnGroups: false
+        });
+        if (!percentageValidationResult.isValid) {
+            return res.status(400).json({
+                success: false,
+                message: 'Percentage validation failed: ' + percentageValidationResult.message,
+                errors: percentageValidationResult.details
+            });
+        }
+
+        const newSaveValidationResult = validateNewSaveRules(formData);
+        if (!newSaveValidationResult.isValid) {
+            return res.status(400).json({
+                success: false,
+                message: 'Updated field validation failed: ' + newSaveValidationResult.message,
+                errors: newSaveValidationResult.details
+            });
+        }
+
+        await connection.beginTransaction();
+        const updated = await updateSampleFromFormData(connection, sampleId, req.session.user_id, formData);
+        if (!updated) {
+            await connection.rollback();
+            return res.status(404).json({
+                success: false,
+                message: 'Sample not found'
+            });
+        }
+        await connection.commit();
+
+        res.json({
+            success: true,
+            message: 'Sample updated successfully',
+            sampleDetailsId: sampleId
+        });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error updating sample from form data:', error);
+        res.status(error.statusCode || 500).json({
+            success: false,
+            message: 'Error updating sample: ' + error.message
+        });
+    } finally {
+        connection.release();
+    }
+});
+
+// Update sample data owned by the current user
+router.put('/my-samples/:id',
+    requireAuth,
+    [
+        body('total_sample_amount').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Sample amount must be a non-negative number'),
+        body('sample_unit').optional({ values: 'falsy' }).isLength({ max: 20 }).withMessage('Sample unit is too long'),
+        body('notes').optional({ values: 'falsy' }).isLength({ max: 2000 }).withMessage('Notes are too long')
+    ],
+    async (req, res) => {
+        const connection = await pool.getConnection();
+
+        try {
+            const errors = validationResult(req);
+            if (!errors.isEmpty()) {
+                return res.status(400).json({
+                    success: false,
+                    message: errors.array()[0].msg
+                });
+            }
+
+            const sampleId = parseNullableInt(req.params.id);
+            if (!sampleId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid sample ID'
+                });
+            }
+
+            const [ownerRows] = await connection.execute(`
+                SELECT
+                    sd.SampleUniqueID,
+                    sd.SamplingEvent_Num,
+                    se.DeviceInstallationPeriod,
+                    se.StartYear,
+                    se.StartMonth,
+                    se.StartDay,
+                    se.EndYear,
+                    se.EndMonth,
+                    se.EndDay
+                FROM SampleDetails sd
+                INNER JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
+                WHERE sd.SampleUniqueID = ? AND se.UserSamplingID = ?
+                LIMIT 1
+            `, [sampleId, req.session.user_id]);
+
+            if (ownerRows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Sample not found'
+                });
+            }
+
+            const currentEvent = ownerRows[0];
+            const samplingEventId = currentEvent.SamplingEvent_Num;
+            const hasOwn = key => Object.prototype.hasOwnProperty.call(req.body, key);
+            const requestedMode = hasOwn('device_installation_period')
+                ? req.body.device_installation_period
+                : currentEvent.DeviceInstallationPeriod;
+            const submittedOrCurrent = (key, column) =>
+                hasOwn(key) ? req.body[key] : currentEvent[column];
+            const quickDateData = {
+                device_installation_period: requestedMode,
+                start_year: submittedOrCurrent('start_year', 'StartYear'),
+                start_month: submittedOrCurrent('start_month', 'StartMonth'),
+                start_day: submittedOrCurrent('start_day', 'StartDay'),
+                end_year: hasOwn('end_year')
+                    ? req.body.end_year
+                    : (requestedMode === 'yes' ? currentEvent.EndYear : null),
+                end_month: hasOwn('end_month')
+                    ? req.body.end_month
+                    : (requestedMode === 'yes' ? currentEvent.EndMonth : null),
+                end_day: hasOwn('end_day')
+                    ? req.body.end_day
+                    : (requestedMode === 'yes' ? currentEvent.EndDay : null)
+            };
+            const eventDates = normalizeSamplingEventDates(quickDateData);
+            const sampleAmount = parseNullableFloat(req.body.total_sample_amount);
+            const normalizeOptionalText = (value) => {
+                if (value === undefined || value === null) return null;
+                const trimmed = String(value).trim();
+                return trimmed === '' ? null : trimmed;
+            };
+            const sampleUnit = normalizeOptionalText(req.body.sample_unit);
+            const sampleUnitId = sampleUnit ? await getSampleUnitId(connection, sampleUnit) : null;
+            const notes = normalizeOptionalText(req.body.notes);
+
+            await connection.beginTransaction();
+
+            await connection.execute(`
+                UPDATE SamplingEvent
+                SET
+                    StartYear = ?,
+                    StartMonth = ?,
+                    StartDay = ?,
+                    EndYear = ?,
+                    EndMonth = ?,
+                    EndDay = ?,
+                    DeviceInstallationPeriod = ?,
+                    AdditionalNotes = ?
+                WHERE SamplingEventUniqueID = ? AND UserSamplingID = ?
+            `, [
+                eventDates.start.year,
+                eventDates.start.month,
+                eventDates.start.day,
+                eventDates.end.year,
+                eventDates.end.month,
+                eventDates.end.day,
+                eventDates.mode,
+                notes,
+                samplingEventId,
+                req.session.user_id
+            ]);
+
+            await connection.execute(`
+                UPDATE SampleDetails
+                SET
+                    TotalSampleAmount = ?,
+                    SampleUnit_Num = ?
+                WHERE SampleUniqueID = ?
+            `, [
+                sampleAmount,
+                sampleUnitId,
+                sampleId
+            ]);
+
+            await connection.commit();
+
+            res.json({
+                success: true,
+                message: 'Sample updated successfully'
+            });
+        } catch (error) {
+            await connection.rollback();
+            console.error('Error updating sample:', error);
+            res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.statusCode ? error.message : 'Error updating sample'
+            });
+        } finally {
+            connection.release();
+        }
+    }
+);
 
 // Delete sample data - Remove this endpoint as it references non-existent table
 // router.delete('/sample/:id', requireAuth, async (req, res) => { ... });
@@ -2097,11 +3921,11 @@ router.get('/locations', async (req, res) => {
 
         // Filter by logged-in user if session exists
 
-        if (req.session && req.session.username) {
+        if (req.session && req.session.user_id) {
 
             sql += " AND UserCreated = ?";
 
-            params.push(req.session.username);
+            params.push(req.session.user_id);
 
         }
 
@@ -2221,7 +4045,7 @@ router.post('/locations',
                 zipCode ? parseInt(zipCode) || null : null, // Convert to integer
                 acres ? parseFloat(acres) : null, // Insert Area_acres
                 1, // Default to Environmental (Outdoors)
-                req.session.username || 'system'
+                req.session.user_id
             ]);
 
             res.json({
@@ -2254,10 +4078,9 @@ router.post('/locations',
 router.get('/my-locations', requireAuth, async (req, res) => {
     try {
     const userId = String(req.session.user_id);
-        const username = req.session.username;
 
         // Check if user is authenticated
-        if (!userId || !username) {
+        if (!userId) {
             return res.status(401).json({
                 success: false,
                 message: 'User not authenticated'
@@ -2284,7 +4107,7 @@ router.get('/my-locations', requireAuth, async (req, res) => {
             ORDER BY Loc_UniqueID DESC
         `;
 
-        const [locations] = await pool.execute(query, [username]);
+        const [locations] = await pool.execute(query, [userId]);
 
         res.json({
             success: true,
@@ -2527,7 +4350,10 @@ function generateTemplate(templateType) {
         'city', 'state', 'country', 'zip_code',
 
         // Sample Information
-        'sample_date', 'media_type', 'water_type', 'sediment_type',
+        'device_installation_period',
+        'start_year', 'start_month', 'start_day',
+        'end_year', 'end_month', 'end_day',
+        'sample_time', 'media_type', 'water_type', 'sediment_type',
 
         // Weather Conditions
         'air_temp', 'current_conditions', 'recent_rainfall_amount', 'recent_rainfall_period',
@@ -2567,7 +4393,11 @@ function generateTemplate(templateType) {
         // Add comments explaining each field (as separate lines)
         csvContent += '\n# Field Descriptions:\n';
         csvContent += '# location_name: Name of sampling location (required)\n';
-        csvContent += '# sample_date: Date of sample collection (YYYY-MM-DD format)\n';
+        csvContent += '# device_installation_period: no for one collection date; yes for a device start/end range\n';
+        csvContent += '# start_year: Four-digit collection/start year (required)\n';
+        csvContent += '# start_month/start_day: Optional numeric components; a day requires a month\n';
+        csvContent += '# end_year/end_month/end_day: Required for device periods; leave blank for single events\n';
+        csvContent += '# Missing month/day values remain blank and are not replaced with January or day 1\n';
         csvContent += '# media_type: water, soil_sediment, in_soil, soil_litter, or mixed_composite\n';
         csvContent += '# Percentage fields: Must sum to 100% or leave all blank in each group\n';
         csvContent += '# Packaging counts: Recycle codes must sum to their respective totals\n';
@@ -2597,7 +4427,13 @@ router.get('/map-data', async (req, res) => {
                 l.\`Lat_DecimalDegree\` as lat,
                 l.\`Long_DecimalDegree\` as lng,
                 mt.MediaTypeOverall as sampleType,
-                se.SamplingDate as date,
+                se.StartYear as start_year,
+                se.StartMonth as start_month,
+                se.StartDay as start_day,
+                se.EndYear as end_year,
+                se.EndMonth as end_month,
+                se.EndDay as end_day,
+                se.DeviceInstallationPeriod as device_installation_period,
                 COUNT(DISTINCT sd.SampleUniqueID) as particleCount
             FROM SampleDetails sd
             LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
@@ -2605,16 +4441,37 @@ router.get('/map-data', async (req, res) => {
             LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
             WHERE l.\`Lat_DecimalDegree\` IS NOT NULL
               AND l.\`Long_DecimalDegree\` IS NOT NULL
-            GROUP BY sd.SampleUniqueID, l.LocationName, l.\`Lat_DecimalDegree\`, l.\`Long_DecimalDegree\`, mt.MediaTypeOverall, se.SamplingDate
-            ORDER BY se.SamplingDate DESC
+            GROUP BY
+                sd.SampleUniqueID,
+                l.LocationName,
+                l.\`Lat_DecimalDegree\`,
+                l.\`Long_DecimalDegree\`,
+                mt.MediaTypeOverall,
+                se.StartYear,
+                se.StartMonth,
+                se.StartDay,
+                se.EndYear,
+                se.EndMonth,
+                se.EndDay,
+                se.DeviceInstallationPeriod,
+                se.SamplingEventUniqueID
+            ORDER BY se.StartYear DESC, se.StartMonth DESC, se.StartDay DESC, se.SamplingEventUniqueID DESC
         `;
 
         const [rows] = await pool.execute(sql);
+        const formattedRows = rows.map(row => {
+            const presentedRow = addPartialDatePresentation(row);
+            return {
+                ...presentedRow,
+                date: presentedRow.collection_date,
+                date_display: presentedRow.collection_date_display
+            };
+        });
 
         res.json({
             success: true,
-            data: rows,
-            count: rows.length
+            data: formattedRows,
+            count: formattedRows.length
         });
 
     } catch (error) {

@@ -138,7 +138,7 @@ function initReviewMap() {
                                         <h4>${point.location}</h4>
                                         <p><strong>ZIP Code:</strong> ${point.zipCode}</p>
                                         <p><strong>Sample Type:</strong> ${point.sampleType}</p>
-                                        <p><strong>Date:</strong> ${formatDate(point.date)}</p>
+                                        <p><strong>Date:</strong> ${formatPointDate(point)}</p>
                                         <p><strong>Particle Count:</strong> ${point.particleCount}</p>
                                         <p><strong>Coordinates:</strong> ${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}</p>
                                     </div>
@@ -184,7 +184,7 @@ function initReviewMap() {
 
         // Populate details
         document.getElementById('location-name').textContent = point.location;
-        document.getElementById('sample-date').textContent = formatDate(point.date);
+        document.getElementById('sample-date').textContent = formatPointDate(point);
         document.getElementById('detail-zipcode').textContent = point.zipCode || 'N/A';
         document.getElementById('detail-sample-type').textContent = point.sampleType || 'N/A';
         document.getElementById('detail-plastic-types').textContent = point.plasticTypes || 'N/A';
@@ -193,18 +193,22 @@ function initReviewMap() {
             `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}`;
     }
 
-    // Format date for display
-    function formatDate(dateString) {
-        if (!dateString) return 'N/A';
+    // Format component-based dates without inventing an unknown month or day.
+    function formatPointDate(point) {
+        if (typeof point.date_display === 'string' && point.date_display.trim()) {
+            return point.date_display.trim();
+        }
 
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return dateString;
-
-        return date.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
+        const startParts = {
+            year: point.start_year ?? point.collection_year,
+            month: point.start_month ?? point.collection_month,
+            day: point.start_day ?? point.collection_day
+        };
+        const formatted = window.PartialDateUtils?.formatPartialDate(
+            startParts,
+            { emptyLabel: '' }
+        );
+        return formatted || point.date || 'N/A';
     }
 
     // Show no data message

@@ -235,14 +235,15 @@ The project uses a remote MariaDB database:
 Database management scripts:
 
 ```bash
-# Initialize database (creates tables from database/schema.sql)
+# Initialize database (creates tables from root database_init.sql)
 npm run init-db
 
 # Check database status (list tables and record counts)
 node scripts/check-database.js
 
-# Update database schema
-node scripts/update-database.js
+# Apply one explicit migration (other db/ migrations are not run automatically)
+npm run migrate:account-recovery
+# Generic form: node scripts/update-database.js db/<migration-file>.sql
 ```
 
 ---
@@ -301,15 +302,19 @@ Key behaviors:
 6. Auto-login and redirect
 ```
 
-**Password Reset Flow**:
+**Account Recovery and Password Reset Flow**:
 ```
-1. User submits email → Random token generated (32-byte hex)
-2. Token stored in password_reset_tokens table (1-hour validity)
-3. Reset email sent (with reset link)
-4. User clicks link → Token validity verified
-5. New password submitted → Password updated, token marked as used
-6. Confirmation email sent
+1. User submits a username or email; HMAC identifier and account cooldown buckets are atomically enforced in the database, while every accepted request receives the same generic response
+2. A random token is generated (32-byte hex); the token table stores only its SHA-256 hash, with the one-hour expiry calculated by the database clock
+3. The same transaction writes an AES-256-GCM encrypted email job to the outbox, then HTTP returns the generic result
+4. A lease-based, multi-instance-safe worker retries delivery with backoff and clears ciphertext on success or terminal failure
+5. The registered inbox receives the username, account name, email, and reset link; the user opens the link and the token is validated
+6. A transaction updates the password and consumes all outstanding tokens for that account
+7. Confirmation email sent
 ```
+
+SMTP port 465 uses implicit TLS; other submission ports require STARTTLS, with certificate verification enabled.
+Set a dedicated `ACCOUNT_RECOVERY_ENCRYPTION_KEY` in production; `SESSION_SECRET` is used only as a fallback.
 
 #### Auth Middleware (`middleware/auth.js`)
 
@@ -436,8 +441,8 @@ Built on Nodemailer, providing the following functions:
 
 | Function | Purpose |
 |----------|---------|
-| `sendPasswordResetEmail(to, resetLink, username)` | Send password reset email |
-| `sendPasswordResetConfirmationEmail(to, username)` | Send password reset confirmation email |
+| `sendPasswordResetEmail(to, resetLink, account)` | Send account identity and the reset link to the registered inbox |
+| `sendPasswordResetConfirmationEmail(to, account)` | Send password reset confirmation email |
 | `sendContactFormEmail(contactData)` | Send contact form content to admins |
 | `sendContactConfirmationEmail(contactData)` | Send submission confirmation to user |
 
@@ -492,11 +497,14 @@ Exports:
 | username | VARCHAR(50) UNIQUE | Username |
 | email | VARCHAR(100) UNIQUE | Email |
 | password | VARCHAR(255) | bcrypt hashed password |
-| full_name | VARCHAR(100) | Full name |
-| institution | VARCHAR(150) | Institution |
-| cell_phone | VARCHAR(20) | Phone number |
-| sample_confidentiality | ENUM('public','restricted','private') | Data visibility level |
-| sample_storage_location | INT | Sample storage location |
+| first_name | VARCHAR(50) | First name |
+| last_name | VARCHAR(50) | Last name |
+| organization | VARCHAR(100) | Organization |
+| OrganizationType_Num | INT FK | Organization type |
+| OrganizationTypeOther | VARCHAR(255) | Other organization type |
+| job_title | VARCHAR(100) | Job title |
+| Country_Num | INT FK | Country |
+| State_Num | INT FK | State/Province |
 | created_at | TIMESTAMP | Creation time |
 | updated_at | TIMESTAMP | Last update time |
 
@@ -525,18 +533,29 @@ Exports:
 |--------|------|-------------|
 | SamplingEventUniqueID | INT UNIQUE | Sampling event ID |
 | LocationID_Num | INT | Associated location ID |
-| SamplingDate | DATE | Sampling date |
-| UserSamplingID | TEXT | User sampling ID |
+| PublicationID_Num | INT NULL | Optional associated publication |
+| DeviceInstallationPeriod | ENUM('no','yes') NOT NULL | Whether the event covers a device installation period |
+| StartYear | SMALLINT UNSIGNED NOT NULL | Collection year for a single event, or installation start year for a device-period event |
+| StartMonth | TINYINT UNSIGNED NULL | Optional collection/start month (1-12) |
+| StartDay | TINYINT UNSIGNED NULL | Optional collection/start day; requires StartMonth |
+| EndYear | SMALLINT UNSIGNED NULL | Device removal/end year; required for device-period events and null for single events |
+| EndMonth | TINYINT UNSIGNED NULL | Optional device removal/end month (1-12) |
+| EndDay | TINYINT UNSIGNED NULL | Optional device removal/end day; requires EndMonth |
+| UserSamplingID | INT | User who entered the sampling event |
 | AirTemp_C | DECIMAL(10,0) | Air temperature (°C) |
 | Weather_Current | INT | Current weather |
 | Weather_Precedent24 | INT | Weather in preceding 24 hours |
+| WeatherPrecedent24 | INT | Legacy preceding-24-hour weather reference |
 | Rainfall_cm_Precedent24 | DECIMAL(10,0) | Rainfall in preceding 24 hours (cm) |
-| SamplerNames | TEXT | Sampler names |
-| DeviceInstallationPeriod | ENUM('no','yes') | Device-based collection |
-| DeviceStartDate | DATE | Device start date |
-| DeviceEndDate | DATE | Device end date |
+| SamplerNames | MEDIUMTEXT | Sampler names or sample description |
 | SampleTime | TIME | Sampling time |
-| AdditionalNotes | TEXT | Additional notes |
+| AdditionalNotes | MEDIUMTEXT | Additional notes |
+
+The component model preserves date precision: `StartYear` is always required, while
+month and day may be omitted. A day cannot be stored without its month. Single
+collection events use only the start components; device-period events also require
+`EndYear`. Database checks enforce component hierarchy, calendar-valid days
+(including leap years), value ranges, and the single/device mode rules.
 
 #### SampleDetails
 
@@ -545,12 +564,14 @@ Exports:
 | SampleUniqueID | INT UNIQUE | Sample ID |
 | SamplingEvent_Num | INT | Associated sampling event ID |
 | MediaType_SelectID | INT | Media type |
-| WholePkg_Count | INT | Whole package count |
-| FragLargerThan5mm_Count | INT | Fragment >5mm count |
+| FragLargerThan5mm_Count | INT | Total fragment debris >5mm count (purpose known and unknown) |
 | Micro5mmAndSmaller_Count | INT | Microplastic ≤5mm count |
 | WaterEnvType_SelectID | INT | Water environment type |
 | SoilMoisture_Percent | INT | Soil moisture (%) |
-| StorageLocation | INT | Storage location |
+| SampleUnit_Num | INT FK | Total sample amount unit; references Units_Ref |
+| MicroplasticsSampleUnit_Num | INT FK | Microplastics sample amount unit; references Units_Ref |
+| FragmentsSampleUnit_Num | INT FK | Fragment Debris sample amount unit; references Units_Ref |
+| PackagingSampleUnit_Num | INT FK | Legacy packaging sample amount unit; references Units_Ref |
 | MediaSubType | VARCHAR(100) | Media subtype |
 | VolumeSampled | DECIMAL(10,3) | Volume sampled |
 | WaterDepth | DECIMAL(10,2) | Water depth |
@@ -613,8 +634,8 @@ Exports:
 |--------|------|-------------|
 | id | INT AUTO_INCREMENT PK | Record ID |
 | user_id | INT | Associated user ID |
-| token | VARCHAR(255) | Reset token |
-| expires_at | DATETIME | Expiration time (1 hour) |
+| token | VARCHAR(64) UNIQUE | SHA-256 hash of the reset token |
+| expires_at | TIMESTAMP | Fixed expiration time (1 hour; not changed by updates) |
 | used | TINYINT(1) | Whether used |
 | created_at | TIMESTAMP | Creation time |
 
@@ -637,7 +658,7 @@ Exports:
 | MediaType_WithinLitterWaterSoil_Ref | Media type reference (litter/water/soil) |
 | WaterEnvType_Ref | Water environment type reference |
 | WeatherType_Ref | Weather type reference |
-| StorageLoc_Ref | Storage location reference |
+| Units_Ref | Sample quantity unit reference |
 | LocType_Env-Indoor_Ref | Location environment type reference |
 | PolymerType_Ref | Polymer type reference |
 | Purpose_Ref | Package purpose reference |
@@ -857,7 +878,7 @@ router.get('/new-page', requireAuth, (req, res) => {
         user: {
             id: req.session.user_id,
             username: req.session.username,
-            full_name: req.session.full_name
+            email: req.session.email
         }
     });
 });
@@ -898,7 +919,7 @@ router.post('/new-endpoint',
 
 1. Write SQL migration scripts (place in `db/` or `scripts/`)
 2. Add new field support in the corresponding route files
-3. Use `node scripts/update-database.js` to execute migrations (or run SQL manually)
+3. Use `node scripts/update-database.js db/<migration-file>.sql` to execute that migration (or run SQL manually)
 
 ---
 
@@ -949,7 +970,8 @@ npm run init-db          # Initialize database
 
 # ---- Database Scripts ----
 node scripts/check-database.js    # Check database status
-node scripts/update-database.js   # Update database schema
+node scripts/update-database.js db/<migration-file>.sql  # Apply one migration
+npm run migrate:account-recovery                        # Apply account-recovery migration
 
 # ---- Docker ----
 docker build -t mp-data-entry .   # Build image

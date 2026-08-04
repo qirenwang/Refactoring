@@ -17,7 +17,10 @@ const testCases = [
             zipCode: '48226'
         },
         formData: {
-            sample_date: '2026-02-03',
+            device_installation_period: 'no',
+            start_year: 2026,
+            start_month: 2,
+            start_day: 3,
             media_type: 'water',
             water_type: 'River',
             environment_type: 'River',
@@ -65,7 +68,10 @@ const testCases = [
             zipCode: '48207'
         },
         formData: {
-            sample_date: '2026-02-03',
+            device_installation_period: 'no',
+            start_year: 2026,
+            start_month: 2,
+            start_day: 3,
             media_type: 'soil_sediment',
             sediment_type: 'Lake sediment',
             air_temp: 8.0,
@@ -102,7 +108,10 @@ const testCases = [
             zipCode: '48226'
         },
         formData: {
-            sample_date: '2026-02-03',
+            device_installation_period: 'no',
+            start_year: 2026,
+            start_month: 2,
+            start_day: 3,
             media_type: 'water',
             water_type: 'Stream',
             environment_type: 'Stream',
@@ -145,9 +154,11 @@ const testCases = [
             zipCode: '48207'
         },
         formData: {
-            sample_date: '2026-02-03',
+            device_installation_period: 'no',
+            start_year: 2026,
+            start_month: 2,
+            start_day: 3,
             media_type: 'soil_litter',
-            surface_landscape_type: 'Urban',
             microplastics_count: 10,
             fragments_count: 20,
             packaging_count: 100,
@@ -164,24 +175,6 @@ const testCases = [
             fragment_color_opaque_light: 30,
             fragment_color_opaque_dark: 20,
             fragment_color_mixed: 20,
-            // All 7 packaging categories
-            packaging_count_single_use: 30,
-            packaging_count_multi_use: 20,
-            packaging_count_other_container: 15,
-            packaging_count_bag: 15,
-            packaging_count_packing: 10,
-            packaging_count_other: 5,
-            packaging_count_unknown: 5,
-            // Recycle codes for single-use (must sum to 30)
-            single_use_recycle_1: 10,
-            single_use_recycle_2: 8,
-            single_use_recycle_5: 7,
-            single_use_recycle_7: 5,
-            // Recycle codes for multi-use (must sum to 20)
-            multi_use_recycle_1: 5,
-            multi_use_recycle_2: 5,
-            multi_use_recycle_4: 5,
-            multi_use_recycle_5: 5
         }
     },
     {
@@ -198,7 +191,10 @@ const testCases = [
             zipCode: '48201'
         },
         formData: {
-            sample_date: '2026-02-03',
+            device_installation_period: 'no',
+            start_year: 2026,
+            start_month: 2,
+            start_day: 3,
             media_type: 'mixed_composite',
             mixed_media_description: 'Water and sediment composite sample',
             air_temp: 12.0,
@@ -292,13 +288,16 @@ async function runTestCases() {
 
                 await connection.execute(`
                     INSERT INTO SamplingEvent (
-                        SamplingEventUniqueID, LocationID_Num, SamplingDate,
+                        SamplingEventUniqueID, LocationID_Num,
+                        StartYear, StartMonth, StartDay,
                         UserSamplingID, \`AirTemp_C\`, DeviceInstallationPeriod
-                    ) VALUES (?, ?, ?, ?, ?, 'no')
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'no')
                 `, [
                     samplingEventId,
                     locationId,
-                    tc.formData.sample_date,
+                    tc.formData.start_year,
+                    tc.formData.start_month,
+                    tc.formData.start_day,
                     adminId,
                     tc.formData.air_temp || null
                 ]);
@@ -321,15 +320,14 @@ async function runTestCases() {
                 await connection.execute(`
                     INSERT INTO SampleDetails (
                         SampleUniqueID, SamplingEvent_Num, MediaType_SelectID,
-                        WholePkg_Count, FragLargerThan5mm_Count, Micro5mmAndSmaller_Count,
-                        \`SoilMoisture_Percent\`, StorageLocation, MixedMediaDescription
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                        FragLargerThan5mm_Count, Micro5mmAndSmaller_Count,
+                        \`SoilMoisture_Percent\`, MixedMediaDescription
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 `, [
                     sampleId,
                     samplingEventId,
                     mediaTypeId,
-                    tc.formData.packaging_count || null,
-                    tc.formData.fragments_count || null,
+                    (tc.formData.fragments_count || 0) + (tc.formData.packaging_count || 0),
                     tc.formData.microplastics_count || null,
                     tc.formData.soil_moisture || null,
                     tc.formData.mixed_media_description || null
@@ -370,8 +368,9 @@ async function runTestCases() {
                     console.log(`      ✓ Microplastics Details created: ID ${microId}`);
                 }
 
-                // Step 5: Create FragmentsInSample if has fragments
-                if (tc.formData.fragments_count && tc.formData.fragments_count > 0) {
+                // Step 5: Create FragmentsInSample if there is any fragment debris
+                if ((tc.formData.fragments_count && tc.formData.fragments_count > 0) ||
+                    (tc.formData.packaging_count && tc.formData.packaging_count > 0)) {
                     console.log('  [5] Creating fragments details...');
                     const [maxFragId] = await connection.execute(
                         'SELECT MAX(Fragment_UniqueID) as maxId FROM FragmentsInSample'
@@ -381,12 +380,15 @@ async function runTestCases() {
                     await connection.execute(`
                         INSERT INTO FragmentsInSample (
                             Fragment_UniqueID, SampleDetails_Num,
+                            PurposeKnown_Count, PurposeUnknown_Count,
                             PercentColor_Clear, \`PercentColor_Op_Color\`, \`PercentColor_Op_Dk\`, PercentColor_Mixed,
                             PercentForm_Fiber, PercentForm_Pellet, PercentForm_Film,
                             PercentForm_Foam, PercentForm_HardPlastic, PercentForm_Other
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `, [
                         fragmentId, sampleId,
+                        tc.formData.packaging_count || null,
+                        tc.formData.fragments_count || null,
                         tc.formData.fragment_color_clear || null,
                         tc.formData.fragment_color_opaque_light || null,
                         tc.formData.fragment_color_opaque_dark || null,
@@ -401,48 +403,6 @@ async function runTestCases() {
                     console.log(`      ✓ Fragments Details created: ID ${fragmentId}`);
                 }
 
-                // Step 6: Create PackageCategoryDetails if has packaging
-                if (tc.formData.packaging_count && tc.formData.packaging_count > 0) {
-                    console.log('  [6] Creating packaging category details...');
-                    const categories = [
-                        { key: 'single_use', field: 'packaging_count_single_use' },
-                        { key: 'multi_use', field: 'packaging_count_multi_use' },
-                        { key: 'other_container', field: 'packaging_count_other_container' },
-                        { key: 'bag', field: 'packaging_count_bag' },
-                        { key: 'packing', field: 'packaging_count_packing' },
-                        { key: 'other_purpose', field: 'packaging_count_other' },
-                        { key: 'unknown_purpose', field: 'packaging_count_unknown' }
-                    ];
-
-                    let packageInsertCount = 0;
-                    for (const cat of categories) {
-                        const count = tc.formData[cat.field] || 0;
-                        if (count > 0) {
-                            await connection.execute(`
-                                INSERT INTO PackageCategoryDetails (
-                                    SampleDetails_Num, PurposeCategory, CategoryCount,
-                                    RecycleCode_0, RecycleCode_1, RecycleCode_2, RecycleCode_3,
-                                    RecycleCode_4, RecycleCode_5, RecycleCode_6, RecycleCode_7
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            `, [
-                                sampleId,
-                                cat.key,
-                                count,
-                                tc.formData[`${cat.key}_recycle_0`] || 0,
-                                tc.formData[`${cat.key}_recycle_1`] || 0,
-                                tc.formData[`${cat.key}_recycle_2`] || 0,
-                                tc.formData[`${cat.key}_recycle_3`] || 0,
-                                tc.formData[`${cat.key}_recycle_4`] || 0,
-                                tc.formData[`${cat.key}_recycle_5`] || 0,
-                                tc.formData[`${cat.key}_recycle_6`] || 0,
-                                tc.formData[`${cat.key}_recycle_7`] || 0
-                            ]);
-                            packageInsertCount++;
-                        }
-                    }
-                    console.log(`      ✓ Package Categories created: ${packageInsertCount} entries`);
-                }
-
                 await connection.commit();
 
                 // Verification - Read back data
@@ -452,38 +412,47 @@ async function runTestCases() {
                     SELECT
                         sd.SampleUniqueID,
                         l.LocationName,
-                        se.SamplingDate,
+                        se.StartYear,
+                        se.StartMonth,
+                        se.StartDay,
                         mt.MediaTypeOverall as MediaType,
                         sd.Micro5mmAndSmaller_Count as MP_Count,
-                        sd.FragLargerThan5mm_Count as Frag_Count,
-                        sd.WholePkg_Count as Pkg_Count
+                        sd.FragLargerThan5mm_Count as Debris_Count,
+                        f.PurposeKnown_Count as PurposeKnown_Count,
+                        f.PurposeUnknown_Count as PurposeUnknown_Count
                     FROM SampleDetails sd
                     JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
                     JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
                     LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
+                    LEFT JOIN FragmentsInSample f ON f.SampleDetails_Num = sd.SampleUniqueID
                     WHERE sd.SampleUniqueID = ?
                 `, [sampleId]);
 
                 if (savedSample.length > 0) {
                     const s = savedSample[0];
                     console.log(`      Location: ${s.LocationName}`);
-                    console.log(`      Date: ${s.SamplingDate}`);
+                    const samplingDate = [s.StartYear, s.StartMonth, s.StartDay]
+                        .filter(value => value !== null && value !== undefined)
+                        .join('-');
+                    console.log(`      Date: ${samplingDate}`);
                     console.log(`      Media Type: ${s.MediaType}`);
-                    console.log(`      Counts - MP: ${s.MP_Count}, Frag: ${s.Frag_Count}, Pkg: ${s.Pkg_Count}`);
+                    console.log(`      Counts - MP: ${s.MP_Count}, Debris: ${s.Debris_Count} (known: ${s.PurposeKnown_Count}, unknown: ${s.PurposeUnknown_Count})`);
 
                     // Verify values match input
                     const mpMatch = s.MP_Count === tc.formData.microplastics_count;
-                    const fragMatch = s.Frag_Count === tc.formData.fragments_count;
-                    const pkgMatch = s.Pkg_Count === tc.formData.packaging_count;
+                    const debrisMatch = s.Debris_Count === tc.formData.fragments_count + tc.formData.packaging_count;
+                    const fragMatch = s.PurposeUnknown_Count === tc.formData.fragments_count;
+                    const pkgMatch = s.PurposeKnown_Count === tc.formData.packaging_count;
 
-                    if (mpMatch && fragMatch && pkgMatch) {
+                    if (mpMatch && debrisMatch && fragMatch && pkgMatch) {
                         console.log('\n  ✅ TEST PASSED - All values correctly stored!');
                         passedTests++;
                     } else {
                         console.log('\n  ❌ TEST FAILED - Values mismatch!');
                         console.log(`      Expected MP: ${tc.formData.microplastics_count}, Got: ${s.MP_Count}`);
-                        console.log(`      Expected Frag: ${tc.formData.fragments_count}, Got: ${s.Frag_Count}`);
-                        console.log(`      Expected Pkg: ${tc.formData.packaging_count}, Got: ${s.Pkg_Count}`);
+                        console.log(`      Expected Debris: ${tc.formData.fragments_count + tc.formData.packaging_count}, Got: ${s.Debris_Count}`);
+                        console.log(`      Expected Purpose Unknown: ${tc.formData.fragments_count}, Got: ${s.PurposeUnknown_Count}`);
+                        console.log(`      Expected Purpose Known: ${tc.formData.packaging_count}, Got: ${s.PurposeKnown_Count}`);
                         failedTests++;
                     }
                 }
@@ -506,7 +475,7 @@ async function runTestCases() {
 
         // Show final database state
         console.log('Final Database State:');
-        const tables = ['Location', 'SamplingEvent', 'SampleDetails', 'MicroplasticsInSample', 'FragmentsInSample', 'PackageCategoryDetails'];
+        const tables = ['Location', 'SamplingEvent', 'SampleDetails', 'MicroplasticsInSample', 'FragmentsInSample', 'FragmentsPurposes'];
         for (const table of tables) {
             const [count] = await connection.execute(`SELECT COUNT(*) as count FROM ${table}`);
             console.log(`  ${table}: ${count[0].count} rows`);

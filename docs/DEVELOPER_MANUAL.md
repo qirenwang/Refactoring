@@ -235,14 +235,15 @@ npm start
 数据库管理脚本：
 
 ```bash
-# 初始化数据库（根据 database/schema.sql 创建表结构）
+# 初始化数据库（根据根目录 database_init.sql 创建表结构）
 npm run init-db
 
 # 检查数据库状态（列出表和记录数）
 node scripts/check-database.js
 
-# 更新数据库结构
-node scripts/update-database.js
+# 应用指定迁移（不会自动运行 db/ 中的其他迁移）
+npm run migrate:account-recovery
+# 通用格式：node scripts/update-database.js db/<migration-file>.sql
 ```
 
 ---
@@ -301,15 +302,19 @@ node scripts/update-database.js
 6. 自动登录并重定向
 ```
 
-**密码重置流程**:
+**账户找回与密码重置流程**:
 ```
-1. 用户提交邮箱 → 生成随机 Token (32字节 hex)
-2. Token 存入 password_reset_tokens 表 (1小时有效)
-3. 发送重置邮件 (含重置链接)
-4. 用户点击链接 → 验证 Token 有效性
-5. 提交新密码 → 更新密码并标记 Token 已使用
-6. 发送确认邮件
+1. 用户提交用户名或邮箱；HMAC 标识符和账号冷却桶在数据库中原子限流，限流后仍返回统一信息
+2. 匹配账号后生成随机 Token (32字节 hex)，Token 表只保存 SHA-256 哈希；过期时间由数据库时钟计算 (1小时有效)
+3. 同一事务将 AES-256-GCM 加密的邮件任务写入 outbox，HTTP 随后返回统一结果
+4. 多实例安全的租约 worker 投递邮件；失败指数退避重试，成功或最终失败时清除密文
+5. 登记邮箱收到用户名、姓名、登记邮箱和重置链接，用户点击链接后验证 Token
+6. 在事务中提交新密码并将该账号的所有未使用 Token 标记为已使用，确保链接只能消费一次
+7. 发送确认邮件
 ```
+
+SMTP 端口 465 使用隐式 TLS；其他提交端口强制 STARTTLS，并保持证书校验开启。
+生产环境应设置独立的 `ACCOUNT_RECOVERY_ENCRYPTION_KEY`；如未设置会回退到 `SESSION_SECRET`。
 
 #### 认证中间件 (`middleware/auth.js`)
 
@@ -436,8 +441,8 @@ node scripts/update-database.js
 
 | 函数 | 用途 |
 |------|------|
-| `sendPasswordResetEmail(to, resetLink, username)` | 发送密码重置邮件 |
-| `sendPasswordResetConfirmationEmail(to, username)` | 发送密码重置成功确认邮件 |
+| `sendPasswordResetEmail(to, resetLink, account)` | 向登记邮箱发送账号信息和密码重置链接 |
+| `sendPasswordResetConfirmationEmail(to, account)` | 发送密码重置成功确认邮件 |
 | `sendContactFormEmail(contactData)` | 将联系表单内容发送给管理员 |
 | `sendContactConfirmationEmail(contactData)` | 向用户发送联系表单提交确认 |
 
@@ -492,11 +497,14 @@ node scripts/update-database.js
 | username | VARCHAR(50) UNIQUE | 用户名 |
 | email | VARCHAR(100) UNIQUE | 邮箱 |
 | password | VARCHAR(255) | bcrypt 哈希密码 |
-| full_name | VARCHAR(100) | 全名 |
-| institution | VARCHAR(150) | 所属机构 |
-| cell_phone | VARCHAR(20) | 手机号 |
-| sample_confidentiality | ENUM('public','restricted','private') | 数据公开级别 |
-| sample_storage_location | INT | 样本存储位置 |
+| first_name | VARCHAR(50) | 名 |
+| last_name | VARCHAR(50) | 姓 |
+| organization | VARCHAR(100) | 所属机构 |
+| OrganizationType_Num | INT FK | 机构类型 |
+| OrganizationTypeOther | VARCHAR(255) | 其他机构类型 |
+| job_title | VARCHAR(100) | 职位 |
+| Country_Num | INT FK | 国家 |
+| State_Num | INT FK | 州/省 |
 | created_at | TIMESTAMP | 创建时间 |
 | updated_at | TIMESTAMP | 更新时间 |
 
@@ -525,18 +533,28 @@ node scripts/update-database.js
 |------|------|------|
 | SamplingEventUniqueID | INT UNIQUE | 采样事件 ID |
 | LocationID_Num | INT | 关联位置 ID |
-| SamplingDate | DATE | 采样日期 |
-| UserSamplingID | TEXT | 用户采样 ID |
-| AirTemp-C | DECIMAL(10,0) | 气温 (°C) |
-| Weather-Current | INT | 当前天气 |
-| Weather-Precedent24 | INT | 前24小时天气 |
-| Rainfall-cm-Precedent24 | DECIMAL(10,0) | 前24小时降雨量 (cm) |
-| SamplerNames | TEXT | 采样人员 |
-| DeviceInstallationPeriod | ENUM('no','yes') | 是否安装设备采集 |
-| DeviceStartDate | DATE | 设备开始日期 |
-| DeviceEndDate | DATE | 设备结束日期 |
+| PublicationID_Num | INT NULL | 可选的关联出版物 |
+| DeviceInstallationPeriod | ENUM('no','yes') NOT NULL | 是否为设备安装周期采样 |
+| StartYear | SMALLINT UNSIGNED NOT NULL | 单次采样的采集年份，或设备周期的安装开始年份 |
+| StartMonth | TINYINT UNSIGNED NULL | 可选的采集/开始月份（1-12） |
+| StartDay | TINYINT UNSIGNED NULL | 可选的采集/开始日；填写时必须同时填写 StartMonth |
+| EndYear | SMALLINT UNSIGNED NULL | 设备移除/结束年份；设备周期必填，单次采样为空 |
+| EndMonth | TINYINT UNSIGNED NULL | 可选的设备移除/结束月份（1-12） |
+| EndDay | TINYINT UNSIGNED NULL | 可选的设备移除/结束日；填写时必须同时填写 EndMonth |
+| UserSamplingID | INT | 录入该采样事件的用户 |
+| AirTemp_C | DECIMAL(10,0) | 气温 (°C) |
+| Weather_Current | INT | 当前天气 |
+| Weather_Precedent24 | INT | 前24小时天气 |
+| WeatherPrecedent24 | INT | 旧版前24小时天气引用 |
+| Rainfall_cm_Precedent24 | DECIMAL(10,0) | 前24小时降雨量 (cm) |
+| SamplerNames | MEDIUMTEXT | 采样人员或样品描述 |
 | SampleTime | TIME | 采样时间 |
-| AdditionalNotes | TEXT | 备注 |
+| AdditionalNotes | MEDIUMTEXT | 备注 |
+
+组件模型用于保留日期精度：`StartYear` 始终必填，月份和日期可以省略；
+填写日期时必须同时填写对应月份。单次采样只使用开始组件，设备周期还必须
+填写 `EndYear`。数据库约束会校验组件层级、真实日历天数（含闰年）、取值
+范围以及单次/设备周期模式规则。
 
 #### SampleDetails (样品详情表)
 
@@ -545,12 +563,14 @@ node scripts/update-database.js
 | SampleUniqueID | INT UNIQUE | 样品 ID |
 | SamplingEvent_Num | INT | 关联采样事件 ID |
 | MediaType_SelectID | INT | 媒介类型 |
-| WholePkg_Count | INT | 完整包装计数 |
-| FragLargerThan5mm_Count | INT | >5mm 碎片计数 |
+| FragLargerThan5mm_Count | INT | >5mm Fragment Debris 总数（用途已知与未知） |
 | Micro5mmAndSmaller_Count | INT | ≤5mm 微塑料计数 |
 | WaterEnvType_SelectID | INT | 水环境类型 |
 | SoilMoisture% | INT | 土壤湿度 (%) |
-| StorageLocation | INT | 存储位置 |
+| SampleUnit_Num | INT FK | 总样品量单位，关联 Units_Ref |
+| MicroplasticsSampleUnit_Num | INT FK | 微塑料样品量单位，关联 Units_Ref |
+| FragmentsSampleUnit_Num | INT FK | Fragment Debris 样品量单位，关联 Units_Ref |
+| PackagingSampleUnit_Num | INT FK | 旧包装样品量单位，关联 Units_Ref |
 | MediaSubType | VARCHAR(100) | 媒介子类型 |
 | VolumeSampled | DECIMAL(10,3) | 采样体积 |
 | WaterDepth | DECIMAL(10,2) | 水深 |
@@ -612,8 +632,8 @@ node scripts/update-database.js
 |------|------|------|
 | id | INT AUTO_INCREMENT PK | 记录 ID |
 | user_id | INT | 关联用户 ID |
-| token | VARCHAR(255) | 重置令牌 |
-| expires_at | DATETIME | 过期时间 (1小时) |
+| token | VARCHAR(64) UNIQUE | 重置令牌的 SHA-256 哈希 |
+| expires_at | TIMESTAMP | 固定过期时间 (1小时，不随更新改变) |
 | used | TINYINT(1) | 是否已使用 |
 | created_at | TIMESTAMP | 创建时间 |
 
@@ -636,7 +656,7 @@ node scripts/update-database.js
 | MediaType_WithinLitterWaterSoil_Ref | 媒介类型参考 (垃圾/水/土壤) |
 | WaterEnvType_Ref | 水环境类型参考 |
 | WeatherType_Ref | 天气类型参考 |
-| StorageLoc_Ref | 存储位置参考 |
+| Units_Ref | 样品量单位参考 |
 | Wavelength_Ref | 波长范围参考 |
 | LocType_Env-Indoor_Ref | 位置环境类型参考 |
 | PolymerType_Ref | 聚合物类型参考 |
@@ -857,7 +877,7 @@ router.get('/new-page', requireAuth, (req, res) => {
         user: {
             id: req.session.user_id,
             username: req.session.username,
-            full_name: req.session.full_name
+            email: req.session.email
         }
     });
 });
@@ -898,7 +918,7 @@ router.post('/new-endpoint',
 
 1. 编写 SQL 迁移脚本（放置于 `db/` 或 `scripts/`）
 2. 在对应路由文件中添加新字段支持
-3. 使用 `node scripts/update-database.js` 执行迁移（或手动执行 SQL）
+3. 使用 `node scripts/update-database.js db/<migration-file>.sql` 执行指定迁移（或手动执行 SQL）
 
 ---
 
@@ -949,7 +969,8 @@ npm run init-db          # 初始化数据库
 
 # ---- 数据库脚本 ----
 node scripts/check-database.js    # 检查数据库状态
-node scripts/update-database.js   # 更新数据库结构
+node scripts/update-database.js db/<migration-file>.sql  # 执行指定迁移
+npm run migrate:account-recovery                        # 应用账号找回迁移
 
 # ---- Docker ----
 docker build -t mp-data-entry .   # 构建镜像

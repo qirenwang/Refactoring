@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enter Data by Form - Microplastics Data Entry</title>
+    <title><%= locals.editSampleId ? 'Edit My Data' : 'Enter Data by Form' %> - Microplastics Data Entry</title>
     <link rel="icon" href="/assets/mpicon.ico" sizes="64x64">
     <!-- Add Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />    <!-- Add Font Awesome for icons -->
@@ -125,7 +125,6 @@
                                 For new locations, use <span class="bold">latitude/longitude</span> for precise outdoor sampling points, <span class="bold">full address + Find Address on Map</span> for indoor samples, or <span class="bold">ZIP code</span> when you can only share an approximate area.
                             </div>
 
-                            <span class="form-label"><span class="bold">For outdoor:</span></span>
                             <div class="coordinates-container">
                                 <div class="coordinate-field">
                                     <div class="coordinate-label">Latitude (click map)</div>
@@ -148,7 +147,7 @@
                             </div>
 
 
-                            <span class="form-label"><span class="bold">For indoor:</span> Full address</span>
+                            <span class="form-label">Full address</span>
                             <div class="coordinate-hint" style="margin-top: 6px;">Enter the full address, then select <span class="bold">Find Address on Map</span> to place the marker. Review the point and drag it if needed.</div>
                             <input type="text" name="streetaddress" class="input-field" placeholder="StreetAddress">
                             <div style="display: flex; gap: 8px; margin-top: 8px;">
@@ -229,6 +228,10 @@
                                     <strong>C) Additional Sample</strong>
                                     <br><small>Add another sample for same media, location, and date</small>
                                 </button>
+                                <button type="button" id="same-publication-case" class="btn-option">
+                                    <strong>D) New Case, Same Publication</strong>
+                                    <br><small>Start a brand-new case keeping only this publication source</small>
+                                </button>
                             </div>
                             <div class="next-steps-note">
                                 <p><em>Choose your next action to continue data entry efficiently.</em></p>
@@ -257,12 +260,32 @@
 <script src="/js/map-data-entry.js"></script>
 <!-- Load fancy modal before form-handler -->
 <script src="/js/fancy-modal.js"></script>
+<script>
+<%
+const serializeForInlineScript = value => JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+%>
+window.microplasticsFormConfig = {
+    isEditMode: <%- serializeForInlineScript(Boolean(locals.editSampleId)) %>,
+    editSampleId: <%- serializeForInlineScript(locals.editSampleId || null) %>
+};
+</script>
+<script src="/js/partial-date-utils.js"></script>
+<script src="/js/publication-form-utils.js"></script>
+<script src="/js/data-summary-utils.js"></script>
 <script src="/js/form-handler.js"></script>
 
 <script>
 // Clear all form cache and initialize form data storage on page load
 document.addEventListener('DOMContentLoaded', function() {
     console.log('=== EJS DOMContentLoaded event triggered ===');
+
+    if (window.microplasticsFormConfig && window.microplasticsFormConfig.isEditMode) {
+        console.log('Edit mode detected. Form cache is managed by form-handler.js.');
+        return;
+    }
 
     // Clear all cached form data to start fresh
     console.log('Clearing all form cache...');

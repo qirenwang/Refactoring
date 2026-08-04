@@ -7,7 +7,14 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "init-db": "node scripts/init-database.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "migrate:account-recovery": "node scripts/update-database.js db/20260727_fix_account_recovery.sql",
+    "test:percentages": "node --test test/percentage-utils.test.js",
+    "test:data-summary": "node --test test/data-summary-utils.test.js",
+    "test:partial-dates": "node --test test/partial-date-utils.test.js test/sampling-date-api.test.js test/partial-date-integration.test.js",
+    "test:publication": "node --test test/publication-ui.test.js",
+    "test:account-recovery": "node --test test/account-recovery.test.js test/account-recovery-outbox.test.js test/email-account-recovery.test.js test/migration-runner.test.js test/user-profile-view.test.js test/user-profile-route.test.js",
+    "test:signup": "node --test test/signup.test.js",
+    "test": "node --test test/data-summary-utils.test.js test/percentage-utils.test.js test/partial-date-utils.test.js test/sampling-date-api.test.js test/partial-date-integration.test.js test/publication-ui.test.js test/account-recovery.test.js test/account-recovery-outbox.test.js test/email-account-recovery.test.js test/migration-runner.test.js test/user-profile-view.test.js test/user-profile-route.test.js test/signup.test.js"
   },
   "dependencies": {
     "@stagewise/toolbar-next": "^0.4.1",

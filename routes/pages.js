@@ -3,8 +3,46 @@ const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const { pool } = require('../config/database');
 const { requireAuth, redirectIfLoggedIn } = require('../middleware/auth');
+const {
+    PASSWORD_REQUIREMENTS_MESSAGE,
+    isStrongPassword
+} = require('../utils/account-recovery');
 
 const router = express.Router();
+
+const optionalText = value => {
+    if (typeof value !== 'string') return null;
+    const trimmedValue = value.trim();
+    return trimmedValue || null;
+};
+
+const optionalId = value => value ? Number.parseInt(value, 10) : null;
+
+async function loadUserProfileReferenceData() {
+    const [
+        [organizationTypes],
+        [countries],
+        [states]
+    ] = await Promise.all([
+        pool.execute(`
+            SELECT OrganizationTypeUniqueID, OrganizationType
+            FROM OrganizationType_Ref
+            ORDER BY OrganizationTypeUniqueID
+        `),
+        pool.execute(`
+            SELECT CountryUniqueID, ISOAlpha2, Country
+            FROM Country_Ref
+            ORDER BY Country
+        `),
+        pool.execute(`
+            SELECT StateUniqueID, State, Country_Num
+            FROM State_Ref
+            ORDER BY State
+        `)
+    ]);
+
+    return { organizationTypes, countries, states };
+}
 
 // Home page (redirect to home)
 router.get('/', (req, res) => {
@@ -34,11 +72,47 @@ router.get('/login', redirectIfLoggedIn, (req, res) => {
 });
 
 // Signup page
-router.get('/signup', redirectIfLoggedIn, (req, res) => {
-    res.render('signup', {
-        title: 'Sign Up - MicroPlastics Data System',
-        error: req.query.error || ''
-    });
+router.get('/signup', redirectIfLoggedIn, async (req, res) => {
+    try {
+        const [
+            [organizationTypes],
+            [countries],
+            [states]
+        ] = await Promise.all([
+            pool.execute(`
+                SELECT OrganizationTypeUniqueID, OrganizationType
+                FROM OrganizationType_Ref
+                ORDER BY OrganizationTypeUniqueID
+            `),
+            pool.execute(`
+                SELECT CountryUniqueID, ISOAlpha2, Country
+                FROM Country_Ref
+                ORDER BY Country
+            `),
+            pool.execute(`
+                SELECT StateUniqueID, State, Country_Num
+                FROM State_Ref
+                ORDER BY State
+            `)
+        ]);
+
+        res.render('signup', {
+            title: 'Sign Up - MicroPlastics Data System',
+            error: req.query.error || '',
+            organizationTypes,
+            countries,
+            states
+        });
+    } catch (error) {
+        console.error('Error loading signup reference data:', error);
+        res.status(500).render('signup', {
+            title: 'Sign Up - MicroPlastics Data System',
+            error: 'Unable to load the signup form. Please try again later.',
+            organizationTypes: [],
+            countries: [],
+            states: []
+        });
+    }
 });
 
 // About page
@@ -73,8 +147,7 @@ router.get('/review', (req, res) => {
         user: req.session.user_id ? {
             username: req.session.username,
             email: req.session.email
-        } : null,
-        pageSpecificJS: ['js/map-review.js']
+        } : null
     });
 });
 
@@ -93,13 +166,24 @@ router.get('/enter_and_edit_data', (req, res) => {
 
 // Enter Data by Form page
 router.get('/enter_data_by_form', requireAuth, (req, res) => {
+    const rawEditSampleId = req.query.editSampleId;
+    const parsedEditSampleId = typeof rawEditSampleId === 'string' && /^\d+$/.test(rawEditSampleId)
+        ? Number(rawEditSampleId)
+        : null;
+    const editSampleId = Number.isSafeInteger(parsedEditSampleId) && parsedEditSampleId > 0
+        ? parsedEditSampleId
+        : null;
+
     res.render('enter_data_by_form', {
-        title: 'Enter Data by Form - MicroPlastics Data System',
+        title: editSampleId
+            ? 'Edit My Data - MicroPlastics Data System'
+            : 'Enter Data by Form - MicroPlastics Data System',
         currentPage: 'enter_data_by_form',
         user: {
             username: req.session.username,
             email: req.session.email
         },
+        editSampleId,
         pageSpecificJS: ['js/form-handler.js', 'js/map-data-entry.js']
     });
 });
@@ -176,7 +260,7 @@ router.get('/my-locations-view', requireAuth, (req, res) => {
 // My Samples page (requires authentication)
 router.get('/my-samples', requireAuth, (req, res) => {
     res.render('my_samples', {
-        title: 'My Samples - MicroPlastics Data System',
+        title: 'Edit My Data - MicroPlastics Data System',
         currentPage: 'my-samples',
         user: {
             username: req.session.username,
@@ -201,9 +285,26 @@ router.get('/logout', (req, res) => {
 // My Profile page (requires authentication)
 router.get('/my-profile', requireAuth, async (req, res) => {
     try {
-        // Get user data
         const [userRows] = await pool.execute(
-            'SELECT * FROM users WHERE User_UniqueID = ?',
+            `SELECT
+                users.User_UniqueID,
+                users.username,
+                users.email,
+                users.first_name,
+                users.last_name,
+                users.organization,
+                users.OrganizationType_Num,
+                users.OrganizationTypeOther,
+                users.job_title,
+                users.Country_Num,
+                users.State_Num,
+                users.role,
+                users.is_active,
+                users.email_verified,
+                users.created_at,
+                users.updated_at
+             FROM users
+             WHERE users.User_UniqueID = ?`,
             [req.session.user_id]
         );
 
@@ -211,40 +312,77 @@ router.get('/my-profile', requireAuth, async (req, res) => {
             return res.redirect('/login');
         }
 
-        // Get storage locations for dropdown
-        const [storageRows] = await pool.execute(
-            'SELECT StorageLocUniqueID, StorageLoc_Desc FROM StorageLoc_Ref ORDER BY StorageLoc_Desc'
-        );
+        let referenceData;
+        try {
+            referenceData = await loadUserProfileReferenceData();
+        } catch (referenceError) {
+            console.error('Error loading profile reference data:', referenceError);
+            return res.status(500).render('my_profile', {
+                title: 'My Profile - MicroPlastics Data System',
+                currentPage: 'my-profile',
+                user: userRows[0],
+                success: null,
+                error: 'Your profile was loaded, but editing is temporarily unavailable. Please try again.',
+                profileEditable: false,
+                organizationTypes: [],
+                countries: [],
+                states: []
+            });
+        }
 
-        res.render('my_profile', {
+        return res.render('my_profile', {
             title: 'My Profile - MicroPlastics Data System',
             currentPage: 'my-profile',
             user: userRows[0],
-            storageLocations: storageRows,
             success: req.query.success,
-            error: req.query.error
+            error: req.query.error,
+            profileEditable: true,
+            ...referenceData
         });
     } catch (error) {
         console.error('Error loading profile:', error);
-        res.render('my_profile', {
+        return res.status(500).render('my_profile', {
             title: 'My Profile - MicroPlastics Data System',
             currentPage: 'my-profile',
-            user: req.session,
-            storageLocations: [],
-            error: 'Failed to load profile data'
+            user: {
+                username: req.session.username,
+                email: req.session.email
+            },
+            error: 'Failed to load profile data',
+            profileEditable: false,
+            organizationTypes: [],
+            countries: [],
+            states: []
         });
     }
 });
 
 // Update profile (POST)
 router.post('/my-profile', requireAuth, [
-    body('full_name').trim().isLength({ min: 1 }).withMessage('Full name is required'),
-    body('email').isEmail().withMessage('Valid email is required'),
-    body('institution').trim().isLength({ min: 1 }).withMessage('Institution is required'),
-    body('cell_phone').optional({ checkFalsy: true }).isMobilePhone('en-US').withMessage('Valid phone number required'),
-    body('sample_confidentiality').isIn(['public', 'restricted', 'private']).withMessage('Invalid confidentiality setting'),
-    body('sample_storage_location').optional({ checkFalsy: true }).isInt().withMessage('Invalid storage location'),
-    body('new_password').optional({ checkFalsy: true }).isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body('first_name').trim().notEmpty().withMessage('First name is required').bail()
+        .isLength({ max: 50 }).withMessage('First name is too long'),
+    body('last_name').trim().notEmpty().withMessage('Last name is required').bail()
+        .isLength({ max: 50 }).withMessage('Last name is too long'),
+    body('email')
+        .trim()
+        .isEmail().withMessage('Valid email is required')
+        .isLength({ max: 100 }).withMessage('Email is too long'),
+    body('organization').trim().notEmpty().withMessage('Organization is required').bail()
+        .isLength({ max: 100 }).withMessage('Organization is too long'),
+    body('organization_type_num').notEmpty().withMessage('Organization type is required').bail()
+        .isInt({ min: 1 }).withMessage('Invalid organization type'),
+    body('organization_type_other').optional({ checkFalsy: true }).trim().isLength({ max: 255 }).withMessage('Other organization type is too long'),
+    body('job_title').trim().notEmpty().withMessage('Job / Position Title is required').bail()
+        .isLength({ max: 100 }).withMessage('Job / Position Title is too long'),
+    body('country_num').notEmpty().withMessage('Country is required').bail()
+        .isInt({ min: 1 }).withMessage('Invalid country'),
+    body('state_num').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid state'),
+    body('new_password').optional({ checkFalsy: true }).custom(value => {
+        if (!isStrongPassword(value)) {
+            throw new Error(PASSWORD_REQUIREMENTS_MESSAGE);
+        }
+        return true;
+    }),
     body('confirm_password').custom((value, { req }) => {
         if (req.body.new_password && value !== req.body.new_password) {
             throw new Error('Passwords do not match');
@@ -259,19 +397,21 @@ router.post('/my-profile', requireAuth, [
         }
 
         const {
-            full_name,
+            first_name,
+            last_name,
             email,
-            institution,
-            cell_phone,
-            sample_confidentiality,
-            sample_storage_location,
+            organization,
+            organization_type_num,
+            organization_type_other,
+            job_title,
+            country_num,
+            state_num,
             current_password,
             new_password
         } = req.body;
 
-        // Get current user data
         const [userRows] = await pool.execute(
-            'SELECT * FROM users WHERE User_UniqueID = ?',
+            'SELECT User_UniqueID, username, password FROM users WHERE User_UniqueID = ?',
             [req.session.user_id]
         );
 
@@ -281,27 +421,103 @@ router.post('/my-profile', requireAuth, [
 
         const currentUser = userRows[0];
 
-        // Check if email is already taken by another user
-        const [emailRows] = await pool.execute(
-            'SELECT User_UniqueID FROM users WHERE email = ? AND User_UniqueID != ?',
-            [email, req.session.user_id]
+        if (currentUser.username.toLowerCase() === email.toLowerCase()) {
+            return res.redirect('/my-profile?error=Username and email must be different');
+        }
+
+        const [conflictingUsers] = await pool.execute(
+            `SELECT User_UniqueID
+             FROM users
+             WHERE User_UniqueID != ?
+               AND (username = ? OR email = ?)
+             LIMIT 1`,
+            [req.session.user_id, email, email]
         );
 
-        if (emailRows.length > 0) {
+        if (conflictingUsers.length > 0) {
             return res.redirect('/my-profile?error=Email is already registered to another account');
         }
 
-        // Prepare update data
-        let updateData = {
-            full_name,
+        const organizationTypeId = optionalId(organization_type_num);
+        const countryId = optionalId(country_num);
+        const stateId = optionalId(state_num);
+        let organizationTypeOther = optionalText(organization_type_other);
+
+        if (organizationTypeId) {
+            const [organizationTypeRows] = await pool.execute(
+                `SELECT OrganizationType
+                 FROM OrganizationType_Ref
+                 WHERE OrganizationTypeUniqueID = ?`,
+                [organizationTypeId]
+            );
+
+            if (organizationTypeRows.length === 0) {
+                return res.redirect('/my-profile?error=Invalid organization type');
+            }
+
+            if (organizationTypeRows[0].OrganizationType === 'Other (please specify)') {
+                if (!organizationTypeOther) {
+                    return res.redirect('/my-profile?error=Other organization type is required');
+                }
+            } else {
+                organizationTypeOther = null;
+            }
+        } else {
+            organizationTypeOther = null;
+        }
+
+        let selectedCountry = null;
+        if (countryId) {
+            const [countryRows] = await pool.execute(
+                'SELECT CountryUniqueID, ISOAlpha2 FROM Country_Ref WHERE CountryUniqueID = ?',
+                [countryId]
+            );
+
+            if (countryRows.length === 0) {
+                return res.redirect('/my-profile?error=Invalid country');
+            }
+
+            [selectedCountry] = countryRows;
+        }
+
+        if (stateId && !countryId) {
+            return res.redirect('/my-profile?error=Select a country before selecting a state');
+        }
+
+        const isUnitedStates = selectedCountry && selectedCountry.ISOAlpha2 === 'US';
+        if (isUnitedStates && !stateId) {
+            return res.redirect('/my-profile?error=State is required when United States is selected');
+        }
+
+        if (!isUnitedStates && stateId) {
+            return res.redirect('/my-profile?error=State can only be selected for United States');
+        }
+
+        if (stateId) {
+            const [stateRows] = await pool.execute(
+                `SELECT StateUniqueID
+                 FROM State_Ref
+                 WHERE StateUniqueID = ? AND Country_Num = ?`,
+                [stateId, countryId]
+            );
+
+            if (stateRows.length === 0) {
+                return res.redirect('/my-profile?error=Invalid state for the selected country');
+            }
+        }
+
+        const updateData = {
+            first_name: optionalText(first_name),
+            last_name: optionalText(last_name),
             email,
-            institution,
-            sample_confidentiality,
-            cell_phone: cell_phone || null,
-            sample_storage_location: sample_storage_location || null
+            organization: optionalText(organization),
+            OrganizationType_Num: organizationTypeId,
+            OrganizationTypeOther: organizationTypeOther,
+            job_title: optionalText(job_title),
+            Country_Num: countryId,
+            State_Num: stateId
         };
 
-        // Handle password change
         if (new_password) {
             if (!current_password) {
                 return res.redirect('/my-profile?error=Current password is required to change password');
@@ -312,11 +528,10 @@ router.post('/my-profile', requireAuth, [
                 return res.redirect('/my-profile?error=Current password is incorrect');
             }
 
-            const hashedPassword = await bcrypt.hash(new_password, 10);
+            const hashedPassword = await bcrypt.hash(new_password, 12);
             updateData.password = hashedPassword;
         }
 
-        // Build dynamic SQL query
         const updateFields = Object.keys(updateData).map(key => `${key} = ?`).join(', ');
         const updateValues = Object.values(updateData);
         updateValues.push(req.session.user_id);
@@ -326,13 +541,17 @@ router.post('/my-profile', requireAuth, [
             updateValues
         );
 
-        // Update session data
         req.session.email = email;
 
-        res.redirect('/my-profile?success=1');
+        return res.redirect('/my-profile?success=1');
     } catch (error) {
         console.error('Error updating profile:', error);
-        res.redirect('/my-profile?error=Failed to update profile');
+
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.redirect('/my-profile?error=Email is already registered to another account');
+        }
+
+        return res.redirect('/my-profile?error=Failed to update profile');
     }
 });
 

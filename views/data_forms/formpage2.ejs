@@ -20,31 +20,87 @@
                 </div>
             </div>
 
-            <!-- Single Collection Date (Default) -->
-            <div class="form-field" id="single-collection-section">
-                <div class="form-label">Plastic Collection Date (<span style="color: red;">*</span>):</div>
-                <div>
-                    <input type="date" name="sample_date" class="date-input" id="sample-date" placeholder="mm/dd/yyyy">
+            <!-- Start date: the radio selection controls only the user-facing label. -->
+            <fieldset class="partial-date-fieldset" id="start-date-section">
+                <legend class="form-label" id="start-date-legend">
+                    Plastic Collection Date (<span class="required-marker">*</span>):
+                </legend>
+                <div class="partial-date-inputs" data-partial-date-prefix="start">
+                    <label class="partial-date-part" for="start-year">
+                        <span>Year <span class="required-marker">*</span></span>
+                        <input type="number" name="start_year" id="start-year"
+                               class="partial-date-year" min="1000" max="9999"
+                               inputmode="numeric" placeholder="YYYY" autocomplete="off">
+                    </label>
+                    <label class="partial-date-part" for="start-month">
+                        <span>Month (optional)</span>
+                        <select name="start_month" id="start-month" class="partial-date-month">
+                            <option value="">Unknown / not reported</option>
+                            <option value="1">January</option>
+                            <option value="2">February</option>
+                            <option value="3">March</option>
+                            <option value="4">April</option>
+                            <option value="5">May</option>
+                            <option value="6">June</option>
+                            <option value="7">July</option>
+                            <option value="8">August</option>
+                            <option value="9">September</option>
+                            <option value="10">October</option>
+                            <option value="11">November</option>
+                            <option value="12">December</option>
+                        </select>
+                    </label>
+                    <label class="partial-date-part" for="start-day">
+                        <span>Day (optional)</span>
+                        <select name="start_day" id="start-day" class="partial-date-day" disabled>
+                            <option value="">Unknown / not reported</option>
+                        </select>
+                    </label>
                 </div>
-            </div>
+                <small class="partial-date-help">Year is required. Leave Month or Day unknown when it was not reported.</small>
+                <div class="partial-date-error" id="start-date-error" role="alert" aria-live="polite"></div>
+            </fieldset>
 
-            <!-- Device Installation Period Dates (Hidden by default) -->
-            <div class="form-field" id="device-period-section" style="display: none;">
-                <div class="date-range-container">
-                    <div class="date-range-field">
-                        <div class="form-label">Device Installation Start Date (<span style="color: red;">*</span>):</div>
-                        <div>
-                            <input type="date" name="device_start_date" class="date-input" id="device-start-date">
-                        </div>
-                    </div>
-                    <div class="date-range-field">
-                        <div class="form-label">Device Removal/End Date (<span style="color: red;">*</span>):</div>
-                        <div>
-                            <input type="date" name="device_end_date" class="date-input" id="device-end-date">
-                        </div>
-                    </div>
+            <!-- End date is required only for a device installation period. -->
+            <fieldset class="partial-date-fieldset" id="device-period-section" style="display: none;">
+                <legend class="form-label">
+                    Device Removal/End Date (<span class="required-marker">*</span>):
+                </legend>
+                <div class="partial-date-inputs" data-partial-date-prefix="end">
+                    <label class="partial-date-part" for="end-year">
+                        <span>Year <span class="required-marker">*</span></span>
+                        <input type="number" name="end_year" id="end-year"
+                               class="partial-date-year" min="1000" max="9999"
+                               inputmode="numeric" placeholder="YYYY" autocomplete="off">
+                    </label>
+                    <label class="partial-date-part" for="end-month">
+                        <span>Month (optional)</span>
+                        <select name="end_month" id="end-month" class="partial-date-month">
+                            <option value="">Unknown / not reported</option>
+                            <option value="1">January</option>
+                            <option value="2">February</option>
+                            <option value="3">March</option>
+                            <option value="4">April</option>
+                            <option value="5">May</option>
+                            <option value="6">June</option>
+                            <option value="7">July</option>
+                            <option value="8">August</option>
+                            <option value="9">September</option>
+                            <option value="10">October</option>
+                            <option value="11">November</option>
+                            <option value="12">December</option>
+                        </select>
+                    </label>
+                    <label class="partial-date-part" for="end-day">
+                        <span>Day (optional)</span>
+                        <select name="end_day" id="end-day" class="partial-date-day" disabled>
+                            <option value="">Unknown / not reported</option>
+                        </select>
+                    </label>
                 </div>
-            </div>
+                <small class="partial-date-help">Year is required. Leave Month or Day unknown when it was not reported.</small>
+                <div class="partial-date-error" id="end-date-error" role="alert" aria-live="polite"></div>
+            </fieldset>
               <div class="form-field">
                 <div class="form-label">Collection Time (optional):</div>
                 <div>
@@ -78,30 +134,49 @@
                 <!-- Publication fields - hidden until "Yes" is selected -->
                 <div id="publication-source-fields" style="display: none;">
                     <div class="form-row">
-                        <label class="form-label">Select Existing Publication:</label>
-                        <select name="publication_id_num" id="publication-id-num" class="form-select publication-select">
-                            <option value="">-- Select Publication --</option>
-                        </select>
+                        <label class="form-label" for="publication-id-num">Select Existing Publication:</label>
+                        <div class="publication-field-control">
+                            <select name="publication_id_num" id="publication-id-num"
+                                    class="form-select publication-select"
+                                    aria-describedby="publication-select-help">
+                                <option value="">-- Select Existing Publication --</option>
+                            </select>
+                            <small id="publication-select-help" class="help-text publication-help-text">
+                                Select an existing publication to fill the fields below, or leave this blank to enter a new publication.
+                            </small>
+                        </div>
                     </div>
                     <div class="form-row">
-                        <label class="form-label">Publication Year:</label>
-                        <input type="number" name="publication_year" class="form-input" min="1900" max="2100">
+                        <label class="form-label" for="publication-year">Publication Year:</label>
+                        <input type="number" id="publication-year" name="publication_year"
+                               class="form-input publication-detail-field" min="1900" max="2100">
                     </div>
                     <div class="form-row">
-                        <label class="form-label">Authors:</label>
-                        <input type="text" name="publication_authors" class="form-input">
+                        <label class="form-label" for="publication-authors">Authors:</label>
+                        <div class="publication-field-control">
+                            <input type="text" id="publication-authors" name="publication_authors"
+                                   class="form-input publication-detail-field"
+                                   placeholder="Allen Smith; Maria Chen"
+                                   aria-describedby="publication-authors-help">
+                            <small id="publication-authors-help" class="help-text publication-help-text">
+                                Enter author names in the same order as they appear in the publication, using the format First Last (e.g., Allen Smith). Separate multiple authors with semicolons.
+                            </small>
+                        </div>
                     </div>
                     <div class="form-row">
-                        <label class="form-label">Journal:</label>
-                        <input type="text" name="publication_journal" class="form-input">
+                        <label class="form-label" for="publication-journal">Journal:</label>
+                        <input type="text" id="publication-journal" name="publication_journal"
+                               class="form-input publication-detail-field">
                     </div>
                     <div class="form-row">
-                        <label class="form-label">Full Citation APA:</label>
-                        <textarea name="publication_full_citation_apa" class="form-textarea" rows="3"></textarea>
+                        <label class="form-label" for="publication-full-citation-apa">Full Citation APA:</label>
+                        <textarea id="publication-full-citation-apa" name="publication_full_citation_apa"
+                                  class="form-textarea publication-detail-field" rows="3"></textarea>
                     </div>
                     <div class="form-row">
-                        <label class="form-label">Publication Source Type:</label>
-                        <select name="publication_pub_source_code" class="form-select publication-source-select">
+                        <label class="form-label" for="publication-pub-source-code">Publication Source Type:</label>
+                        <select id="publication-pub-source-code" name="publication_pub_source_code"
+                                class="form-select publication-source-select publication-detail-field">
                             <option value="">-- Select Source Type --</option>
                         </select>
                     </div>

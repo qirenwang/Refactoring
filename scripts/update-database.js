@@ -1,53 +1,63 @@
-const mysql = require('mysql2/promise');
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
+const mysql = require('mysql2/promise');
 
-async function updateDatabase() {
-    const connection = await mysql.createConnection({
-        host: 'localhost',
-        user: 'root',
-        password: 'mysql', // Adjust as needed for your setup
-        database: 'sweetl23_partner_demo' // Adjust database name as needed
-    });
+require('dotenv').config();
+
+const projectRoot = path.resolve(__dirname, '..');
+const migrationsRoot = path.join(projectRoot, 'db');
+
+function resolveMigrationPath(migrationArgument) {
+    if (!migrationArgument) {
+        throw new Error(
+            'Migration path is required. Example: node scripts/update-database.js db/20260727_fix_account_recovery.sql'
+        );
+    }
+
+    const migrationPath = path.resolve(projectRoot, migrationArgument);
+    const allowedPrefix = `${migrationsRoot}${path.sep}`;
+
+    if (!migrationPath.startsWith(allowedPrefix) || path.extname(migrationPath) !== '.sql') {
+        throw new Error('Migration must be a .sql file inside the db/ directory');
+    }
+
+    return migrationPath;
+}
+
+async function updateDatabase(migrationArgument = process.argv[2]) {
+    const migrationPath = resolveMigrationPath(migrationArgument);
+    const sqlScript = await fs.readFile(migrationPath, 'utf8');
+    let connection;
 
     try {
-        console.log('Reading database update script...');
-        const sqlScript = fs.readFileSync(path.join(__dirname, 'database', 'update_schema_for_forms.sql'), 'utf8');
-        
-        // Split the script into individual statements
-        const statements = sqlScript.split(';').filter(stmt => stmt.trim().length > 0);
-        
-        console.log(`Executing ${statements.length} database statements...`);
-        
-        for (let i = 0; i < statements.length; i++) {
-            const statement = statements[i].trim();
-            if (statement) {
-                try {
-                    console.log(`Executing statement ${i + 1}/${statements.length}...`);
-                    await connection.execute(statement);
-                } catch (error) {
-                    // Some statements might fail if columns already exist, that's okay
-                    if (error.code === 'ER_DUP_FIELDNAME' || error.code === 'ER_TABLE_EXISTS_ERROR') {
-                        console.log(`Statement ${i + 1} skipped (already exists): ${error.message}`);
-                    } else {
-                        console.error(`Error executing statement ${i + 1}:`, error.message);
-                    }
-                }
-            }
-        }
-        
-        console.log('Database update completed successfully!');
-        
-    } catch (error) {
-        console.error('Error updating database:', error);
+        connection = await mysql.createConnection({
+            host: process.env.DB_HOST || 'localhost',
+            port: Number.parseInt(process.env.DB_PORT, 10) || 3306,
+            user: process.env.DB_USER || 'root',
+            password: process.env.DB_PASS || 'mysql',
+            database: process.env.DB_NAME || 'sweetl23_partner_demo',
+            charset: 'utf8mb4',
+            multipleStatements: true
+        });
+
+        console.log(`Applying migration: ${path.relative(projectRoot, migrationPath)}`);
+        await connection.query(sqlScript);
+        console.log('Migration completed successfully.');
     } finally {
-        await connection.end();
+        if (connection) {
+            await connection.end();
+        }
     }
 }
 
-// Run the update if this script is called directly
 if (require.main === module) {
-    updateDatabase();
+    updateDatabase().catch(error => {
+        console.error('Database migration failed:', error.message);
+        process.exitCode = 1;
+    });
 }
 
-module.exports = updateDatabase;
+module.exports = {
+    resolveMigrationPath,
+    updateDatabase
+};

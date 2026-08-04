@@ -11,6 +11,40 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+function getPointDateParts(point, prefix) {
+    return {
+        year: point[`${prefix}_year`],
+        month: point[`${prefix}_month`],
+        day: point[`${prefix}_day`]
+    };
+}
+
+function nonEmptyDateText(value) {
+    if (typeof value !== 'string') return '';
+    return value.trim();
+}
+
+function formatPointCollectionDate(point) {
+    const utils = window.PartialDateUtils;
+    const startParts = getPointDateParts(point, 'collection');
+    const endParts = getPointDateParts(point, 'end');
+    const suppliedDisplay = nonEmptyDateText(point.collection_date_display);
+    if (suppliedDisplay) return suppliedDisplay;
+
+    const startKey = nonEmptyDateText(point.collection_date_key) ||
+        utils?.formatPartialDateKey(startParts) ||
+        '';
+    const startDisplay = utils?.formatPartialDate(startParts, { emptyLabel: '' }) ||
+        startKey ||
+        'N/A';
+    const endKey = utils?.formatPartialDateKey(endParts) || '';
+
+    if (!startKey || !endKey) return startDisplay;
+
+    const endDisplay = utils?.formatPartialDate(endParts, { emptyLabel: '' }) || endKey;
+    return `${startDisplay} – ${endDisplay}`;
+}
+
 // Initialize the interactive map centered on Great Lakes region with real data
 function initHomeMap() {
     // Great Lakes region center (covers Detroit area and surrounding)
@@ -56,7 +90,6 @@ function initHomeMap() {
                     const lng = parseFloat(point.lng || point.longitude);
                     const location = point.location || point.location_name;
                     const sampleType = point.sampleType || point.sample_type || 'Unknown';
-                    const date = point.date || point.collection_date;
 
                     if (!lat || !lng) return;
 
@@ -82,8 +115,7 @@ function initHomeMap() {
                     // Create the marker
                     const marker = L.marker([lat, lng], { icon: icon }).addTo(map);
 
-                    // Format date
-                    const dateStr = date ? new Date(date).toLocaleDateString() : 'N/A';
+                    const dateStr = formatPointCollectionDate(point);
 
                     // Add popup with sample information
                     marker.bindPopup(`

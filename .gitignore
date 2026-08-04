@@ -7,3 +7,6 @@ tasks/
 .env
 dist/
 build/
+
+# Live database backups contain private application data.
+db/backups/*.sql
