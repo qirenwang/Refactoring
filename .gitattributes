@@ -1,0 +1,14 @@
+# Store every text file with LF and check it out with LF on all platforms.
+# The repository previously held a mix of CRLF and LF, which produced diffs
+# where an entire file appeared rewritten after a tool touched its line
+# endings, and let CRLF reach parsers that read bytes literally — a CRLF
+# database_init.sql broke the country regex in test/signup.test.js.
+* text=auto eol=lf
+
+# Binary formats Git must never rewrite. `text=auto` already detects these,
+# but naming them keeps the intent explicit.
+*.png  binary
+*.gif  binary
+*.ico  binary
+*.xlsx binary
+*.pyc  binary
