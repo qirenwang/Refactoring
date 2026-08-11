@@ -1,0 +1,6 @@
+# Mechanical, whitespace-only commits that `git blame` should skip over.
+# GitHub reads this file automatically. Locally, enable it once with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Normalize all text files to LF
+79226f5786d47ed05a1725776241c394b73b2065
