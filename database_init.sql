@@ -236,10 +236,10 @@ CREATE TABLE `SamplingEvent` (
   `EndDay` tinyint unsigned DEFAULT NULL COMMENT 'Optional device-period end day',
   `PublicationID_Num` int(11) DEFAULT NULL COMMENT 'Optional associated publication',
   `UserSamplingID` int(11) NOT NULL COMMENT 'Logged-in user who entered the sampling event',
-  `AirTemp_C` decimal(10,0) DEFAULT NULL COMMENT 'Current air temperature in Celsius',
+  `AirTemp_C` decimal(12,6) DEFAULT NULL COMMENT 'Current air temperature in Celsius',
   `Weather_Current` int(11) DEFAULT NULL COMMENT 'Current weather at time of sampling',
   `Weather_Precedent24` int(11) DEFAULT NULL COMMENT 'Predominant weather pattern in past 24 hours',
-  `Rainfall_cm_Precedent24` decimal(10,0) DEFAULT NULL COMMENT 'Rainfall amount in past 24 hours, in centimeters',
+  `Rainfall_cm_Precedent24` decimal(12,6) DEFAULT NULL COMMENT 'Rainfall amount in past 24 hours, in centimeters',
   `SamplerNames` mediumtext DEFAULT NULL,
   `DateEntered` datetime NOT NULL DEFAULT current_timestamp(),
   `DeviceInstallationPeriod` enum('no','yes') NOT NULL DEFAULT 'no' COMMENT 'Whether sample came from a device installed for a period',
@@ -719,7 +719,9 @@ CREATE TABLE `password_reset_tokens` (
   `user_id` int(11) NOT NULL,
   `email` varchar(100) NOT NULL,
   `token` varchar(64) NOT NULL,
-  `expires_at` timestamp NOT NULL,
+  -- The explicit DEFAULT stops MariaDB from implicitly making the first
+  -- timestamp column auto-update to the current time on every row update.
+  `expires_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `used` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),

@@ -44,35 +44,35 @@
                     </div>
                     <div class="form-row">
                         <label class="form-label">Volume sampled (liters):</label>
-                        <input type="number" step="0.01" name="volume_sampled" class="form-input" placeholder="Enter volume">
+                        <input type="number" step="0.000001" max="999999.999999" name="volume_sampled" class="form-input" placeholder="Enter volume">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Total water depth at the sampling site (m):</label>
-                        <input type="number" step="0.01" name="total_water_depth" class="form-input" placeholder="Enter total depth in meters">
+                        <input type="number" step="0.000001" max="999999.999999" name="total_water_depth" class="form-input" placeholder="Enter total depth in meters">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Water depth where the sample is collected (m):</label>
-                        <input type="number" step="0.01" name="sample_water_depth" class="form-input" placeholder="Enter sample depth in meters">
+                        <input type="number" step="0.000001" max="999999.999999" name="sample_water_depth" class="form-input" placeholder="Enter sample depth in meters">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Water flow velocity (meters per second):</label>
-                        <input type="number" step="0.01" name="water_flow_velocity" class="form-input" placeholder="Enter velocity in m/s">
+                        <input type="number" step="0.000001" max="999999.999999" name="water_flow_velocity" class="form-input" placeholder="Enter velocity in m/s">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Turbidity (NTU):</label>
-                        <input type="number" step="0.01" name="turbidity" class="form-input" placeholder="Enter turbidity in NTU">
+                        <input type="number" step="0.000001" max="999999.999999" name="turbidity" class="form-input" placeholder="Enter turbidity in NTU">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Total suspended solids (mg/L):</label>
-                        <input type="number" step="0.01" name="total_suspended_solids" class="form-input" placeholder="Enter TSS in mg/L">
+                        <input type="number" step="0.000001" max="999999.999999" name="total_suspended_solids" class="form-input" placeholder="Enter TSS in mg/L">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Dissolved oxygen (mg/L):</label>
-                        <input type="number" step="0.01" name="dissolved_oxygen" class="form-input" placeholder="Enter DO in mg/L">
+                        <input type="number" step="0.000001" max="999999.999999" name="dissolved_oxygen" class="form-input" placeholder="Enter DO in mg/L">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Conductivity (S/m):</label>
-                        <input type="number" step="0.001" name="conductivity" class="form-input" placeholder="Enter conductivity in S/m">
+                        <input type="number" step="0.000001" max="999999.999999" name="conductivity" class="form-input" placeholder="Enter conductivity in S/m">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Additional Notes:</label>
@@ -85,15 +85,15 @@
                     <h3 class="section-subtitle">In Aquatic Sediment</h3>
                     <div class="form-row">
                         <label class="form-label">Sampling depth (meters):</label>
-                        <input type="number" step="0.01" name="sediment_depth" class="form-input" placeholder="Enter sampling depth">
+                        <input type="number" step="0.000001" max="999999.999999" name="sediment_depth" class="form-input" placeholder="Enter sampling depth">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Sediment sample dry weight (g):</label>
-                        <input type="number" step="0.01" name="sediment_dry_weight" class="form-input" placeholder="Enter dry weight">
+                        <input type="number" step="0.000001" max="999999.999999" name="sediment_dry_weight" class="form-input" placeholder="Enter dry weight">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Sediment sample organic matter (%):</label>
-                        <input type="number" step="0.01" name="sediment_organic_matter" class="form-input" placeholder="Enter organic matter">
+                        <input type="number" step="0.000001" name="sediment_organic_matter" class="form-input" placeholder="Enter organic matter">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Soil Texture Classification:</label>
@@ -110,19 +110,19 @@
                     <div id="legacy-sediment-fields" style="display:none;">
                     <div class="form-row">
                         <label class="form-label">Sediment sample moisture content (%):</label>
-                        <input type="number" step="0.01" name="sediment_moisture" class="form-input" placeholder="Enter moisture content">
+                        <input type="number" step="0.000001" name="sediment_moisture" class="form-input" placeholder="Enter moisture content">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Sediment texture % sand:</label>
-                        <input type="number" step="0.01" name="sediment_sand" class="form-input" placeholder="Enter % sand">
+                        <input type="number" step="0.000001" name="sediment_sand" class="form-input" placeholder="Enter % sand">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Sediment texture % silt:</label>
-                        <input type="number" step="0.01" name="sediment_silt" class="form-input" placeholder="Enter % silt">
+                        <input type="number" step="0.000001" name="sediment_silt" class="form-input" placeholder="Enter % silt">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Sediment texture % clay:</label>
-                        <input type="number" step="0.01" name="sediment_clay" class="form-input" placeholder="Enter % clay">
+                        <input type="number" step="0.000001" name="sediment_clay" class="form-input" placeholder="Enter % clay">
                     </div>
                     </div>
                     <div class="form-row">
@@ -136,15 +136,15 @@
                     <h3 class="section-subtitle">In Terrestrial Soil</h3>
                     <div class="form-row">
                         <label class="form-label">Soil depth (meters):</label>
-                        <input type="number" step="0.01" name="soil_depth" class="form-input" placeholder="Enter soil depth">
+                        <input type="number" step="0.000001" max="999999.999999" name="soil_depth" class="form-input" placeholder="Enter soil depth">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Soil sample dry weight (g):</label>
-                        <input type="number" step="0.01" name="soil_sample_dry_weight" class="form-input" placeholder="Enter dry weight">
+                        <input type="number" step="0.000001" max="999999.999999" name="soil_sample_dry_weight" class="form-input" placeholder="Enter dry weight">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Soil sample organic matter (%):</label>
-                        <input type="number" step="0.01" name="soil_organic_matter" class="form-input" placeholder="Enter organic matter">
+                        <input type="number" step="0.000001" name="soil_organic_matter" class="form-input" placeholder="Enter organic matter">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Soil Texture Classification:</label>
@@ -161,19 +161,19 @@
                     <div id="legacy-soil-fields" style="display:none;">
                     <div class="form-row">
                         <label class="form-label">Soil sample moisture content (%):</label>
-                        <input type="number" step="0.01" name="soil_moisture" class="form-input" placeholder="Enter moisture content">
+                        <input type="number" step="0.000001" name="soil_moisture" class="form-input" placeholder="Enter moisture content">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Soil texture % sand:</label>
-                        <input type="number" step="0.01" name="soil_sand" class="form-input" placeholder="Enter % sand">
+                        <input type="number" step="0.000001" name="soil_sand" class="form-input" placeholder="Enter % sand">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Soil texture % silt:</label>
-                        <input type="number" step="0.01" name="soil_silt" class="form-input" placeholder="Enter % silt">
+                        <input type="number" step="0.000001" name="soil_silt" class="form-input" placeholder="Enter % silt">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Soil texture % clay:</label>
-                        <input type="number" step="0.01" name="soil_clay" class="form-input" placeholder="Enter % clay">
+                        <input type="number" step="0.000001" name="soil_clay" class="form-input" placeholder="Enter % clay">
                     </div>
                     </div>
                     <div class="form-row">
@@ -187,15 +187,15 @@
                     <h3 class="section-subtitle">On Soil or Land Surface</h3>
                     <div class="form-row">
                         <label class="form-label">Area sampled (km²):</label>
-                        <input type="number" step="any" name="surface_area_sampled" class="form-input" placeholder="Enter area in km²" min="0">
+                        <input type="number" step="0.000001" max="999999.999999" name="surface_area_sampled" class="form-input" placeholder="Enter area in km²" min="0">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Permeable surfaces (%):</label>
-                        <input type="number" step="0.01" name="permeable_surfaces" class="form-input" placeholder="Enter percentage" min="0" max="100">
+                        <input type="number" step="0.000001" name="permeable_surfaces" class="form-input" placeholder="Enter percentage" min="0" max="100">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Impermeable surfaces (%):</label>
-                        <input type="number" step="0.01" name="impermeable_surfaces" class="form-input" placeholder="Enter percentage" min="0" max="100">
+                        <input type="number" step="0.000001" name="impermeable_surfaces" class="form-input" placeholder="Enter percentage" min="0" max="100">
                     </div>
                     <div class="form-row">
                         <label class="form-label">Additional Notes:</label>

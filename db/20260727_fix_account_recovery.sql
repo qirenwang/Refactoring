@@ -6,7 +6,9 @@ CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
   `user_id` int(11) NOT NULL,
   `email` varchar(100) NOT NULL,
   `token` varchar(64) NOT NULL,
-  `expires_at` timestamp NOT NULL,
+  -- The explicit DEFAULT stops MariaDB from implicitly making the first
+  -- timestamp column auto-update to the current time on every row update.
+  `expires_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `used` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
@@ -31,7 +33,7 @@ WHERE `created_at` IS NULL;
 
 ALTER TABLE `password_reset_tokens`
   ENGINE=InnoDB,
-  MODIFY COLUMN `expires_at` timestamp NOT NULL,
+  MODIFY COLUMN `expires_at` timestamp NOT NULL DEFAULT current_timestamp(),
   MODIFY COLUMN `used` tinyint(1) NOT NULL DEFAULT 0,
   MODIFY COLUMN `created_at` timestamp NOT NULL DEFAULT current_timestamp();
 

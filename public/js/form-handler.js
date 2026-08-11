@@ -4798,6 +4798,12 @@ For each group you fill, Current Total should equal ${count}.`;
             packagingItemsContainer.innerHTML = '';
         }
 
+        // Clear the previous entry's summary so page 6 does not keep showing it
+        const summaryContainer = document.getElementById('summary-container');
+        if (summaryContainer) {
+            summaryContainer.innerHTML = '';
+        }
+
         // Hide next steps options and show save button
         const nextStepsContainer = document.getElementById('next-steps-options');
         if (nextStepsContainer) {
@@ -4862,6 +4868,12 @@ For each group you fill, Current Total should equal ${count}.`;
         const packagingItemsContainer = document.getElementById('packaging-items-container');
         if (packagingItemsContainer) {
             packagingItemsContainer.innerHTML = '';
+        }
+
+        // Clear the previous entry's summary so page 6 does not keep showing it
+        const summaryContainer = document.getElementById('summary-container');
+        if (summaryContainer) {
+            summaryContainer.innerHTML = '';
         }
 
         // Hide next steps options and show save button
@@ -5394,12 +5406,16 @@ For each group you fill, Current Total should equal ${count}.`;
         const microPolymerEntries = particleSummary.microplastics.polymers;
         const fragmentPolymerEntries = particleSummary.fragments.polymers;
 
-        // Define field groups for better organization
+        // Field groups ordered to match the order the form pages ask for them
+        // (page 1 location, page 2 event + weather, page 3 media, page 4
+        // additional info, page 5 sample details, page 6 notes).
         const fieldGroups = {
             'Location Information': [
-                'location_id', 'location_name', 'location_shortcode', 'location_description', 'latitude', 'longitude',
-                'event_location_description', 'event_latitude', 'event_longitude', 'acres',
-                'streetaddress', 'city', 'state', 'country', 'zip_code', 'land_use_cover'
+                'location_id', 'location_name', 'location_shortcode', 'location_description', 'land_use_cover',
+                'latitude', 'longitude',
+                'event_location_description', 'event_latitude', 'event_longitude',
+                'zip_code', 'acres',
+                'streetaddress', 'city', 'state', 'country'
             ],
             'Sampling Event Information': [
                 'device_installation_period',
@@ -5409,16 +5425,13 @@ For each group you fill, Current Total should equal ${count}.`;
                 'publication_id_num', 'publication_year', 'publication_authors', 'publication_journal',
                 'publication_full_citation_apa', 'publication_pub_source_code'
             ],
-            'Submission Notes': [
-                'additional_notes'
+            'Sampling Weather Conditions': [
+                'air_temp', 'current_conditions', 'rainfall'
             ],
             'Media Information': [
                 'media_type', 'water_type', 'water_type_other_description',
                 'sediment_type', 'sediment_type_other_description',
                 'mixed_media_description'
-            ],
-            'Sampling Weather Conditions': [
-                'air_temp', 'current_conditions', 'rainfall'
             ],
             'Additional Environmental Information': [
                 'additional_info', 'environment_type'
@@ -5452,10 +5465,11 @@ For each group you fill, Current Total should equal ${count}.`;
             ],
             'Quantitative Data': [
                 'has_quantitative_data', 'replicates_count',
+                'total_sample_amount', 'sample_unit',
                 'microplastics_count', 'fragments_count', 'packaging_count'
             ],
-            'Sample Amounts': [
-                'total_sample_amount', 'sample_unit'
+            'Microplastics Details': [
+                'micro_mass_mp_total', 'micro_method_polymer_num', 'micro_method_polymer_other', 'micro_method_percent_estimate'
             ],
             'Microplastics Size Distribution': [
                 'mp_size_lt_1um', 'mp_size_1_20um', 'mp_size_20_100um', 'mp_size_100um_1mm', 'mp_size_1_5mm'
@@ -5467,8 +5481,8 @@ For each group you fill, Current Total should equal ${count}.`;
                 'mp_form_fiber', 'mp_form_pellet', 'mp_form_fragment', 'mp_form_film', 'mp_form_foam'
             ],
             'Microplastics Polymer Types': microPolymerEntries.map(entry => entry.field),
-            'Microplastics Estimation Method': [
-                'micro_mass_mp_total', 'micro_method_polymer_num', 'micro_method_polymer_other', 'micro_method_percent_estimate'
+            'Fragments Details': [
+                'fragments_mass_debris_total', 'fragments_method_polymer_num', 'fragments_method_polymer_other', 'fragments_method_percent_estimate'
             ],
             'Fragments Color Distribution': [
                 'fragment_color_clear', 'fragment_color_opaque_light', 'fragment_color_opaque_dark', 'fragment_color_mixed'
@@ -5478,8 +5492,8 @@ For each group you fill, Current Total should equal ${count}.`;
                 'fragment_form_foam', 'fragment_form_hardplastic', 'fragment_form_other'
             ],
             'Fragments Polymer Types': fragmentPolymerEntries.map(entry => entry.field),
-            'Fragments Estimation Method': [
-                'fragments_mass_debris_total', 'fragments_method_polymer_num', 'fragments_method_polymer_other', 'fragments_method_percent_estimate'
+            'Submission Notes': [
+                'additional_notes'
             ]
         };        // Field labels mapping for better display
         const fieldLabels = {
@@ -5795,6 +5809,97 @@ For each group you fill, Current Total should equal ${count}.`;
             'Additional Mixed Media Information': ['mixed_composite']
         };
 
+        const detailLabels = {
+            fragments_color_details: 'Fragments Color Details',
+            fragments_form_details: 'Fragments Texture Details',
+            fragments_opacity_details: 'Fragments Opacity Details',
+            fragments_purpose_details: 'Fragments Purpose Details',
+            micro_color_details: 'Microplastics Color Details',
+            micro_shape_details: 'Microplastics Shape Details',
+            micro_texture_details: 'Microplastics Texture Details',
+            micro_opacity_details: 'Microplastics Opacity Details',
+            micro_size_details: 'Microplastics Size Details'
+        };
+
+        const renderedDetailTables = new Set();
+        function renderDetailTable(tableId) {
+            if (renderedDetailTables.has(tableId)) return;
+            renderedDetailTables.add(tableId);
+
+            const rows = Array.isArray(formData[tableId]) ? formData[tableId] : [];
+            if (rows.length === 0) return;
+
+            const detailHeader = document.createElement('h4');
+            detailHeader.textContent = detailLabels[tableId] || tableId;
+            detailHeader.style.marginBottom = '10px';
+            detailHeader.style.marginTop = '15px';
+            detailHeader.style.paddingBottom = '5px';
+            detailHeader.style.borderBottom = '1px solid #ddd';
+            summaryContainer.appendChild(detailHeader);
+
+            const sectionMethodLabels = dataSummaryUtils.getDetailMethodLabels(
+                rows,
+                referenceDataCache?.methods || []
+            );
+            if (sectionMethodLabels.length > 0) {
+                const methodItem = document.createElement('div');
+                methodItem.className = 'summary-item';
+                methodItem.style.display = 'flex';
+                methodItem.style.marginBottom = '8px';
+
+                const methodLabel = document.createElement('div');
+                methodLabel.className = 'summary-label';
+                methodLabel.style.width = '40%';
+                methodLabel.style.fontWeight = 'bold';
+                methodLabel.textContent = 'Section Percent Estimation Method';
+
+                const methodValue = document.createElement('div');
+                methodValue.className = 'summary-value';
+                methodValue.style.width = '60%';
+                methodValue.textContent = sectionMethodLabels.join(', ');
+
+                methodItem.appendChild(methodLabel);
+                methodItem.appendChild(methodValue);
+                summaryContainer.appendChild(methodItem);
+            }
+
+            rows.forEach(row => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'summary-item';
+                itemDiv.style.display = 'flex';
+                itemDiv.style.marginBottom = '8px';
+
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'summary-label';
+                labelDiv.style.width = '40%';
+                labelDiv.style.fontWeight = 'bold';
+                labelDiv.textContent = row.legacy || `Reference ${row.ref_num}`;
+
+                const valueDiv = document.createElement('div');
+                valueDiv.className = 'summary-value';
+                valueDiv.style.width = '60%';
+                valueDiv.textContent = `${row.percent}%`;
+
+                itemDiv.appendChild(labelDiv);
+                itemDiv.appendChild(valueDiv);
+                summaryContainer.appendChild(itemDiv);
+            });
+        }
+
+        // Detail tables are entered inside the Microplastics/Fragments sections
+        // on page 5 (in this on-screen order), so render them right after those
+        // sections' summary groups to keep the summary in fill-in order.
+        const detailTablesAfterGroup = {
+            'Microplastics Details': [
+                'micro_size_details', 'micro_color_details', 'micro_opacity_details',
+                'micro_shape_details', 'micro_texture_details'
+            ],
+            'Fragments Details': [
+                'fragments_color_details', 'fragments_form_details',
+                'fragments_opacity_details', 'fragments_purpose_details'
+            ]
+        };
+
         // Create summary sections by field groups
         for (const [groupTitle, configuredFields] of Object.entries(fieldGroups)) {
             // Skip certain groups based on conditions
@@ -5813,9 +5918,6 @@ For each group you fill, Current Total should equal ${count}.`;
                     continue;
                 }
             }
-            if (groupTitle === 'Sample Amounts' && formData['has_quantitative_data'] !== 'yes') {
-                continue;
-            }
             // Create group header
             const groupHeader = document.createElement('h4');
             groupHeader.textContent = groupTitle;
@@ -5829,6 +5931,9 @@ For each group you fill, Current Total should equal ${count}.`;
             let hasValues = false;
             fields.forEach(field => {
                 if (field.endsWith('_sample_unit') || field === 'sample_unit') {
+                    return;
+                }
+                if (field === 'total_sample_amount' && formData['has_quantitative_data'] !== 'yes') {
                     return;
                 }
 
@@ -5893,98 +5998,33 @@ For each group you fill, Current Total should equal ${count}.`;
                 summaryContainer.removeChild(groupHeader);
             }
 
-            if (groupTitle === 'Location Information') {
-                appendOtherInformationSection();
+            (detailTablesAfterGroup[groupTitle] || []).forEach(renderDetailTable);
+
+            if (groupTitle === 'Fragments Polymer Types') {
+                renderPackagingItems();
             }
         }
 
+        // Safety net: render any detail tables not anchored to a section above.
+        DETAIL_TABLES.forEach(renderDetailTable);
+
+        // Unclassified fields have no fill-in position, so list them last.
         if (!otherSectionAdded) {
             appendOtherInformationSection();
         }
 
-        const detailLabels = {
-            fragments_color_details: 'Fragments Color Details',
-            fragments_form_details: 'Fragments Texture Details',
-            fragments_opacity_details: 'Fragments Opacity Details',
-            fragments_purpose_details: 'Fragments Purpose Details',
-            micro_color_details: 'Microplastics Color Details',
-            micro_shape_details: 'Microplastics Shape Details',
-            micro_texture_details: 'Microplastics Texture Details',
-            micro_opacity_details: 'Microplastics Opacity Details',
-            micro_size_details: 'Microplastics Size Details'
-        };
-
-        DETAIL_TABLES.forEach(tableId => {
-            const rows = Array.isArray(formData[tableId]) ? formData[tableId] : [];
-            if (rows.length === 0) return;
-
-            const detailHeader = document.createElement('h4');
-            detailHeader.textContent = detailLabels[tableId] || tableId;
-            detailHeader.style.marginBottom = '10px';
-            detailHeader.style.marginTop = '15px';
-            detailHeader.style.paddingBottom = '5px';
-            detailHeader.style.borderBottom = '1px solid #ddd';
-            summaryContainer.appendChild(detailHeader);
-
-            const sectionMethodLabels = dataSummaryUtils.getDetailMethodLabels(
-                rows,
-                referenceDataCache?.methods || []
-            );
-            if (sectionMethodLabels.length > 0) {
-                const methodItem = document.createElement('div');
-                methodItem.className = 'summary-item';
-                methodItem.style.display = 'flex';
-                methodItem.style.marginBottom = '8px';
-
-                const methodLabel = document.createElement('div');
-                methodLabel.className = 'summary-label';
-                methodLabel.style.width = '40%';
-                methodLabel.style.fontWeight = 'bold';
-                methodLabel.textContent = 'Section Percent Estimation Method';
-
-                const methodValue = document.createElement('div');
-                methodValue.className = 'summary-value';
-                methodValue.style.width = '60%';
-                methodValue.textContent = sectionMethodLabels.join(', ');
-
-                methodItem.appendChild(methodLabel);
-                methodItem.appendChild(methodValue);
-                summaryContainer.appendChild(methodItem);
-            }
-
-            rows.forEach(row => {
-                const itemDiv = document.createElement('div');
-                itemDiv.className = 'summary-item';
-                itemDiv.style.display = 'flex';
-                itemDiv.style.marginBottom = '8px';
-
-                const labelDiv = document.createElement('div');
-                labelDiv.className = 'summary-label';
-                labelDiv.style.width = '40%';
-                labelDiv.style.fontWeight = 'bold';
-                labelDiv.textContent = row.legacy || `Reference ${row.ref_num}`;
-
-                const valueDiv = document.createElement('div');
-                valueDiv.className = 'summary-value';
-                valueDiv.style.width = '60%';
-                valueDiv.textContent = `${row.percent}%`;
-
-                itemDiv.appendChild(labelDiv);
-                itemDiv.appendChild(valueDiv);
-                summaryContainer.appendChild(itemDiv);
-            });
-        });
-
         // Preserve legacy per-item packaging data when it is actually present,
         // without creating an empty section for the current count-only form.
-        const packagingItemNumbers = [...new Set(
-            Object.keys(formData)
-                .map(field => field.match(packagingItemPattern))
-                .filter(match => match && dataSummaryUtils.hasSummaryValue(formData[match[0]]))
-                .map(match => Number.parseInt(match[1], 10))
-        )].sort((left, right) => left - right);
+        function renderPackagingItems() {
+            const packagingItemNumbers = [...new Set(
+                Object.keys(formData)
+                    .map(field => field.match(packagingItemPattern))
+                    .filter(match => match && dataSummaryUtils.hasSummaryValue(formData[match[0]]))
+                    .map(match => Number.parseInt(match[1], 10))
+            )].sort((left, right) => left - right);
 
-        if (packagingItemNumbers.length > 0) {
+            if (packagingItemNumbers.length === 0) return;
+
             const packagingHeader = document.createElement('h4');
             packagingHeader.textContent = `Packaging Item Details (${packagingItemNumbers.length})`;
             packagingHeader.style.marginBottom = '10px';

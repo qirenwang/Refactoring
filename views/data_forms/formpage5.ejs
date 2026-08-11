@@ -5,6 +5,13 @@
         /* Nudge sample amount sections to the right for clearer association */
         #form-page5 .amount-inline { margin-left: 32px; }
 
+        /* Keep field hints attached to the field above, not the one below */
+        #form-page5 .sample-amount-unified .help-text {
+            display: block;
+            margin-top: -12px;
+            margin-bottom: 18px;
+        }
+
         /* Compact grid for purpose-category details */
         #form-page5 .category-grid-compact {
             display: grid;
@@ -73,6 +80,7 @@
                         <label class="form-label">Total Sample Amount:</label>
                         <input type="number" step="any" name="total_sample_amount" class="form-input amount-input" placeholder="Enter amount" min="0">
                     </div>
+                    <small class="help-text">Enter the total amount of environmental sample represented by the reported fragment/microplastic results (e.g., volume of water or mass of sediment/soil).</small>
                     <div class="form-row">
                         <label class="form-label">Sample Unit:</label>
                         <select name="sample_unit" class="form-select unit-select">
@@ -82,6 +90,7 @@
                             <option value="km2" class="soil-unit area-unit">Area (km²)</option>
                         </select>
                     </div>
+                    <small class="help-text">Select the unit corresponding to the total sample amount.</small>
                 </div>
 
                 <div class="count-section">

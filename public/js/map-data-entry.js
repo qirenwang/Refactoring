@@ -140,7 +140,7 @@ function initMap() {
         const country = countryInput ? countryInput.value.trim() : '';
 
         if (!streetAddress || !city || !state || !country) {
-            const message = 'Enter the full indoor address first: street, city, state, and country.';
+            const message = 'Enter the full address first: street, city, state, and country.';
             setGeocodeStatus(message, 'error');
             if (window.showErrorMessage) {
                 await window.showErrorMessage(message, 'Address Lookup');
@@ -259,7 +259,7 @@ function initMap() {
     };
 
     if (geocodeStatus && !geocodeStatus.textContent.trim()) {
-        setGeocodeStatus('For indoor samples, use the address fields and then select "Find Address on Map".', 'info');
+        setGeocodeStatus('For locations with a known address, use the address fields and then select "Find Address on Map".', 'info');
     }
 
     syncMarkerFromInputs({ zoom: 13 });
