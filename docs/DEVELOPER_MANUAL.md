@@ -563,7 +563,7 @@ SMTP 端口 465 使用隐式 TLS；其他提交端口强制 STARTTLS，并保持
 | SampleUniqueID | INT UNIQUE | 样品 ID |
 | SamplingEvent_Num | INT | 关联采样事件 ID |
 | MediaType_SelectID | INT | 媒介类型 |
-| FragLargerThan5mm_Count | INT | >5mm Fragment Debris 总数（用途已知与未知） |
+| FragLargerThan5mm_Count | INT | >5mm 碎片总数（碎片与整件包装合并计数；用途在 FragmentsPurposes 中按百分比记录） |
 | Micro5mmAndSmaller_Count | INT | ≤5mm 微塑料计数 |
 | WaterEnvType_SelectID | INT | 水环境类型 |
 | SoilMoisture% | INT | 土壤湿度 (%) |
@@ -602,6 +602,7 @@ SMTP 端口 465 使用隐式 TLS；其他提交端口强制 STARTTLS，并保持
 |------|------|------|
 | Fragment_UniqueID | INT PK | 碎片记录 ID |
 | SampleDetails_Num | INT | 关联样品 ID |
+| FragLargerThan5mm_Count | INT | >5mm 碎片合并计数（由 db/20260815_merge_fragment_purpose_counts.sql 新增，取代 PurposeKnown_Count / PurposeUnknown_Count） |
 | PercentColor_Clear | INT | 透明占比 |
 | PercentColor_Op-Color | INT | 不透明彩色占比 |
 | PercentColor_Op-Dk | INT | 不透明深色占比 |
@@ -659,7 +660,7 @@ SMTP 端口 465 使用隐式 TLS；其他提交端口强制 STARTTLS，并保持
 | Units_Ref | 样品量单位参考 |
 | Wavelength_Ref | 波长范围参考 |
 | LocType_Env-Indoor_Ref | 位置环境类型参考 |
-| PolymerType_Ref | 聚合物类型参考 |
+| PolymerType_Ref | 聚合物类型参考；`Other` 行的具体说明按样品存于 `MicroplasticsPolymerDetails.PolymerOther_Desc` / `FragmentsPolymerDetails.PolymerOther_Desc`（db/20260815_add_polymer_other_description.sql） |
 | Purpose_Ref | 包装用途参考 |
 | Form_Ref | 包装形态参考 |
 | ColorType_Ref | 颜色类型参考 |

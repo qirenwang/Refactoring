@@ -2552,8 +2552,24 @@ body {
 }
 
 .polymer-category .form-input {
-    max-width: 120px;
+    /* Wide enough for the full "percentage" placeholder plus a value like 100.0000 */
+    max-width: 170px;
+    min-width: 150px;
+    padding-left: 12px;
+    padding-right: 12px;
     margin-left: 10px;
+}
+
+/* "Describe the other polymer(s)" box shown under the Other percentage */
+.polymer-category.polymer-other-specify-row {
+    margin-top: -6px;
+    background-color: #fffdf5;
+    border-left-color: #6c757d !important;
+}
+
+.polymer-category .form-input.polymer-other-specify {
+    max-width: 480px;
+    min-width: 260px;
 }
 
 /* Color coding for different polymer categories */
@@ -2589,7 +2605,10 @@ body {
     }
 
     .polymer-category .form-input {
-        max-width: 100px;
+        max-width: 150px;
+        min-width: 130px;
+        padding-left: 10px;
+        padding-right: 10px;
         margin-left: 5px;
     }
 
@@ -3265,6 +3284,35 @@ select {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+/* Numeric range validation (negative / out-of-range values) */
+.form-input.is-invalid,
+input[type="number"].is-invalid {
+    border-color: #dc3545 !important;
+    background-color: #fff5f5;
+}
+
+.form-input.is-invalid:focus,
+input[type="number"].is-invalid:focus {
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
+}
+
+.numeric-range-error {
+    color: #721c24;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 13px;
+    margin: -12px 0 18px 0;
+}
+
+/* Under a detail-percent grid row / the partial-date grid the row has its own
+   spacing, so the message sits directly beneath it */
+.detail-percent-row + .numeric-range-error,
+.partial-date-inputs + .numeric-range-error {
+    margin: -4px 0 10px 0;
+}
+
 /* Percentage validation styles */
 .percentage-validation-container {
     margin: 10px 0;
@@ -3304,6 +3352,14 @@ select {
     color: #721c24;
     background-color: #f8d7da;
     border: 1px solid #f5c6cb;
+}
+
+/* Edit mode: an untouched legacy group whose stored total is off 100% is
+   informational only (it is neither re-validated nor re-submitted) */
+.percentage-status.legacy {
+    color: #495057;
+    background-color: #e9ecef;
+    border: 1px solid #ced4da;
 }
 
 /* Disabled button styles for percentage validation */
@@ -3466,7 +3522,8 @@ button:disabled[title*="包装"]:hover {
 
 .detail-percent-row {
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) 120px 40px;
+    /* Percentage column is wide enough for the full "percentage" placeholder */
+    grid-template-columns: minmax(180px, 1fr) 160px 40px;
     gap: 10px;
     align-items: center;
     margin-bottom: 10px;

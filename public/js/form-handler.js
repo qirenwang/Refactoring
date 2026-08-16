@@ -16,29 +16,6 @@ const publicationFormUtils = window.PublicationFormUtils;
 const partialDateUtils = window.PartialDateUtils;
 const dataSummaryUtils = window.DataSummaryUtils;
 
-const PACKAGING_DETAIL_GROUPS = {
-    recycle: ['1', '2', '3', '4', '5', '6', '7', '0'],
-    color: ['clear', 'black', 'blue', 'green', 'pink', 'purple', 'red', 'white', 'yellow', 'other'],
-    opacity: ['clear', 'light', 'dark', 'mixed']
-};
-
-const PACKAGING_DETAIL_LABELS = {
-    recycle: 'Recycle codes total',
-    color: 'Color total',
-    opacity: 'Opacity total'
-};
-
-const PACKAGING_CATEGORY_CONFIG = [
-    { prefix: 'single_use', countField: 'packaging_count_single_use', label: 'Single-Use Food/Beverage Container' },
-    { prefix: 'multi_use', countField: 'packaging_count_multi_use', label: 'Multi-Use Food/Beverage Container' },
-    { prefix: 'consumer_product', countField: 'packaging_count_consumer_product', label: 'Other durable goods for longer term use' },
-    { prefix: 'bag_container', countField: 'packaging_count_bag_container', label: 'Bag for carrying or containing items' },
-    { prefix: 'packing', countField: 'packaging_count_packing', label: 'Packing Materials' },
-    { prefix: 'other_purpose', countField: 'packaging_count_other', label: 'Other Purpose' },
-    { prefix: 'unknown_purpose', countField: 'packaging_count_unknown', label: 'Unknown Purpose' }
-];
-
-let runWholePackageValidation = () => {};
 let referenceDataCache = null;
 let referenceDataPromise = null;
 let publicationsCache = null;
@@ -151,6 +128,9 @@ function canonicalPolymerGroup(state, config) {
 
     return JSON.stringify({
         percentages,
+        // The Other-polymer description is part of the group: changing only the
+        // text must still count as a change so it is submitted on update.
+        otherDescription: String(state[`${config.prefix}other_specify`] ?? '').trim(),
         polymerMethod: String(firstOwnedValue(state, config.methodFields.slice(0, 2))),
         polymerMethodOther: String(firstOwnedValue(state, config.methodFields.slice(2, 4))),
         percentMethod: String(firstOwnedValue(state, config.methodFields.slice(4)))
@@ -303,15 +283,15 @@ function hasDebrisDetailData(state = {}) {
     ];
 
     return detailRows.length > 0 ||
-        Object.keys(state).some(key => key.startsWith('fragment_polymer_') && parseFloat(state[key]) > 0) ||
+        Object.keys(state).some(key => key.startsWith('fragment_polymer_') && !isOtherPolymerSpecifyField(key) && parseFloat(state[key]) > 0) ||
         !!state.fragments_method_polymer_num ||
         !!state.fragments_method_polymer_other ||
         !!state.fragments_method_percent_estimate;
 }
 
+// Fragments (>5mm) and whole packaging are entered as one count.
 function getCombinedDebrisCount(state = {}) {
-    return (parseInt(state.fragments_count, 10) || 0) +
-        (parseInt(state.packaging_count, 10) || 0);
+    return parseInt(state.fragments_count, 10) || 0;
 }
 
 function getPartialDateParts(state, prefix) {
@@ -833,7 +813,7 @@ function createDetailRow(tableId, initial = {}) {
     percent.min = '0';
     percent.max = '100';
     percent.step = '0.0001';
-    percent.placeholder = 'percent';
+    percent.placeholder = 'percentage';
 
     const remove = document.createElement('button');
     remove.type = 'button';
@@ -1057,6 +1037,72 @@ function restoreDetailRowsFromFormData() {
 window.collectDetailRows = collectDetailRows;
 window.syncDetailRowsToFormData = syncDetailRowsToFormData;
 
+// The reference polymer whose percentage must be accompanied by a free-text
+// description (PolymerType_Ref.Polymer_Code = 'Other'). The description is
+// posted as `<prefix>other_specify` and stored in
+// <Microplastics|Fragments>PolymerDetails.PolymerOther_Desc on the Other row.
+const OTHER_POLYMER_CODE = 'other';
+const OTHER_POLYMER_SPECIFY_SUFFIX = 'other_specify';
+
+function isOtherPolymerCode(code) {
+    return normalizeRefCode(code) === OTHER_POLYMER_CODE;
+}
+
+function isOtherPolymerSpecifyField(fieldName) {
+    return typeof fieldName === 'string' && fieldName.endsWith(`_${OTHER_POLYMER_SPECIFY_SUFFIX}`);
+}
+
+function polymerRowLabel(polymer) {
+    const code = String(polymer.Polymer_Code || '').trim();
+    const fullName = String(polymer.Polymer_FullName || '').trim();
+    if (isOtherPolymerCode(code)) {
+        // "Other - Other polymer type" reads oddly; show the descriptive name only.
+        return fullName && fullName.toLowerCase() !== code.toLowerCase() ? fullName : 'Other polymer type';
+    }
+    return `${code} - ${fullName || code}`;
+}
+
+// Removes every reference-driven polymer field (percentages and the Other
+// description) for both groups from the in-memory form state.
+function deletePolymerFieldsFromFormData() {
+    Object.keys(formData).forEach(key => {
+        if (key.startsWith('mp_polymer_') || key.startsWith('fragment_polymer_')) {
+            delete formData[key];
+        }
+    });
+}
+
+// Shows the "describe the other polymer" box only while the Other percentage
+// has a value. While the user is still typing (input events) the box is only
+// hidden — the text is kept, because the percentage is often transiently blank
+// (select-all + retype). Once the blank value is committed (change event) the
+// description is cleared too, so nothing stale is saved.
+function syncOtherPolymerSpecifyRow(prefix, { clear = false } = {}) {
+    const percentInput = document.querySelector(`input[name="${prefix}${OTHER_POLYMER_CODE}"]`);
+    const specifyRow = document.querySelector(`[data-polymer-specify-for="${prefix}${OTHER_POLYMER_CODE}"]`);
+    if (!percentInput || !specifyRow) return;
+
+    const specifyInput = specifyRow.querySelector('input');
+    const specifyName = `${prefix}${OTHER_POLYMER_SPECIFY_SUFFIX}`;
+    const hasPercent = String(percentInput.value ?? '').trim() !== '';
+
+    if (hasPercent) {
+        specifyRow.style.display = '';
+        return;
+    }
+
+    specifyRow.style.display = 'none';
+    if (!clear) return;
+
+    if (specifyInput && specifyInput.value !== '') {
+        specifyInput.value = '';
+    }
+    if (Object.prototype.hasOwnProperty.call(formData, specifyName)) {
+        delete formData[specifyName];
+        sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+    }
+}
+
 window.loadPolymerOptions = function loadPolymerOptions() {
     if (!referenceDataCache) return;
 
@@ -1072,14 +1118,34 @@ window.loadPolymerOptions = function loadPolymerOptions() {
             const row = document.createElement('div');
             row.className = 'form-row polymer-category';
             row.innerHTML = `
-                <label class="form-label">${polymer.Polymer_Code} - ${polymer.Polymer_FullName || polymer.Polymer_Code}:</label>
+                <label class="form-label"></label>
                 <input type="number" name="${fieldName}" class="form-input" placeholder="percentage" min="0" max="100" step="0.0001">
             `;
+            row.querySelector('label').textContent = `${polymerRowLabel(polymer)}:`;
             const input = row.querySelector('input');
             if (input && formData[fieldName] !== undefined) {
                 input.value = formData[fieldName];
             }
             container.appendChild(row);
+
+            if (!isOtherPolymerCode(polymer.Polymer_Code)) return;
+
+            // "Describe the other polymer(s)" box directly after the Other percentage.
+            const specifyName = `${prefix}${OTHER_POLYMER_SPECIFY_SUFFIX}`;
+            const specifyRow = document.createElement('div');
+            specifyRow.className = 'form-row polymer-category polymer-other-specify-row';
+            specifyRow.dataset.polymerSpecifyFor = fieldName;
+            specifyRow.style.display = 'none';
+            specifyRow.innerHTML = `
+                <label class="form-label" for="${specifyName}">Describe the other polymer(s):</label>
+                <input type="text" id="${specifyName}" name="${specifyName}" class="form-input polymer-other-specify" maxlength="255" placeholder="e.g. PTFE, polyurethane foam" autocomplete="off">
+            `;
+            const specifyInput = specifyRow.querySelector('input');
+            if (specifyInput && formData[specifyName] !== undefined) {
+                specifyInput.value = formData[specifyName];
+            }
+            container.appendChild(specifyRow);
+            syncOtherPolymerSpecifyRow(prefix);
         });
         container.dataset.loaded = 'true';
     };
@@ -1087,6 +1153,23 @@ window.loadPolymerOptions = function loadPolymerOptions() {
     render('mp-polymer-dynamic-container', 'mp_polymer_');
     render('fragment-polymer-dynamic-container', 'fragment_polymer_');
 };
+
+// Keep the description box in step with the Other percentage: visibility
+// follows every keystroke, the description itself is only dropped once a
+// blank Other percentage is committed.
+function otherPolymerPrefixFor(fieldName) {
+    if (fieldName === `mp_polymer_${OTHER_POLYMER_CODE}`) return 'mp_polymer_';
+    if (fieldName === `fragment_polymer_${OTHER_POLYMER_CODE}`) return 'fragment_polymer_';
+    return null;
+}
+document.addEventListener('input', function(event) {
+    const prefix = otherPolymerPrefixFor(event.target && event.target.name);
+    if (prefix) syncOtherPolymerSpecifyRow(prefix, { clear: false });
+});
+document.addEventListener('change', function(event) {
+    const prefix = otherPolymerPrefixFor(event.target && event.target.name);
+    if (prefix) syncOtherPolymerSpecifyRow(prefix, { clear: true });
+});
 
 document.addEventListener('click', function(event) {
     const addButton = event.target.closest('[data-add-detail-row]');
@@ -1154,18 +1237,20 @@ function buildFriendlySaveError(status, data, currentFormState = {}) {
             return 'Could not save: Please fill required fields on Page 2 — Sample Date and Media Type.';
         }
 
-        // Percentage or package validation failures
+        // Percentage validation failures
         if (serverMsg && serverMsg.toLowerCase().includes('percentage validation failed')) {
             return 'Could not save: One or more percentage groups must total 100%. Please review the percentages shown and adjust them to sum to 100%.';
-        }
-        if (serverMsg && serverMsg.toLowerCase().includes('package validation failed')) {
-            return 'Could not save: Package counts are inconsistent. Ensure all purpose-category counts equal the Whole Packages total, and any filled detail group sums match the category total.';
         }
 
         // Generic 400 with server field errors
         if (serverErrors.length > 0) {
-            const details = serverErrors.map(e => e.msg || e.message).filter(Boolean).slice(0, 3);
-            return 'Could not save: Some fields need attention. ' + details.join('; ');
+            const details = serverErrors
+                .map(e => (typeof e === 'string' ? e : (e && (e.msg || e.message))))
+                .filter(Boolean)
+                .slice(0, 3);
+            if (details.length > 0) {
+                return 'Could not save: Some fields need attention. ' + details.join('; ');
+            }
         }
 
         // Fallback for 400
@@ -1301,10 +1386,10 @@ function preValidateBeforeSubmit(state) {
         issues.push('Total Sample Amount and Sample Unit must be entered together.');
     }
 
-    const debrisCount = (parseFloat(state.fragments_count) || 0) + (parseFloat(state.packaging_count) || 0);
+    const debrisCount = getCombinedDebrisCount(state);
     const debrisMass = parseFloat(state.fragments_mass_debris_total) || 0;
     if (state.has_quantitative_data === 'yes' && hasDebrisDetailData(state) && debrisCount <= 0 && debrisMass <= 0) {
-        issues.push('Enter at least a count or a mass for debris.');
+        issues.push('Enter at least a fragments count or a fragments mass.');
     }
 
     DETAIL_TABLES.forEach(tableId => {
@@ -1322,7 +1407,7 @@ function preValidateBeforeSubmit(state) {
 
     const validateMicroPolymer = !isEditMode || isPolymerGroupChanged('mp_polymer', state);
     const hasMicroPolymerRows = validateMicroPolymer && Object.keys(state).some(key =>
-        key.startsWith('mp_polymer_') && parseFloat(state[key]) > 0
+        key.startsWith('mp_polymer_') && !isOtherPolymerSpecifyField(key) && parseFloat(state[key]) > 0
     );
     if (hasMicroPolymerRows && !state.micro_method_polymer_num) {
         issues.push('Microplastics polymer percentages require a Polymer ID Method.');
@@ -1330,10 +1415,13 @@ function preValidateBeforeSubmit(state) {
     if (hasMicroPolymerRows && !state.micro_method_percent_estimate) {
         issues.push('Microplastics polymer percentages require a percent-estimation method.');
     }
+    if (validateMicroPolymer) {
+        issues.push(...getOtherPolymerDescriptionIssues(state, 'mp_polymer_', 'Microplastics'));
+    }
 
     const validateFragmentPolymer = !isEditMode || isPolymerGroupChanged('fragment_polymer', state);
     const hasFragmentPolymerRows = validateFragmentPolymer && Object.keys(state).some(key =>
-        key.startsWith('fragment_polymer_') && parseFloat(state[key]) > 0
+        key.startsWith('fragment_polymer_') && !isOtherPolymerSpecifyField(key) && parseFloat(state[key]) > 0
     );
     if (hasFragmentPolymerRows && !state.fragments_method_polymer_num) {
         issues.push('Fragments polymer percentages require a Polymer ID Method.');
@@ -1341,8 +1429,28 @@ function preValidateBeforeSubmit(state) {
     if (hasFragmentPolymerRows && !state.fragments_method_percent_estimate) {
         issues.push('Fragments polymer percentages require a percent-estimation method.');
     }
+    if (validateFragmentPolymer) {
+        issues.push(...getOtherPolymerDescriptionIssues(state, 'fragment_polymer_', 'Fragments'));
+    }
 
     return { ok: issues.length === 0, issues };
+}
+
+// The Other polymer percentage and its description go together: a percentage
+// needs a description, and a description without a percentage is meaningless.
+// Mirrors validateNumericRanges/validateNewSaveRules on the server.
+function getOtherPolymerDescriptionIssues(state, prefix, groupLabel) {
+    const issues = [];
+    const otherPercent = parseFloat(state[`${prefix}${OTHER_POLYMER_CODE}`]);
+    const description = String(state[`${prefix}${OTHER_POLYMER_SPECIFY_SUFFIX}`] ?? '').trim();
+
+    if (otherPercent > 0 && !description) {
+        issues.push(`${groupLabel} polymer types: please describe the "Other" polymer(s) in the box under the Other percentage.`);
+    }
+    if (description && !(otherPercent > 0)) {
+        issues.push(`${groupLabel} polymer types: an "Other" description was entered but the Other percentage is blank or 0.`);
+    }
+    return issues;
 }
 
 // Location validation and priority system functions - GLOBAL SCOPE
@@ -1743,6 +1851,155 @@ function clearValidationError() {
 }
 
 // Function to save current page data to session storage
+// ---------------------------------------------------------------------------
+// Numeric range validation (min / max / whole-number) for type="number" inputs.
+// The HTML attributes alone only affect the spinner buttons; a typed "-0.01"
+// still submits, so the same rules are enforced here (and again on the server).
+// ---------------------------------------------------------------------------
+function isNumericInputVisible(input) {
+    if (isHiddenLegacyField(input)) return false;
+    const mediaSection = input.closest('.media-specific-section');
+    if (mediaSection && mediaSection.style.display === 'none') return false;
+    return input.offsetParent !== null;
+}
+
+// Same rules as validateNumericRanges on the server: plain decimal notation
+// only, because "1e3"/"0x10" are read as 1/0 by the storage path.
+const PLAIN_DECIMAL_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)$/;
+const PLAIN_INTEGER_PATTERN = /^[+-]?\d+$/;
+
+function getNumericInputProblem(input) {
+    const raw = String(input.value ?? '').trim();
+    if (raw === '') return null;
+
+    if (!PLAIN_DECIMAL_PATTERN.test(raw)) {
+        return 'Please enter a plain number (digits and a decimal point only).';
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return 'Please enter a valid number.';
+
+    const minAttr = input.getAttribute('min');
+    if (minAttr !== null && minAttr !== '' && value < Number(minAttr)) {
+        return Number(minAttr) === 0
+            ? 'Value cannot be negative.'
+            : `Value cannot be less than ${minAttr}.`;
+    }
+
+    const maxAttr = input.getAttribute('max');
+    if (maxAttr !== null && maxAttr !== '' && value > Number(maxAttr)) {
+        return `Value cannot be greater than ${maxAttr}.`;
+    }
+
+    if (input.getAttribute('step') === '1' && !PLAIN_INTEGER_PATTERN.test(raw)) {
+        return 'Please enter a whole number.';
+    }
+
+    return null;
+}
+
+function setNumericInputError(input, message) {
+    // The message element is tracked on the input itself: it lives *after* the
+    // input's row (form rows are flex containers, so inserting inside the row
+    // would place it beside the input instead of underneath).
+    let feedback = input._numericRangeFeedback && input._numericRangeFeedback.isConnected
+        ? input._numericRangeFeedback
+        : null;
+
+    if (!message) {
+        input.classList.remove('is-invalid');
+        input.removeAttribute('aria-invalid');
+        if (feedback) feedback.remove();
+        input._numericRangeFeedback = null;
+        return;
+    }
+
+    input.classList.add('is-invalid');
+    input.setAttribute('aria-invalid', 'true');
+    if (!feedback) {
+        feedback = document.createElement('div');
+        feedback.className = 'numeric-range-error';
+        feedback.dataset.for = input.name || '';
+        feedback.setAttribute('role', 'alert');
+        // Detail-percent rows and the partial-date row are CSS grids: the
+        // message must go after the whole row, not inside a grid cell.
+        const host = input.closest('.form-row, .detail-percent-row, .partial-date-inputs') || input;
+        host.insertAdjacentElement('afterend', feedback);
+        input._numericRangeFeedback = feedback;
+    }
+    feedback.textContent = message;
+}
+
+// Validates every visible numeric input inside `root`. Returns the list of
+// offending inputs (empty when everything is fine) and marks them inline.
+function validateNumericInputs(root) {
+    const scope = root || document;
+    const invalid = [];
+    scope.querySelectorAll('input[type="number"]').forEach(input => {
+        if (!isNumericInputVisible(input)) {
+            setNumericInputError(input, null);
+            return;
+        }
+        const problem = getNumericInputProblem(input);
+        setNumericInputError(input, problem);
+        if (problem) invalid.push({ input, problem });
+    });
+    return invalid;
+}
+
+function labelForInput(input) {
+    const row = input.closest('.form-row');
+    const label = row ? row.querySelector('.form-label, label') : null;
+    const text = label ? label.textContent.replace(/\s+/g, ' ').replace(/:\s*$/, '').trim() : '';
+    return text || input.name || 'A numeric field';
+}
+
+// Blocks navigation/saving when `root` contains out-of-range numbers.
+function ensureNumericInputsValid(root) {
+    const invalid = validateNumericInputs(root);
+    if (invalid.length === 0) return true;
+
+    invalid[0].input.focus({ preventScroll: false });
+    invalid[0].input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    const summary = invalid
+        .slice(0, 5)
+        .map(({ input, problem }) => `• ${labelForInput(input)}: ${problem}`)
+        .join('\n');
+    const more = invalid.length > 5 ? `\n…and ${invalid.length - 5} more.` : '';
+    if (typeof window.showTemporaryMessage === 'function') {
+        window.showTemporaryMessage(
+            `Please correct the highlighted number field${invalid.length > 1 ? 's' : ''} before continuing.`,
+            'error'
+        );
+    } else {
+        alert(`Please correct the following before continuing:\n\n${summary}${more}`);
+    }
+    return false;
+}
+
+// Live feedback while typing. A lower bound above zero (e.g. year >= 1000)
+// is not enforced on every keystroke — "2" on the way to "2025" is not an
+// error — unless the field is already flagged; negatives, upper bounds and
+// malformed numbers are flagged immediately. The full check runs on commit.
+function isPartialEntryOfPositiveMin(input, problem) {
+    if (!problem || input._numericRangeFeedback) return false;
+    const minAttr = input.getAttribute('min');
+    if (minAttr === null || minAttr === '' || !(Number(minAttr) > 0)) return false;
+    return /cannot be less than/.test(problem);
+}
+document.addEventListener('input', function(event) {
+    const target = event.target;
+    if (!target || target.tagName !== 'INPUT' || target.type !== 'number') return;
+    const problem = getNumericInputProblem(target);
+    if (isPartialEntryOfPositiveMin(target, problem)) return;
+    setNumericInputError(target, problem);
+});
+document.addEventListener('change', function(event) {
+    const target = event.target;
+    if (!target || target.tagName !== 'INPUT' || target.type !== 'number') return;
+    setNumericInputError(target, getNumericInputProblem(target));
+});
+
 function saveCurrentPageData() {
     const currentPageElement = document.getElementById(`form-page${currentPage}`);
 
@@ -1985,8 +2242,6 @@ function updateFormPage5Sections() {
     }
 
     // Update fragments details section and sample amount
-    const fragmentsCount = parseInt(currentFormData['fragments_count']) || 0;
-    const packagingCount = parseInt(currentFormData['packaging_count']) || 0;
     const debrisCount = getCombinedDebrisCount(currentFormData);
     const fragmentsDetails = document.getElementById('fragments-details');
     const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
@@ -1996,25 +2251,6 @@ function updateFormPage5Sections() {
     }
     if (fragmentsAmountContainer) {
         fragmentsAmountContainer.style.display = debrisCount > 0 ? 'block' : 'none';
-    }
-
-    // Update packaging details section and sample amount
-    const packagingDetails = document.getElementById('packaging-details');
-    const packagingAmountContainer = document.getElementById('packaging-amount-container');
-    if (packagingDetails) {
-        packagingDetails.style.display = packagingCount > 0 ? 'block' : 'none';
-
-        // If packaging count > 0, update the packaging items
-        if (packagingCount > 0 && typeof window.updatePackagingItems === 'function') {
-            window.updatePackagingItems(packagingCount);
-        }
-        console.log('Packaging details section:', packagingCount > 0 ? 'shown' : 'hidden');
-    }
-    if (packagingAmountContainer) {
-        packagingAmountContainer.style.display = packagingCount > 0 ? 'block' : 'none';
-    }
-    if (typeof window.updateAllPackagingDetailsVisibility === 'function') {
-        window.updateAllPackagingDetailsVisibility();
     }
 
     // Update unit options based on selected media type
@@ -2189,6 +2425,13 @@ function proceedToNextPage() {
     continueButton.disabled = false;
 }
 
+// Lets the page-level cache reset (enter_data_by_form.ejs) empty the in-memory
+// form state as well as sessionStorage, so a fresh entry cannot inherit values
+// left over from a previous one.
+window.resetInMemoryFormData = function resetInMemoryFormData() {
+    Object.keys(formData).forEach(key => delete formData[key]);
+};
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('=== Form-handler.js DOMContentLoaded ===');
 
@@ -2210,9 +2453,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Setup summary generation for the final page
     setupSummaryGeneration();
-
-    // Set up packaging count handler - call only once
-    setupPackagingCountHandler();
 
     // Legacy package-category detail UI is hidden; FragmentsPurposes is active.
 
@@ -2464,16 +2704,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 container.remove();
             });
 
-            // Reset whole package validation displays
-            const packageContainers = document.querySelectorAll('.whole-package-validation-container');
-            packageContainers.forEach(container => {
-                container.remove();
-            });
-
             // Reset submit button states
             const submitButtons = document.querySelectorAll('.btn-continue, #save-button, .btn-submit');
             submitButtons.forEach(button => {
                 button.disabled = false;
+                delete button.dataset.percentLock;
                 button.title = '';
                 button.style.opacity = '';
                 button.style.cursor = '';
@@ -2684,7 +2919,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Page 5: Sample Details
                 'has_quantitative_data', 'replicates_count',
-                'microplastics_count', 'fragments_count', 'packaging_count',
+                'microplastics_count', 'fragments_count',
                 'total_sample_amount', 'sample_unit',
                 'microplastics_sample_amount', 'microplastics_sample_unit',
                 'fragments_sample_amount', 'fragments_sample_unit',
@@ -2729,10 +2964,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 'packaging_item_6', 'packaging_item_7', 'packaging_item_8', 'packaging_item_9', 'packaging_item_10'
             ];
 
-            // Clear from formData
+            // Clear from formData (plus every reference-driven polymer field,
+            // including the "Other" description, whatever its exact key)
             fieldsToClean.forEach(field => {
                 delete formData[field];
             });
+            deletePolymerFieldsFromFormData();
 
             // Save to sessionStorage
             sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
@@ -2775,490 +3012,46 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Function to set up Whole Package hierarchical validation
-    function setupWholePackageValidation() {
-        console.log('Setting up whole package validation');
-
-        // Ensure validation display exists when page 5 is rendered dynamically.
-        ensureWholePackageValidationDisplay();
-
-        const formPagesContainer = document.querySelector('.form-pages-container') || document.body;
-        const packageValidationObserver = new MutationObserver(() => {
-            if (!document.getElementById('whole-package-validation') && ensureWholePackageValidationDisplay()) {
-                validateWholePackageHierarchy();
-            }
-        });
-
-        packageValidationObserver.observe(formPagesContainer, { childList: true, subtree: true });
-
-        // Add input event listeners for real-time validation
-        document.addEventListener('input', function(event) {
-            const fieldName = event.target.name;
-
-            // Check if this field belongs to whole package validation
-            if (isWholePackageField(fieldName)) {
-                validateWholePackageHierarchy();
-            }
-        });
-
-        // Function to check if a field belongs to whole package validation
-        function isWholePackageField(fieldName) {
-            if (!fieldName) return false;
-
-            if (fieldName === 'packaging_count') {
-                return true;
-            }
-
-            return PACKAGING_CATEGORY_CONFIG.some(cfg => {
-                if (fieldName === cfg.countField) return true;
-                return fieldName.startsWith(`${cfg.prefix}_`);
-            });
-        }
-
-        function ensureWholePackageValidationDisplay() {
-            const packageCountField = document.querySelector('[name="packaging_count"]');
-            if (!packageCountField) return false;
-            createWholePackageValidationDisplay();
-            return true;
-        }
-
-        // Function to create validation display
-        function createWholePackageValidationDisplay() {
-            if (document.getElementById('whole-package-validation')) {
-                return;
-            }
-
-            const packageCountField = document.querySelector('[name="packaging_count"]');
-            if (!packageCountField) return;
-
-            const parentSection = packageCountField.closest('.count-section');
-            if (!parentSection) return;
-
-            // Create validation container
-            const validationContainer = document.createElement('div');
-            validationContainer.className = 'whole-package-validation-container';
-            validationContainer.id = 'whole-package-validation';
-            validationContainer.innerHTML = `
-                <div class="package-validation-summary">
-                    <h5 style="margin: 10px 0; color: #495057;">Package Count Validation</h5>
-                    <div class="validation-row">
-                        <span class="validation-label">Whole Packages Total:</span>
-                        <span class="validation-value" id="whole-packages-total">0</span>
-                    </div>
-                    <div class="validation-row">
-                        <span class="validation-label">All Purpose Categories Total:</span>
-                        <span class="validation-value" id="single-multi-total">0</span>
-                        <span class="validation-status" id="main-total-status"></span>
-                    </div>
-                    <div class="validation-details">
-                        <div class="validation-subgroup">
-                            <div class="validation-row">
-                                <span class="validation-label">Single-use Total:</span>
-                                <span class="validation-value" id="single-use-total">0</span>
-                            </div>
-                            <div class="validation-row">
-                                <span class="validation-label">Single-use Recycle Codes Sum:</span>
-                                <span class="validation-value" id="single-use-recycle-sum">0</span>
-                                <span class="validation-status" id="single-use-status"></span>
-                            </div>
-                        </div>
-                        <div class="validation-subgroup">
-                            <div class="validation-row">
-                                <span class="validation-label">Multi-use Total:</span>
-                                <span class="validation-value" id="multi-use-total">0</span>
-                            </div>
-                            <div class="validation-row">
-                                <span class="validation-label">Multi-use Recycle Codes Sum:</span>
-                                <span class="validation-value" id="multi-use-recycle-sum">0</span>
-                                <span class="validation-status" id="multi-use-status"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            // Insert validation container after the packaging count field
-            parentSection.appendChild(validationContainer);
-        }
-
-        // Function to validate the whole package hierarchy
-        function validateWholePackageHierarchy() {
-            ensureWholePackageValidationDisplay();
-
-            const wholePackagesTotal = parseInt(document.querySelector('[name="packaging_count"]')?.value || 0);
-
-            const categoryResults = PACKAGING_CATEGORY_CONFIG.map(cfg => {
-                const countValue = parseInt(document.querySelector(`[name="${cfg.countField}"]`)?.value || 0);
-                const groupSums = {};
-                const groupStates = {};
-                const errorMessages = [];
-
-                Object.keys(PACKAGING_DETAIL_GROUPS).forEach(groupKey => {
-                    const groupData = calculateGroupSum(cfg.prefix, groupKey);
-                    groupSums[groupKey] = groupData;
-
-                    const validation = evaluateGroupAgainstCount(countValue, groupKey, groupData);
-                    groupStates[groupKey] = {
-                        key: groupKey,
-                        label: PACKAGING_DETAIL_LABELS[groupKey] || groupKey,
-                        sum: groupData.sum,
-                        hasValues: groupData.hasValues,
-                        hasAnyField: groupData.hasAnyField,
-                        isValid: validation.isValid
-                    };
-
-                    if (!validation.isValid) {
-                        errorMessages.push(validation.message);
-                    }
-                });
-
-                setCategoryValidationState(cfg.prefix, countValue, groupStates, errorMessages);
-
-                return {
-                    prefix: cfg.prefix,
-                    label: cfg.label,
-                    count: countValue,
-                    groupSums,
-                    groupStates,
-                    errorMessages,
-                    isValid: errorMessages.length === 0
-                };
-            });
-
-            const singleResult = categoryResults.find(res => res.prefix === 'single_use') || { count: 0, groupSums: {}, errorMessages: [], isValid: true };
-            const multiResult = categoryResults.find(res => res.prefix === 'multi_use') || { count: 0, groupSums: {}, errorMessages: [], isValid: true };
-
-            const singleUseRecycleSum = singleResult.groupSums?.recycle?.sum || 0;
-            const multiUseRecycleSum = multiResult.groupSums?.recycle?.sum || 0;
-
-            const wholePackagesTotalEl = document.getElementById('whole-packages-total');
-            if (wholePackagesTotalEl) wholePackagesTotalEl.textContent = wholePackagesTotal;
-
-            const allCategoriesTotal = categoryResults.reduce((sum, result) => sum + result.count, 0);
-
-            const singleMultiTotalEl = document.getElementById('single-multi-total');
-            if (singleMultiTotalEl) singleMultiTotalEl.textContent = allCategoriesTotal;
-
-            const singleUseTotalEl = document.getElementById('single-use-total');
-            if (singleUseTotalEl) singleUseTotalEl.textContent = singleResult.count;
-
-            const multiUseTotalEl = document.getElementById('multi-use-total');
-            if (multiUseTotalEl) multiUseTotalEl.textContent = multiResult.count;
-
-            const singleUseRecycleSumEl = document.getElementById('single-use-recycle-sum');
-            if (singleUseRecycleSumEl) singleUseRecycleSumEl.textContent = singleUseRecycleSum;
-
-            const multiUseRecycleSumEl = document.getElementById('multi-use-recycle-sum');
-            if (multiUseRecycleSumEl) multiUseRecycleSumEl.textContent = multiUseRecycleSum;
-
-            const mainTotalValid = allCategoriesTotal === wholePackagesTotal;
-            updateValidationStatus(
-                'main-total-status',
-                mainTotalValid,
-                mainTotalValid ? '✓ Totals match' : '✗ Sum of all purpose categories must equal Whole Packages total'
-            );
-
-            const singleUseMessage = buildCategorySummaryMessage(singleResult, '(No Single-Use items)');
-            updateValidationStatus('single-use-status', singleResult.isValid, singleUseMessage);
-
-            const multiUseMessage = buildCategorySummaryMessage(multiResult, '(No Multi-Use items)');
-            updateValidationStatus('multi-use-status', multiResult.isValid, multiUseMessage);
-
-            const categoryTotalsValid = categoryResults.every(result => result.isValid || result.count === 0);
-            const allValid = mainTotalValid && categoryTotalsValid;
-            updateSubmitButtonForPackageValidation(allValid);
-        }
-
-        function calculateGroupSum(prefix, groupKey) {
-            const suffixes = PACKAGING_DETAIL_GROUPS[groupKey] || [];
-            let sum = 0;
-            let hasValues = false;
-            let hasAnyField = false;
-
-            suffixes.forEach(suffix => {
-                const field = document.querySelector(`[name="${prefix}_${groupKey}_${suffix}"]`);
-                if (!field) return;
-                hasAnyField = true;
-                const rawValue = field.value != null ? field.value.trim() : '';
-                if (rawValue !== '') {
-                    hasValues = true;
-                    const parsed = parseInt(rawValue, 10);
-                    if (!isNaN(parsed)) {
-                        sum += parsed;
-                    }
-                }
-            });
-
-            return { sum, hasValues, hasAnyField };
-        }
-
-        function evaluateGroupAgainstCount(count, groupKey, groupData) {
-            if (!groupData.hasAnyField) {
-                return { isValid: true };
-            }
-
-            const label = PACKAGING_DETAIL_LABELS[groupKey] || groupKey;
-            const sum = groupData.sum;
-
-        if (count === 0) {
-            if (groupData.hasValues && sum !== 0) {
-                return { isValid: false, message: `${label}: ${sum}, but category count is 0` };
-            }
-            return { isValid: true };
-        }
-
-        // Detail groups are optional; only validate groups where user entered values.
-        if (!groupData.hasValues) {
-            return { isValid: true };
-        }
-
-        if (sum !== count) {
-            return { isValid: false, message: `${label}: ${sum}, expected ${count}` };
-        }
-
-            return { isValid: true };
-        }
-
-        function setCategoryValidationState(prefix, count, groupStates, errorMessages) {
-            const detailSection = document.querySelector(`.inline-category-details[data-category="${prefix}"]`);
-            if (!detailSection) return;
-
-            const warningEl = detailSection.querySelector('.category-warning');
-            if (!warningEl) return;
-
-            const allGroupStates = Object.values(groupStates || {}).filter(group => group.hasAnyField);
-            const filledGroupStates = allGroupStates.filter(group => group.hasValues);
-
-            const setBannerStyle = (state) => {
-                warningEl.style.display = 'block';
-                warningEl.style.marginTop = '10px';
-                warningEl.style.padding = '10px 12px';
-                warningEl.style.borderRadius = '6px';
-                warningEl.style.fontWeight = '600';
-                warningEl.style.whiteSpace = 'pre-line';
-
-                if (state === 'valid') {
-                    warningEl.style.color = '#155724';
-                    warningEl.style.backgroundColor = '#d4edda';
-                    warningEl.style.border = '1px solid #c3e6cb';
-                } else if (state === 'invalid') {
-                    warningEl.style.color = '#721c24';
-                    warningEl.style.backgroundColor = '#f8d7da';
-                    warningEl.style.border = '1px solid #f5c6cb';
-                } else {
-                    warningEl.style.color = '#856404';
-                    warningEl.style.backgroundColor = '#fff3cd';
-                    warningEl.style.border = '1px solid #ffeaa7';
-                }
-            };
-
-            if (count <= 0) {
-                warningEl.textContent = '';
-                warningEl.style.display = 'none';
-                detailSection.classList.remove('validation-error');
-                return;
-            }
-
-            if (filledGroupStates.length === 0) {
-                warningEl.textContent = `Reminder: enter detail counts by Recycle Code / Color / Opacity.
-For each group you fill, Current Total should equal ${count}.`;
-                setBannerStyle('info');
-                detailSection.classList.remove('validation-error');
-                return;
-            }
-
-            const currentTotalLines = filledGroupStates.map(group => {
-                const marker = group.isValid ? '✓' : '✗';
-                return `${group.label}: Current Total ${group.sum} / Expected ${count} ${marker}`;
-            });
-
-            if (errorMessages.length > 0) {
-                warningEl.textContent = ['Validation issue(s):', ...currentTotalLines].join('\n');
-                setBannerStyle('invalid');
-                detailSection.classList.add('validation-error');
-                return;
-            }
-
-            warningEl.textContent = ['✓ Total is correct for all entered groups', ...currentTotalLines].join('\n');
-            setBannerStyle('valid');
-            detailSection.classList.remove('validation-error');
-        }
-
-        function buildCategorySummaryMessage(result, emptyMessage) {
-            if (!result) return emptyMessage || '';
-            if (result.count === 0) {
-                return emptyMessage || '(No items)';
-            }
-            if (result.errorMessages.length === 0) {
-                return '✓ All details match total';
-            }
-            return '✗ ' + result.errorMessages.join('；');
-        }
-
-        runWholePackageValidation = validateWholePackageHierarchy;
-        validateWholePackageHierarchy();
-
-        // Helper function to update validation status display
-        function updateValidationStatus(elementId, isValid, message) {
-            const statusElement = document.getElementById(elementId);
-            if (!statusElement) return;
-
-            statusElement.textContent = message;
-            statusElement.className = `validation-status ${isValid ? 'valid' : 'invalid'}`;
-
-            if (!message) {
-                statusElement.style.color = '';
-                statusElement.style.backgroundColor = '';
-                statusElement.style.border = '';
-                statusElement.style.padding = '';
-                statusElement.style.borderRadius = '';
-                statusElement.style.fontWeight = '';
-                return;
-            }
-
-            statusElement.style.padding = '4px 8px';
-            statusElement.style.borderRadius = '4px';
-            statusElement.style.fontWeight = '600';
-
-            if (isValid) {
-                statusElement.style.color = '#155724';
-                statusElement.style.backgroundColor = '#d4edda';
-                statusElement.style.border = '1px solid #c3e6cb';
-            } else {
-                statusElement.style.color = '#721c24';
-                statusElement.style.backgroundColor = '#f8d7da';
-                statusElement.style.border = '1px solid #f5c6cb';
-            }
-        }
-
-        // Helper function to update submit button for package validation
-        function updateSubmitButtonForPackageValidation(isValid) {
-            const submitButtons = document.querySelectorAll('#form-page5 .btn-continue[data-next="6"], #save-button, .btn-submit');
-
-            submitButtons.forEach(button => {
-                if (!isValid) {
-                    button.disabled = true;
-                    button.title = '请确保包装数据层级验证通过';
-                } else {
-                    // Check if there are other validation errors before enabling
-                    const otherInvalidGroups = document.querySelectorAll('.percentage-status.invalid');
-                    if (otherInvalidGroups.length === 0) {
-                        button.disabled = false;
-                        button.title = '';
-                    }
-                }
-            });
-        }
-    }
-
-    // Function to set up percentage validation for Quality Control sections
+    // Live "Current Total" banner for the two polymer-percentage groups on
+    // page 5. This is the single on-screen total for polymer types (the
+    // row-based sections use their own header total). The banner is inserted
+    // directly above the dynamic polymer input list of each section.
     function setupPercentageValidation() {
-        console.log('Setting up percentage validation');
-
-        // Define percentage groups that need to sum to 100%
-        const percentageGroups = {
-            // Microplastics polymer percentages
-            mp_polymer: [
-                'mp_polymer_pete', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe',
-                'mp_polymer_pp', 'mp_polymer_ps', 'mp_polymer_pa', 'mp_polymer_pc',
-                'mp_polymer_pla', 'mp_polymer_abs', 'mp_polymer_eva', 'mp_polymer_pb',
-                'mp_polymer_pe_uhmw', 'mp_polymer_pmma', 'mp_polymer_hips', 'mp_polymer_eps',
-                'mp_polymer_pan', 'mp_polymer_rubber', 'mp_polymer_bitumen', 'mp_polymer_other'
-            ],
-            // Fragments polymer percentages
-            fragment_polymer: [
-                'fragment_polymer_pete', 'fragment_polymer_hdpe', 'fragment_polymer_pvc', 'fragment_polymer_ldpe',
-                'fragment_polymer_pp', 'fragment_polymer_ps', 'fragment_polymer_pa', 'fragment_polymer_pc',
-                'fragment_polymer_pla', 'fragment_polymer_abs', 'fragment_polymer_eva', 'fragment_polymer_pb',
-                'fragment_polymer_pe_uhmw', 'fragment_polymer_pmma', 'fragment_polymer_hips', 'fragment_polymer_eps',
-                'fragment_polymer_pan', 'fragment_polymer_rubber', 'fragment_polymer_bitumen', 'fragment_polymer_other'
-            ]
+        const polymerGroups = {
+            mp_polymer: {
+                prefix: 'mp_polymer_',
+                scope: '#microplastics-details',
+                anchor: 'mp-polymer-dynamic-container'
+            },
+            fragment_polymer: {
+                prefix: 'fragment_polymer_',
+                scope: '#fragments-details',
+                anchor: 'fragment-polymer-dynamic-container'
+            }
         };
+        const TOLERANCE = 0.1; // Match backend and formpage5.ejs validation
 
-        // Scope each percentage group to the correct details section.
-        const groupScopes = {
-            'mp_polymer': '#microplastics-details',
-            'fragment_polymer': '#fragments-details'
-        };
-
-        // Function to initialize validation containers when page 5 is loaded
-        function initializeValidationContainers() {
-            console.log('Initializing percentage validation containers');
-            Object.keys(percentageGroups).forEach(groupKey => {
-                createValidationContainer(groupKey, percentageGroups[groupKey]);
-            });
+        function findGroupForField(fieldName) {
+            if (!fieldName || fieldName.endsWith('_specify')) return null;
+            return Object.keys(polymerGroups).find(groupKey =>
+                fieldName.startsWith(polymerGroups[groupKey].prefix)
+            ) || null;
         }
 
-        // Try to initialize immediately if page 5 exists
-        if (document.getElementById('form-page5')) {
-            initializeValidationContainers();
+        function getGroupInputs(groupKey) {
+            const config = polymerGroups[groupKey];
+            const scopeRoot = document.querySelector(config.scope) || document;
+            return Array.from(scopeRoot.querySelectorAll(`input[name^="${config.prefix}"]`))
+                .filter(input => !input.name.endsWith('_specify'));
         }
 
-        // Also watch for when page 5 is loaded dynamically
-        const observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                mutation.addedNodes.forEach(function(node) {
-                    if (node.id === 'form-page5') {
-                        console.log('Page 5 detected, initializing validation containers');
-                        // Wait a bit for the page to fully render
-                        setTimeout(initializeValidationContainers, 100);
-                    }
-                });
-            });
-        });
+        function ensureValidationContainer(groupKey) {
+            const existing = document.getElementById(`${groupKey}-validation`);
+            if (existing) return existing;
 
-        // Observe the form pages container for new pages
-        const formPagesContainer = document.querySelector('.form-pages-container');
-        if (formPagesContainer) {
-            observer.observe(formPagesContainer, { childList: true, subtree: true });
-        }
+            const anchor = document.getElementById(polymerGroups[groupKey].anchor);
+            if (!anchor) return null;
 
-        // Add input event listeners for real-time validation
-        document.addEventListener('input', function(event) {
-            const fieldName = event.target.name;
-
-            // Check if this field belongs to any percentage group
-            for (const [groupKey, fields] of Object.entries(percentageGroups)) {
-                if (fields.includes(fieldName)) {
-                    validatePercentageGroup(groupKey, fields);
-                    break;
-                }
-            }
-        });
-
-        // Function to create validation display container for a percentage group
-        function createValidationContainer(groupKey, fields) {
-            console.log(`Creating validation container for ${groupKey}`);
-
-            // Check if container already exists
-            if (document.getElementById(`${groupKey}-validation`)) {
-                console.log(`Validation container for ${groupKey} already exists`);
-                return;
-            }
-
-            const scopeRoot = document.querySelector(groupScopes[groupKey]) || document;
-
-            // Find the first field in the group to determine where to insert validation
-            const firstField = scopeRoot.querySelector(`[name="${fields[0]}"]`);
-            if (!firstField) {
-                console.log(`First field not found for ${groupKey}: ${fields[0]}`);
-                return;
-            }
-
-            // Find the parent section
-            let parentSection = scopeRoot.querySelector('.details-form');
-            if (!parentSection) {
-                parentSection = firstField.closest('.details-form');
-            }
-            if (!parentSection) {
-                parentSection = firstField.closest('#microplastics-details, #fragments-details');
-            }
-            if (!parentSection) {
-                console.log(`Parent section not found for ${groupKey}`);
-                return;
-            }
-
-            // Create validation container with improved styling
             const validationContainer = document.createElement('div');
             validationContainer.className = 'percentage-validation-container';
             validationContainer.id = `${groupKey}-validation`;
@@ -3269,74 +3062,27 @@ For each group you fill, Current Total should equal ${count}.`;
                     <span class="percentage-status" id="${groupKey}-status"></span>
                 </div>
             `;
-
-            // Find the specific section title for this group and insert right after it
-            const allSectionTitles = parentSection.querySelectorAll('.form-section-title');
-            let targetTitle = null;
-
-            // Map group keys to their title keywords - need exact match for proper identification
-            const titleKeywords = {
-                'mp_polymer': '4. Polymer type',
-                'fragment_polymer': '3. Polymer type'
-            };
-
-            // Find the matching title
-            allSectionTitles.forEach(title => {
-                const keyword = titleKeywords[groupKey];
-                if (keyword && title.textContent.includes(keyword)) {
-                    // For fragments, make sure we're in the right section
-                    if (groupKey.startsWith('fragment_')) {
-                        if (title.closest('#fragments-details')) {
-                            targetTitle = title;
-                        }
-                    } else if (groupKey.startsWith('mp_')) {
-                        if (title.closest('#microplastics-details')) {
-                            targetTitle = title;
-                        }
-                    }
-                }
-            });
-
-            // Insert validation container after the specific section title
-            if (targetTitle) {
-                // Insert after the title, before the first form-row
-                targetTitle.insertAdjacentElement('afterend', validationContainer);
-                console.log(`Validation container for ${groupKey} inserted after title`);
-            } else {
-                console.log(`Target title not found for ${groupKey}, trying fallback`);
-                // Fallback: insert before the first field's form-row
-                const firstFormRow = firstField.closest('.form-row');
-                if (firstFormRow) {
-                    firstFormRow.insertAdjacentElement('beforebegin', validationContainer);
-                    console.log(`Validation container for ${groupKey} inserted before first field`);
-                }
-            }
+            anchor.insertAdjacentElement('beforebegin', validationContainer);
+            return validationContainer;
         }
 
-        // Function to validate a percentage group
-        function validatePercentageGroup(groupKey, fields) {
+        function validatePercentageGroup(groupKey) {
+            const validationContainer = ensureValidationContainer(groupKey);
+            if (!validationContainer) return;
+            const totalElement = document.getElementById(`${groupKey}-total`);
+            const statusElement = document.getElementById(`${groupKey}-status`);
+            if (!totalElement || !statusElement) return;
+
             let total = 0;
             let hasAnyValue = false;
-            const scopeRoot = document.querySelector(groupScopes[groupKey]) || document;
-
-            // Calculate total percentage
-            fields.forEach(fieldName => {
-                const field = scopeRoot.querySelector(`[name="${fieldName}"]`);
-                if (field && field.value !== '') {
-                    const value = parseFloat(field.value) || 0;
-                    total += value;
+            getGroupInputs(groupKey).forEach(input => {
+                if (input.value !== '') {
+                    total += parseFloat(input.value) || 0;
                     hasAnyValue = true;
                 }
             });
 
-            // Update validation display
-            const validationContainer = document.getElementById(`${groupKey}-validation`);
-            const totalElement = document.getElementById(`${groupKey}-total`);
-            const statusElement = document.getElementById(`${groupKey}-status`);
-
-            if (!totalElement || !statusElement || !validationContainer) return;
-
-            // Only show validation if user has entered some values
+            // Only show the banner once the user has entered something
             if (!hasAnyValue) {
                 validationContainer.style.display = 'none';
                 statusElement.textContent = '';
@@ -3345,43 +3091,50 @@ For each group you fill, Current Total should equal ${count}.`;
                 return;
             }
 
-            // Show validation container
             validationContainer.style.display = 'block';
             totalElement.textContent = `Current Total: ${total.toFixed(1)}%`;
 
-            const TOLERANCE = 0.1; // Match backend and formpage5.ejs validation
+            // In edit mode an UNCHANGED group is neither re-validated nor
+            // re-submitted (see shouldValidatePercentageGroup), so a legacy
+            // total that is off 100% is shown as information, not as a blocker.
+            const exemptFromValidation = typeof window.shouldValidatePercentageGroup === 'function' &&
+                !window.shouldValidatePercentageGroup(groupKey);
 
             if (Math.abs(total - 100) <= TOLERANCE) {
-                // Valid - equals 100% (within tolerance)
                 validationContainer.style.backgroundColor = '#d4edda';
                 validationContainer.style.border = '1px solid #c3e6cb';
                 totalElement.style.color = '#155724';
                 statusElement.innerHTML = '<i class="fas fa-check-circle"></i> ✓ Total is correct';
                 statusElement.style.color = '#155724';
-                statusElement.style.fontWeight = 'bold';
                 statusElement.className = 'percentage-status valid';
-                updateSubmitButtonState();
+            } else if (exemptFromValidation) {
+                validationContainer.style.backgroundColor = '#e9ecef';
+                validationContainer.style.border = '1px solid #ced4da';
+                totalElement.style.color = '#495057';
+                statusElement.innerHTML = '<i class="fas fa-info-circle"></i> Stored total (unchanged values are kept as-is; edit any value to re-validate)';
+                statusElement.style.color = '#495057';
+                statusElement.className = 'percentage-status legacy';
             } else if (total > 100) {
-                // Invalid - exceeds 100% - RED ERROR
                 validationContainer.style.backgroundColor = '#f8d7da';
                 validationContainer.style.border = '1px solid #f5c6cb';
                 totalElement.style.color = '#721c24';
                 statusElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> ✗ Error: Total exceeds 100%! Please adjust your values.';
                 statusElement.style.color = '#721c24';
-                statusElement.style.fontWeight = 'bold';
                 statusElement.className = 'percentage-status invalid';
-                updateSubmitButtonState();
             } else {
-                // Invalid - less than 100% - YELLOW WARNING
                 validationContainer.style.backgroundColor = '#fff3cd';
                 validationContainer.style.border = '1px solid #ffeaa7';
                 totalElement.style.color = '#856404';
                 statusElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ⚠ Warning: Total must equal 100% (or leave all blank)';
                 statusElement.style.color = '#856404';
-                statusElement.style.fontWeight = 'bold';
                 statusElement.className = 'percentage-status invalid';
-                updateSubmitButtonState();
             }
+            statusElement.style.fontWeight = 'bold';
+            updateSubmitButtonState();
+        }
+
+        function validateAllPolymerGroups() {
+            Object.keys(polymerGroups).forEach(validatePercentageGroup);
         }
 
         // Function to update submit button state based on all percentage validations
@@ -3390,193 +3143,56 @@ For each group you fill, Current Total should equal ${count}.`;
             const submitButtons = document.querySelectorAll('#form-page5 .btn-continue[data-next="6"], #save-button, .btn-submit');
 
             submitButtons.forEach(button => {
+                // A button that is disabled for another reason (e.g. a save in
+                // flight, which sets disabled=true itself) must never be
+                // re-enabled here — only undo our own lock.
+                if (button.dataset.submitting === 'true') return;
                 if (invalidGroups.length > 0) {
                     button.disabled = true;
-                    button.title = '请确保所有百分比总和等于100%';
-                } else {
+                    button.dataset.percentLock = 'true';
+                    button.title = 'Polymer percentages must total 100% (or all be left blank)';
+                } else if (button.dataset.percentLock === 'true') {
                     button.disabled = false;
+                    delete button.dataset.percentLock;
                     button.title = '';
                 }
             });
         }
-    }
 
-    // Function to handle packaging count input - centralized in one place
-    function setupPackagingCountHandler() {
-        console.log('Setting up packaging count handler');
-
-        // Use event delegation to handle packaging-count input changes
+        // Real-time validation as the user types
         document.addEventListener('input', function(event) {
-            if (event.target.id === 'packaging-count') {
-                const value = event.target.value;
-                console.log('Input Event - Packaging count changed to:', value);
-
-                // Store the value in formData
-                formData['packaging_count'] = value;
-                sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
-
-                // Update UI based on current value
-                updatePackagingUI(parseInt(value) || 0);
-            }
+            const groupKey = findGroupForField(event.target && event.target.name);
+            if (groupKey) validatePercentageGroup(groupKey);
         });
-    }
 
-    // Function to show or hide category detail sections based on count inputs
-    function setupPackagingCategoryDetailsToggle() {
-        const packagingCountFields = PACKAGING_CATEGORY_CONFIG.map(cfg => cfg.countField);
-
-        const refreshAll = () => {
-            packagingCountFields.forEach(name => {
-                const field = document.querySelector(`[name="${name}"]`);
-                if (field) {
-                    togglePackagingCategoryDetails(field);
-                }
+        // Page 5 and its polymer inputs are stamped/rendered dynamically (the
+        // polymer list arrives after /api/references). Re-evaluate whenever
+        // the page container changes so restored/edit values show a total too.
+        const formPagesContainer = document.querySelector('.form-pages-container');
+        if (formPagesContainer) {
+            let scheduled = false;
+            const observer = new MutationObserver(function(mutations) {
+                // Ignore the banner's own updates, otherwise re-rendering the
+                // banner would re-trigger this observer indefinitely.
+                const relevant = mutations.some(mutation =>
+                    !(mutation.target.closest && mutation.target.closest('.percentage-validation-container'))
+                );
+                if (!relevant || scheduled) return;
+                scheduled = true;
+                setTimeout(function() {
+                    scheduled = false;
+                    if (document.getElementById('form-page5')) validateAllPolymerGroups();
+                }, 50);
             });
-            runWholePackageValidation();
-        };
-
-        document.addEventListener('input', event => {
-            const target = event.target;
-            if (!target || !packagingCountFields.includes(target.name)) {
-                return;
-            }
-            togglePackagingCategoryDetails(target);
-            runWholePackageValidation();
-        });
-
-        document.addEventListener('change', event => {
-            const target = event.target;
-            if (!target || !packagingCountFields.includes(target.name)) {
-                return;
-            }
-            togglePackagingCategoryDetails(target);
-            runWholePackageValidation();
-        });
-
-        setTimeout(refreshAll, 0);
-    }
-
-    function togglePackagingCategoryDetails(countField) {
-        if (!countField) return;
-
-        const categoryBlock = countField.closest('.purpose-category-block');
-        if (!categoryBlock) return;
-
-        const detailSection = categoryBlock.querySelector('.inline-category-details');
-        if (!detailSection) return;
-
-        const count = parseInt(countField.value, 10) || 0;
-        detailSection.style.display = count > 0 ? 'block' : 'none';
-
-        if (count <= 0) {
-            const warningEl = detailSection.querySelector('.category-warning');
-            if (warningEl) {
-                warningEl.textContent = '';
-                warningEl.style.display = 'none';
-            }
-            detailSection.classList.remove('validation-error');
-            clearPackagingDetailFields(detailSection);
-        }
-    }
-
-    function clearPackagingDetailFields(detailSection) {
-        if (!detailSection) return;
-
-        const inputs = detailSection.querySelectorAll('input[name], select[name], textarea[name]');
-        if (!inputs.length) return;
-
-        let formDataUpdated = false;
-        inputs.forEach(input => {
-            if (!input.name) return;
-
-            if (input.value !== '') {
-                input.value = '';
-            }
-
-            if (Object.prototype.hasOwnProperty.call(formData, input.name)) {
-                delete formData[input.name];
-                formDataUpdated = true;
-            }
-        });
-
-        if (formDataUpdated) {
-            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
-        }
-    }
-
-    function updateAllPackagingDetailsVisibility() {
-        const packagingDetails = document.getElementById('packaging-details');
-        if (!packagingDetails) return;
-
-        const countInputs = packagingDetails.querySelectorAll('.purpose-category-block input[name^="packaging_count_"]');
-        countInputs.forEach(input => togglePackagingCategoryDetails(input));
-        runWholePackageValidation();
-    }
-    // Expose to global scope for external calls
-    window.updateAllPackagingDetailsVisibility = updateAllPackagingDetailsVisibility;
-
-    // Function to update UI based on packaging count
-    function updatePackagingUI(count) {
-        console.log('Updating UI for packaging count:', count);
-
-        const unknownPurposeCount = parseInt(document.getElementById('fragments-count')?.value, 10) || 0;
-        const showDebrisDetails = count + unknownPurposeCount > 0;
-        const fragmentsDetails = document.getElementById('fragments-details');
-        const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
-        if (fragmentsDetails) fragmentsDetails.style.display = showDebrisDetails ? 'block' : 'none';
-        if (fragmentsAmountContainer) fragmentsAmountContainer.style.display = showDebrisDetails ? 'block' : 'none';
-
-        // Update visibility of packaging details section
-        const packagingDetails = document.getElementById('packaging-details');
-        console.log('packaging-details element:', packagingDetails);
-        if (packagingDetails) {
-            packagingDetails.style.display = count > 0 ? 'block' : 'none';
-            console.log('Set packaging-details display to:', count > 0 ? 'block' : 'none');
-
-            // Only update packaging items if the section is visible
-            if (count > 0) {
-                updatePackagingItems(count);
-            }
-        } else {
-            console.error('packaging-details element not found!');
+            observer.observe(formPagesContainer, { childList: true, subtree: true });
         }
 
-        runWholePackageValidation();
+        if (document.getElementById('form-page5')) {
+            validateAllPolymerGroups();
+        }
+
+        window.refreshPolymerPercentageTotals = validateAllPolymerGroups;
     }
-
-    // Function to update packaging items - separated from event handler
-    function updatePackagingItems(count) {
-        console.log('Updating packaging items for count:', count);
-
-        const packagingItemsContainer = document.getElementById('packaging-items-container');
-        if (!packagingItemsContainer) return;
-
-        // Clear existing items
-        packagingItemsContainer.innerHTML = '';
-
-        // Generate new forms for each packaging item
-        for (let i = 1; i <= count; i++) {
-            const itemDiv = document.createElement('div');
-            itemDiv.className = 'packaging-item';
-            itemDiv.innerHTML = `
-                <h4>Packaging Item #${i}</h4>
-                <div class="form-group">
-                    <label for="packaging-userpiece-${i}">UserPieceID Label:</label>
-                    <input type="text" id="packaging-userpiece-${i}" name="packaging_userpiece_${i}" class="form-input" placeholder="User defined">
-                </div>
-                <div style="display: none;" class="item-number">${i}</div>
-                <hr>
-            `;
-            packagingItemsContainer.appendChild(itemDiv);
-        }        // Re-fill form fields from session if available
-        fillFormFieldsFromSession();
-
-        // Restore selection states
-        setTimeout(() => {
-            restorePackagingSelections();
-        }, 100);
-    }
-    window.updatePackagingItems = updatePackagingItems;
 
     // Set up event delegation for media options in form-page3 (both old and new layouts)
     document.addEventListener('click', function(event) {
@@ -3818,15 +3434,13 @@ For each group you fill, Current Total should equal ${count}.`;
                 if (!showQuantitativeData) {
                     const microplasticsDetails = document.getElementById('microplastics-details');
                     const fragmentsDetails = document.getElementById('fragments-details');
-                    const packagingDetails = document.getElementById('packaging-details');
 
                     if (microplasticsDetails) microplasticsDetails.style.display = 'none';
                     if (fragmentsDetails) fragmentsDetails.style.display = 'none';
-                    if (packagingDetails) packagingDetails.style.display = 'none';
 
                     // Clear all quantitative data fields when selecting "No"
                     const quantitativeDataFields = [
-                        'replicates_count', 'microplastics_count', 'fragments_count', 'packaging_count',
+                        'replicates_count', 'microplastics_count', 'fragments_count',
                         'total_sample_amount', 'sample_unit',
                         'microplastics_sample_amount', 'microplastics_sample_unit',
                         'fragments_sample_amount', 'fragments_sample_unit',
@@ -3868,10 +3482,12 @@ For each group you fill, Current Total should equal ${count}.`;
                         'packaging_item_6', 'packaging_item_7', 'packaging_item_8', 'packaging_item_9', 'packaging_item_10'
                     ];
 
-                    // Clear from formData and sessionStorage
+                    // Clear from formData and sessionStorage (plus every
+                    // reference-driven polymer field, including the "Other" description)
                     quantitativeDataFields.forEach(field => {
                         delete formData[field];
                     });
+                    deletePolymerFieldsFromFormData();
                     sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
 
                     // Clear the visual form fields in quantitative data sections
@@ -3887,7 +3503,7 @@ For each group you fill, Current Total should equal ${count}.`;
                     }
 
                     // Also clear fields in detail sections
-                    [microplasticsDetails, fragmentsDetails, packagingDetails].forEach(section => {
+                    [microplasticsDetails, fragmentsDetails].forEach(section => {
                         if (section) {
                             const fields = section.querySelectorAll('input, select, textarea');
                             fields.forEach(field => {
@@ -3903,11 +3519,9 @@ For each group you fill, Current Total should equal ${count}.`;
                     // Also hide the amount containers
                     const microplasticsAmountContainer = document.getElementById('microplastics-amount-container');
                     const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
-                    const packagingAmountContainer = document.getElementById('packaging-amount-container');
 
                     if (microplasticsAmountContainer) microplasticsAmountContainer.style.display = 'none';
                     if (fragmentsAmountContainer) fragmentsAmountContainer.style.display = 'none';
-                    if (packagingAmountContainer) packagingAmountContainer.style.display = 'none';
 
                     // Hide all percentage validation containers
                     const validationContainers = document.querySelectorAll('.percentage-validation-container');
@@ -3974,8 +3588,7 @@ For each group you fill, Current Total should equal ${count}.`;
                                 const count = parseInt(this.value) || 0;
                                 const details = document.getElementById('fragments-details');
                                 const amountContainer = document.getElementById('fragments-amount-container');
-                                const knownPurposeCount = parseInt(document.getElementById('packaging-count')?.value, 10) || 0;
-                                const showDebrisDetails = count + knownPurposeCount > 0;
+                                const showDebrisDetails = count > 0;
                                 if (details) {
                                     details.style.display = showDebrisDetails ? 'block' : 'none';
                                 }
@@ -3987,14 +3600,6 @@ For each group you fill, Current Total should equal ${count}.`;
                                 sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
                             });
                         }
-                    }
-
-                    // Check packaging count - do not add another event handler here!
-                    const packagingInput = document.getElementById('packaging-count');
-                    if (packagingInput) {
-                        // Just update the UI based on the current value (will be 0 after clearing)
-                        const packagingCount = parseInt(packagingInput.value) || 0;
-                        updatePackagingUI(packagingCount);
                     }
                 }
             }
@@ -4200,6 +3805,16 @@ For each group you fill, Current Total should equal ${count}.`;
                     }
                 }
 
+                // Numeric fields must be within their allowed range (no negative
+                // measurements/counts, percentages <= 100) before leaving a page.
+                const currentPageElement = event.target.closest('.form-page') ||
+                    document.getElementById(`form-page${currentPage}`);
+                if (!ensureNumericInputsValid(currentPageElement)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return;
+                }
+
                 // Save current page data
                 saveCurrentPageData();
 
@@ -4238,6 +3853,11 @@ For each group you fill, Current Total should equal ${count}.`;
             // Check if the clicked element is the save button
             if (event.target.id === 'save-button') {
                 event.preventDefault();
+
+                // Re-check every loaded page's numeric fields before submitting
+                if (!ensureNumericInputsValid(document.querySelector('.form-pages-container'))) {
+                    return;
+                }
 
                 // First save to sessionStorage
                 saveCurrentPageData();
@@ -4930,6 +4550,7 @@ For each group you fill, Current Total should equal ${count}.`;
             }
         }, 4000);
     }
+    window.showTemporaryMessage = showTemporaryMessage;
 
     // Make generateSummary available globally for debugging
     window.generateSummary = generateSummary;
@@ -5019,8 +4640,6 @@ For each group you fill, Current Total should equal ${count}.`;
         }
 
         // Update fragments details section and sample amount
-        const fragmentsCount = parseInt(currentFormData['fragments_count']) || 0;
-        const packagingCount = parseInt(currentFormData['packaging_count']) || 0;
         const debrisCount = getCombinedDebrisCount(currentFormData);
         const fragmentsDetails = document.getElementById('fragments-details');
         const fragmentsAmountContainer = document.getElementById('fragments-amount-container');
@@ -5030,22 +4649,6 @@ For each group you fill, Current Total should equal ${count}.`;
         }
         if (fragmentsAmountContainer) {
             fragmentsAmountContainer.style.display = debrisCount > 0 ? 'block' : 'none';
-        }
-
-        // Update packaging details section and sample amount
-        const packagingDetails = document.getElementById('packaging-details');
-        const packagingAmountContainer = document.getElementById('packaging-amount-container');
-        if (packagingDetails) {
-            packagingDetails.style.display = packagingCount > 0 ? 'block' : 'none';
-
-            // If packaging count > 0, update the packaging items
-            if (packagingCount > 0) {
-                updatePackagingItems(packagingCount);
-            }
-            console.log('Packaging details section:', packagingCount > 0 ? 'shown' : 'hidden');
-        }
-        if (packagingAmountContainer) {
-            packagingAmountContainer.style.display = packagingCount > 0 ? 'block' : 'none';
         }
 
         // Update unit options based on selected media type
@@ -5206,10 +4809,6 @@ For each group you fill, Current Total should equal ${count}.`;
                     }
                 });
             });
-        }
-
-        if (typeof updateAllPackagingDetailsVisibility === 'function') {
-            updateAllPackagingDetailsVisibility();
         }
 
         syncLocationMapFromInputs({ zoom: 13 });
@@ -5466,7 +5065,7 @@ For each group you fill, Current Total should equal ${count}.`;
             'Quantitative Data': [
                 'has_quantitative_data', 'replicates_count',
                 'total_sample_amount', 'sample_unit',
-                'microplastics_count', 'fragments_count', 'packaging_count'
+                'microplastics_count', 'fragments_count'
             ],
             'Microplastics Details': [
                 'micro_mass_mp_total', 'micro_method_polymer_num', 'micro_method_polymer_other', 'micro_method_percent_estimate'
@@ -5593,8 +5192,7 @@ For each group you fill, Current Total should equal ${count}.`;
             'has_quantitative_data': 'Quantitative Data Available',
             'replicates_count': 'Number of Replicates',
             'microplastics_count': 'Microplastics Count',
-            'fragments_count': 'Fragments Count',
-            'packaging_count': 'Packaging Items Count',
+            'fragments_count': 'Fragments Count (greater than 5mm)',
 
             // Sample Amounts
             'total_sample_amount': 'Total Sample Amount',
@@ -5895,8 +5493,8 @@ For each group you fill, Current Total should equal ${count}.`;
                 'micro_shape_details', 'micro_texture_details'
             ],
             'Fragments Details': [
-                'fragments_color_details', 'fragments_form_details',
-                'fragments_opacity_details', 'fragments_purpose_details'
+                'fragments_purpose_details', 'fragments_color_details',
+                'fragments_form_details', 'fragments_opacity_details'
             ]
         };
 
@@ -6769,12 +6367,6 @@ document.addEventListener('input', function(event) {
         if (container) {
             container.style.display = count > 0 ? 'block' : 'none';
         }
-    } else if (event.target.id === 'packaging-count') {
-        const count = parseInt(event.target.value) || 0;
-        const container = document.getElementById('packaging-amount-container');
-        if (container) {
-            container.style.display = count > 0 ? 'block' : 'none';
-        }
     }        // Save sample amount data and polymer type data to session storage
         if (event.target.name && (
             event.target.name.includes('sample_amount') ||
@@ -6793,66 +6385,3 @@ document.addEventListener('input', function(event) {
             sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
         }
 });
-
-// Add validation for polymer type percentages
-document.addEventListener('input', function(event) {
-    if (event.target.name && event.target.name.includes('mp_polymer_')) {
-        validatePolymerPercentages('mp');
-    } else if (event.target.name && event.target.name.includes('fragment_polymer_')) {
-        validatePolymerPercentages('fragment');
-    }
-});
-
-// Function to validate polymer type percentages
-function validatePolymerPercentages(type = 'mp') {
-    const prefix = type === 'mp' ? 'mp_polymer_' : 'fragment_polymer_';
-    const polymerInputs = document.querySelectorAll(`input[name^="${prefix}"]`);
-    let total = 0;
-
-    polymerInputs.forEach(input => {
-        const value = parseFloat(input.value) || 0;
-        total += value;
-    });
-
-    // Find or create warning element
-    const warningId = `${type}-polymer-percentage-warning`;
-    let warningElement = document.getElementById(warningId);
-    if (!warningElement) {
-        warningElement = document.createElement('div');
-        warningElement.id = warningId;
-        warningElement.className = 'percentage-warning';
-        warningElement.style.cssText = `
-            color: #dc3545;
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 15px;
-            font-size: 14px;
-            display: none;
-        `;
-
-        // Insert after the last polymer category in the appropriate section
-        const sectionId = type === 'mp' ? 'microplastics-details' : 'fragments-details';
-        const section = document.getElementById(sectionId);
-        if (section) {
-            const lastPolymerCategory = section.querySelector('.polymer-category:last-of-type');
-            if (lastPolymerCategory) {
-                lastPolymerCategory.parentNode.insertBefore(warningElement, lastPolymerCategory.nextSibling);
-            }
-        }
-    }
-
-    if (total > 100) {
-        warningElement.textContent = `Warning: Total ${type === 'mp' ? 'microplastics' : 'fragments'} polymer percentages (${total.toFixed(1)}%) exceed 100%. Please adjust the values.`;
-        warningElement.style.display = 'block';
-    } else if (total > 0) {
-        warningElement.textContent = `Total ${type === 'mp' ? 'microplastics' : 'fragments'} polymer percentages: ${total.toFixed(1)}%`;
-        warningElement.style.display = 'block';
-        warningElement.style.color = '#155724';
-        warningElement.style.backgroundColor = '#d4edda';
-        warningElement.style.borderColor = '#c3e6cb';
-    } else {
-        warningElement.style.display = 'none';
-    }
-}
