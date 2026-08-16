@@ -564,7 +564,7 @@ collection events use only the start components; device-period events also requi
 | SampleUniqueID | INT UNIQUE | Sample ID |
 | SamplingEvent_Num | INT | Associated sampling event ID |
 | MediaType_SelectID | INT | Media type |
-| FragLargerThan5mm_Count | INT | Total fragment debris >5mm count (purpose known and unknown) |
+| FragLargerThan5mm_Count | INT | Count of items >5mm (fragments and whole packaging together; purposes are recorded in FragmentsPurposes) |
 | Micro5mmAndSmaller_Count | INT | Microplastic ≤5mm count |
 | WaterEnvType_SelectID | INT | Water environment type |
 | SoilMoisture_Percent | INT | Soil moisture (%) |
@@ -604,6 +604,7 @@ collection events use only the start components; device-period events also requi
 |--------|------|-------------|
 | Fragment_UniqueID | INT PK | Fragment record ID |
 | SampleDetails_Num | INT | Associated sample ID |
+| FragLargerThan5mm_Count | INT | Merged count of items >5mm (added by db/20260815_merge_fragment_purpose_counts.sql, replacing PurposeKnown_Count / PurposeUnknown_Count) |
 | PercentColor_Clear | INT | Clear percentage |
 | PercentColor_Op_Color | INT | Opaque colored percentage |
 | PercentColor_Op_Dk | INT | Opaque dark percentage |
@@ -660,7 +661,7 @@ collection events use only the start components; device-period events also requi
 | WeatherType_Ref | Weather type reference |
 | Units_Ref | Sample quantity unit reference |
 | LocType_Env-Indoor_Ref | Location environment type reference |
-| PolymerType_Ref | Polymer type reference |
+| PolymerType_Ref | Polymer type reference; the `Other` row is described per sample in `MicroplasticsPolymerDetails.PolymerOther_Desc` / `FragmentsPolymerDetails.PolymerOther_Desc` (db/20260815_add_polymer_other_description.sql) |
 | Purpose_Ref | Package purpose reference |
 | Form_Ref | Package form reference |
 | ColorType_Ref | Color type reference |

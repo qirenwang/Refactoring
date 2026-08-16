@@ -34,8 +34,13 @@
         const code = String(polymer.Polymer_Code || fallbackCode || '').trim();
         const fullName = String(polymer.Polymer_FullName || '').trim();
         const recycleCode = polymer.RecycleCode;
+        // "Other - Other polymer type" reads oddly, so the Other reference
+        // polymer shows its descriptive name alone.
+        const isOtherPolymer = normalizeReferenceCode(code) === 'other';
         const name = fullName && fullName.toLowerCase() !== code.toLowerCase()
-            ? `${code} - ${fullName}`
+            ? (isOtherPolymer && fullName.toLowerCase().startsWith(code.toLowerCase())
+                ? fullName
+                : `${code} - ${fullName}`)
             : code;
         const recycleLabel = recycleCode !== undefined &&
             recycleCode !== null &&

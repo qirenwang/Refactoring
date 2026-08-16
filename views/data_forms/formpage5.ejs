@@ -6,7 +6,8 @@
         #form-page5 .amount-inline { margin-left: 32px; }
 
         /* Keep field hints attached to the field above, not the one below */
-        #form-page5 .sample-amount-unified .help-text {
+        #form-page5 .sample-amount-unified .help-text,
+        #form-page5 .count-section .help-text {
             display: block;
             margin-top: -12px;
             margin-bottom: 18px;
@@ -96,22 +97,16 @@
                 <div class="count-section">
                     <div class="form-row">
                         <label class="form-label">Microplastics Count (less than 5mm):</label>
-                        <input type="number" id="microplastics-count" name="microplastics_count" class="form-input" placeholder="count" min="0" data-target-table="MicroplasticsInSample" data-target-column="Micro5mmAndSmaller_Count">
+                        <input type="number" id="microplastics-count" name="microplastics_count" class="form-input" placeholder="count" min="0" step="1" data-target-table="MicroplasticsInSample" data-target-column="Micro5mmAndSmaller_Count">
                     </div>
                 </div>
 
                 <div class="count-section">
                     <div class="form-row">
-                        <label class="form-label">Fragments Count (greater than 5mm, purpose unknown):</label>
-                        <input type="number" id="fragments-count" name="fragments_count" class="form-input" placeholder="count" min="0" data-target-table="FragmentsInSample" data-target-column="PurposeUnknown_Count">
+                        <label class="form-label">Fragments Count (greater than 5mm):</label>
+                        <input type="number" id="fragments-count" name="fragments_count" class="form-input" placeholder="count" min="0" step="1" data-target-table="SampleDetails" data-target-column="FragLargerThan5mm_Count">
                     </div>
-                </div>
-
-                <div class="count-section">
-                    <div class="form-row">
-                        <label class="form-label">Whole packaging Count (purpose known):</label>
-                        <input type="number" id="packaging-count" name="packaging_count" class="form-input" placeholder="count" min="0" data-target-table="FragmentsInSample" data-target-column="PurposeKnown_Count">
-                    </div>
+                    <small class="help-text">Count every item larger than 5mm, including whole packaging. Item purposes are described under Fragments Details below.</small>
                 </div>
 
                 <div id="legacy-sample-amounts" style="display:none;">
@@ -224,10 +219,10 @@
                         </select>
                     </div>
 
+                    <%- include('../partials/detail_percent_rows', { tableId: 'fragments_purpose_details', sectionLabel: 'Purposes', fieldPrefix: 'fragments_purpose', refKey: 'purposes', masterMethodField: 'fragments_method_percent_estimate' }) %>
                     <%- include('../partials/detail_percent_rows', { tableId: 'fragments_color_details', sectionLabel: 'Color Types', fieldPrefix: 'fragments_color', refKey: 'colors', masterMethodField: 'fragments_method_percent_estimate' }) %>
                     <%- include('../partials/detail_percent_rows', { tableId: 'fragments_form_details', sectionLabel: 'Textures', fieldPrefix: 'fragments_form', refKey: 'forms_texture', masterMethodField: 'fragments_method_percent_estimate' }) %>
                     <%- include('../partials/detail_percent_rows', { tableId: 'fragments_opacity_details', sectionLabel: 'Opacity Types', fieldPrefix: 'fragments_opacity', refKey: 'opacities', masterMethodField: 'fragments_method_percent_estimate' }) %>
-                    <%- include('../partials/detail_percent_rows', { tableId: 'fragments_purpose_details', sectionLabel: 'Purposes', fieldPrefix: 'fragments_purpose', refKey: 'purposes', masterMethodField: 'fragments_method_percent_estimate' }) %>
 
                     <div class="form-section-title">Polymer type: Percentage of particles estimated to be each polymer type</div>
                     <div id="fragment-polymer-dynamic-container">
@@ -273,7 +268,10 @@
 
     function getInputsByPattern(container, pattern) {
         const re = new RegExp(pattern);
-        return Array.from(container.querySelectorAll('input[name]')).filter(i => re.test(i.name));
+        // Only numeric inputs count towards the total (the "Other" description
+        // text box shares the polymer name prefix).
+        return Array.from(container.querySelectorAll('input[name]'))
+            .filter(i => re.test(i.name) && i.type === 'number' && !i.name.endsWith('_specify'));
     }
 
     function groupSum(inputs) {
@@ -305,10 +303,10 @@
             { id: 'micro_opacity_details', label: 'Microplastics - Opacity', detailRows: true },
             { id: 'micro_shape_details', label: 'Microplastics - Shape', detailRows: true },
             { id: 'micro_texture_details', label: 'Microplastics - Texture', detailRows: true },
+            { id: 'fragments_purpose_details', label: 'Fragments - Purpose', detailRows: true },
             { id: 'fragments_color_details', label: 'Fragments - Color type', detailRows: true },
             { id: 'fragments_form_details', label: 'Fragments - Texture', detailRows: true },
-            { id: 'fragments_opacity_details', label: 'Fragments - Opacity', detailRows: true },
-            { id: 'fragments_purpose_details', label: 'Fragments - Purpose', detailRows: true }
+            { id: 'fragments_opacity_details', label: 'Fragments - Opacity', detailRows: true }
         ];
 
         configs.forEach(cfg => {
@@ -331,6 +329,28 @@
             }
         });
 
+        // The "Other" polymer percentage must be described in the box under it
+        // (and a description without an Other percentage is meaningless).
+        [
+            { prefix: 'mp_polymer_', groupKey: 'mp_polymer', label: 'Microplastics - Polymer type' },
+            { prefix: 'fragment_polymer_', groupKey: 'fragment_polymer', label: 'Fragments - Polymer type' }
+        ].forEach(cfg => {
+            if (typeof window.shouldValidatePercentageGroup === 'function' &&
+                !window.shouldValidatePercentageGroup(cfg.groupKey)) {
+                return;
+            }
+            const percentInput = document.querySelector(`input[name="${cfg.prefix}other"]`);
+            const specifyInput = document.querySelector(`input[name="${cfg.prefix}other_specify"]`);
+            if (!percentInput || !specifyInput) return;
+            const otherPercent = parseFloat(percentInput.value);
+            const description = specifyInput.value.trim();
+            if (otherPercent > 0 && !description) {
+                errors.push(`${cfg.label}: please describe the "Other" polymer(s) in the box under the Other percentage`);
+            } else if (description && !(otherPercent > 0)) {
+                errors.push(`${cfg.label}: an "Other" description was entered but the Other percentage is blank or 0`);
+            }
+        });
+
         return errors;
     }
 
@@ -346,94 +366,5 @@
             alert('Please review your percentage entries:\n\n' + errors.map((er, i) => `${i+1}. ${er}`).join('\n'));
         }
     }, true);
-})();
-</script>
-
-<script>
-// Dynamic Polymer Loading
-(function() {
-    async function loadPolymerOptions() {
-        try {
-            const response = await fetch('/api/references');
-            if (!response.ok) throw new Error('Network response was not ok');
-            const result = await response.json();
-
-            if (result.success && result.data && result.data.polymers) {
-                const polymers = result.data.polymers;
-                renderPolymerInputs('mp', polymers);
-                renderPolymerInputs('fragment', polymers);
-            } else {
-                throw new Error('Invalid data format received');
-            }
-        } catch (error) {
-            console.error('Error loading polymer references:', error);
-            const errDivs = document.querySelectorAll('#mp-polymer-dynamic-container, #fragment-polymer-dynamic-container');
-            errDivs.forEach(d => d.innerHTML = '<div class="error-message" style="color:red; padding:10px;">Error loading options. Please refresh the page.</div>');
-        }
-    }
-
-    function renderPolymerInputs(prefix, polymers) {
-        const containerId = `${prefix}-polymer-dynamic-container`;
-        const container = document.getElementById(containerId);
-        if (!container) {
-            console.log(`Container ${containerId} not found in DOM yet`);
-            return; // Element might not be in DOM if template not stamped yet
-        }
-
-        container.innerHTML = '';
-
-        // Wrap in a category div to match styling
-        const wrapper = document.createElement('div');
-        wrapper.className = 'polymer-category';
-
-        const title = document.createElement('h4');
-        title.className = 'polymer-category-title';
-        title.textContent = 'Polymers';
-        wrapper.appendChild(title);
-
-        polymers.forEach(p => {
-            const row = document.createElement('div');
-            row.className = 'form-row';
-
-            const label = document.createElement('label');
-            label.className = 'form-label';
-            const polymerCode = (p.Polymer_Code || '').trim();
-            const polymerFullName = (p.Polymer_FullName || '').trim();
-            let polymerLabel = polymerCode;
-
-            if (polymerCode.toLowerCase() === 'other') {
-                polymerLabel = 'Other (specify in method)';
-            } else if (polymerFullName) {
-                polymerLabel = `${polymerCode} (${polymerFullName})`;
-            }
-
-            label.textContent = `${polymerLabel}:`;
-
-            const input = document.createElement('input');
-            input.type = 'number';
-            const code = polymerCode.toLowerCase()
-                .replace(/[^a-z0-9]+/g, '_')
-                .replace(/^_+|_+$/g, '');
-            input.name = `${prefix}_polymer_${code}`;
-            input.className = 'form-input';
-            input.placeholder = 'percentage';
-            input.min = '0';
-            input.max = '100';
-            input.step = '0.0001';
-            if (typeof formData !== 'undefined' && formData[input.name] !== undefined) {
-                input.value = formData[input.name];
-            }
-
-            row.appendChild(label);
-            row.appendChild(input);
-            wrapper.appendChild(row);
-        });
-
-        container.appendChild(wrapper);
-        container.dataset.loaded = 'true';
-    }
-
-    // Expose for external calls (will be called by updatePage5Content in form-handler.js)
-    window.loadPolymerOptions = loadPolymerOptions;
 })();
 </script>

@@ -303,6 +303,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize fresh session storage for form data
     sessionStorage.setItem('microplastics_form_data', JSON.stringify({}));
+    // form-handler.js has already copied the old cache into its in-memory
+    // form state by this point; empty it too so stale values (e.g. polymer
+    // percentages from a previous entry) cannot resurface on later pages.
+    if (typeof window.resetInMemoryFormData === 'function') {
+        window.resetInMemoryFormData();
+    }
     console.log('Form cache cleared and reinitialized.');
 
     // Clear all form fields in the visible page

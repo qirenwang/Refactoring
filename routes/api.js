@@ -160,139 +160,6 @@ function validatePercentageGroups(formData, options = {}) {
     return { isValid: true };
 }
 
-// Function to validate Whole Package hierarchical data
-function validateWholePackageHierarchy(formData) {
-    const errors = [];
-
-    // Get values with safe parsing
-    const wholePackagesTotal = parseInt(formData.packaging_count) || 0;
-
-    // All 7 packaging categories from the UI
-    const singleUseTotal = parseInt(formData.packaging_count_single_use) || 0;
-    const multiUseTotal = parseInt(formData.packaging_count_multi_use) || 0;
-    const consumerProductTotal = parseInt(formData.packaging_count_consumer_product) || 0;
-    const bagTotal = parseInt(formData.packaging_count_bag_container) || 0;
-    const packingTotal = parseInt(formData.packaging_count_packing) || 0;
-    const otherPurposeTotal = parseInt(formData.packaging_count_other) || 0;
-    const unknownTotal = parseInt(formData.packaging_count_unknown) || 0;
-
-    // Only validate if user has entered package count
-    if (wholePackagesTotal > 0) {
-        // Validate main hierarchy: Sum of all categories = Whole Packages total
-        const allCategoriesSum = singleUseTotal + multiUseTotal + consumerProductTotal +
-                                  bagTotal + packingTotal + otherPurposeTotal + unknownTotal;
-
-        // Only validate if user has entered any category values
-        if (allCategoriesSum > 0 && allCategoriesSum !== wholePackagesTotal) {
-            errors.push({
-                type: 'main_hierarchy',
-                message: `Sum of all categories (${allCategoriesSum}) must equal Whole Packages total (${wholePackagesTotal}).`
-            });
-        }
-
-        // Validate single-use recycle codes if single-use total is provided
-        if (singleUseTotal > 0) {
-            const singleUseRecycleSum = calculateRecycleCodeSum(formData, 'single_use');
-            // Only validate recycle codes if user has entered any recycle code values
-            if (singleUseRecycleSum > 0 && singleUseRecycleSum !== singleUseTotal) {
-                errors.push({
-                    type: 'single_use_recycle',
-                    message: `Single-use recycle codes sum to ${singleUseRecycleSum} but Single-use total is ${singleUseTotal}. They must be equal.`
-                });
-            }
-        }
-
-        // Validate multi-use recycle codes if multi-use total is provided
-        if (multiUseTotal > 0) {
-            const multiUseRecycleSum = calculateRecycleCodeSum(formData, 'multi_use');
-            // Only validate recycle codes if user has entered any recycle code values
-            if (multiUseRecycleSum > 0 && multiUseRecycleSum !== multiUseTotal) {
-                errors.push({
-                    type: 'multi_use_recycle',
-                    message: `Multi-use recycle codes sum to ${multiUseRecycleSum} but Multi-use total is ${multiUseTotal}. They must be equal.`
-                });
-            }
-        }
-
-        // Validate consumer-product recycle codes if provided
-        if (consumerProductTotal > 0) {
-            const recycleSum = calculateRecycleCodeSum(formData, 'consumer_product');
-            if (recycleSum > 0 && recycleSum !== consumerProductTotal) {
-                errors.push({
-                    type: 'consumer_product_recycle',
-                    message: `Consumer product recycle codes sum to ${recycleSum} but total is ${consumerProductTotal}. They must be equal.`
-                });
-            }
-        }
-
-        // Validate bag recycle codes if provided
-        if (bagTotal > 0) {
-            const recycleSum = calculateRecycleCodeSum(formData, 'bag_container');
-            if (recycleSum > 0 && recycleSum !== bagTotal) {
-                errors.push({
-                    type: 'bag_recycle',
-                    message: `Bag recycle codes sum to ${recycleSum} but total is ${bagTotal}. They must be equal.`
-                });
-            }
-        }
-
-        // Validate packing recycle codes if provided
-        if (packingTotal > 0) {
-            const recycleSum = calculateRecycleCodeSum(formData, 'packing');
-            if (recycleSum > 0 && recycleSum !== packingTotal) {
-                errors.push({
-                    type: 'packing_recycle',
-                    message: `Packing Materials recycle codes sum to ${recycleSum} but total is ${packingTotal}. They must be equal.`
-                });
-            }
-        }
-
-        // Validate other purpose recycle codes if provided
-        if (otherPurposeTotal > 0) {
-            const recycleSum = calculateRecycleCodeSum(formData, 'other_purpose');
-            if (recycleSum > 0 && recycleSum !== otherPurposeTotal) {
-                errors.push({
-                    type: 'other_purpose_recycle',
-                    message: `Other Purpose recycle codes sum to ${recycleSum} but total is ${otherPurposeTotal}. They must be equal.`
-                });
-            }
-        }
-
-        // Validate unknown purpose recycle codes if provided
-        if (unknownTotal > 0) {
-            const recycleSum = calculateRecycleCodeSum(formData, 'unknown_purpose');
-            if (recycleSum > 0 && recycleSum !== unknownTotal) {
-                errors.push({
-                    type: 'unknown_purpose_recycle',
-                    message: `Unknown Purpose recycle codes sum to ${recycleSum} but total is ${unknownTotal}. They must be equal.`
-                });
-            }
-        }
-    }
-
-    if (errors.length > 0) {
-        return {
-            isValid: false,
-            message: errors.map(e => e.message).join('; '),
-            details: errors
-        };
-    }
-
-    return { isValid: true };
-}
-
-// Helper function to calculate recycle code sum for a package type
-function calculateRecycleCodeSum(formData, type) {
-    let sum = 0;
-    // Include recycle codes 0-7 (0 is Unknown)
-    for (let i = 0; i <= 7; i++) {
-        const fieldName = `${type}_recycle_${i}`;
-        const value = parseInt(formData[fieldName]) || 0;
-        sum += value;
-    }
-    return sum;
-}
-
 function parseNullableFloat(value) {
     if (value === undefined || value === null || value === '') return null;
     const parsed = parseFloat(value);
@@ -305,13 +172,55 @@ function parseNullableInt(value) {
     return Number.isFinite(parsed) ? parsed : null;
 }
 
+// Fragments (>5mm) and whole packaging are entered as one count
+// (`fragments_count`). Older payloads may still carry a separate
+// `packaging_count`; it is folded into the same total.
 function getFragmentDebrisCount(formData) {
-    const purposeUnknownCount = parseNullableInt(formData.fragments_count);
-    const purposeKnownCount = parseNullableInt(formData.packaging_count);
+    const fragmentsCount = parseNullableInt(formData.fragments_count);
+    const legacyPackagingCount = parseNullableInt(formData.packaging_count);
 
-    return purposeUnknownCount === null && purposeKnownCount === null
+    return fragmentsCount === null && legacyPackagingCount === null
         ? null
-        : (purposeUnknownCount || 0) + (purposeKnownCount || 0);
+        : (fragmentsCount || 0) + (legacyPackagingCount || 0);
+}
+
+// FragmentsInSample historically split the count into PurposeKnown_Count
+// (whole packaging) and PurposeUnknown_Count (fragments). The form now
+// records one merged count. Once db/20260815_merge_fragment_purpose_counts.sql
+// has run, the merged count lives in FragmentsInSample.FragLargerThan5mm_Count
+// (mirroring SampleDetails); until then it is kept in PurposeUnknown_Count,
+// which the migration folds into the new column.
+async function buildFragmentCountColumns(connection, formData, tableColumns = null) {
+    const columns = tableColumns || await getTableColumns(connection, 'FragmentsInSample');
+    const mergedCount = getFragmentDebrisCount(formData);
+
+    if (columns.has('FragLargerThan5mm_Count')) {
+        const data = { FragLargerThan5mm_Count: mergedCount };
+        // Clear any legacy split still present so it cannot disagree with the merged count.
+        if (columns.has('PurposeKnown_Count')) data.PurposeKnown_Count = null;
+        if (columns.has('PurposeUnknown_Count')) data.PurposeUnknown_Count = null;
+        return data;
+    }
+
+    return {
+        PurposeUnknown_Count: mergedCount,
+        PurposeKnown_Count: null
+    };
+}
+
+// Reads the merged fragments count back from a FragmentsInSample row,
+// whichever schema generation it was written under.
+function readFragmentCountFromRow(fragmentRow) {
+    if (!fragmentRow) return null;
+    if (fragmentRow.FragLargerThan5mm_Count !== undefined && fragmentRow.FragLargerThan5mm_Count !== null) {
+        return fragmentRow.FragLargerThan5mm_Count;
+    }
+    const known = fragmentRow.PurposeKnown_Count;
+    const unknown = fragmentRow.PurposeUnknown_Count;
+    if ((known === undefined || known === null) && (unknown === undefined || unknown === null)) {
+        return null;
+    }
+    return (Number(known) || 0) + (Number(unknown) || 0);
 }
 
 function firstPresent(formData, ...keys) {
@@ -397,6 +306,52 @@ function getSubmittedPolymerPercentageFields(formData, prefix) {
         .filter(fieldName => fieldName.startsWith(prefix) && !fieldName.endsWith('_specify'));
 }
 
+// "Other" polymer support: PolymerType_Ref.Polymer_Code = 'Other' carries a
+// free-text description posted as `<prefix>other_specify` and stored in
+// <Microplastics|Fragments>PolymerDetails.PolymerOther_Desc on the Other row
+// (db/20260815_add_polymer_other_description.sql).
+const OTHER_POLYMER_CODE = 'other';
+const OTHER_POLYMER_SPECIFY_SUFFIX = 'other_specify';
+const POLYMER_OTHER_DESC_COLUMN = 'PolymerOther_Desc';
+const POLYMER_OTHER_DESC_MAX_LENGTH = 255;
+
+function isOtherPolymerCode(polymerCode) {
+    return normalizeRefCodeForField(polymerCode) === OTHER_POLYMER_CODE;
+}
+
+function getOtherPolymerDescription(formData, prefix) {
+    const raw = formData[`${prefix}${OTHER_POLYMER_SPECIFY_SUFFIX}`];
+    if (raw === undefined || raw === null) return null;
+    const trimmed = String(raw).trim();
+    return trimmed === '' ? null : trimmed;
+}
+
+// The Other percentage and its description must be entered together. Only
+// evaluated when the polymer group is part of the payload (an update that
+// leaves the group untouched omits every one of its fields).
+function validateOtherPolymerDescription(formData, prefix, groupLabel) {
+    const errors = [];
+    const otherField = `${prefix}${OTHER_POLYMER_CODE}`;
+    const specifyField = `${prefix}${OTHER_POLYMER_SPECIFY_SUFFIX}`;
+    const groupSubmitted = Object.prototype.hasOwnProperty.call(formData, otherField) ||
+        Object.prototype.hasOwnProperty.call(formData, specifyField);
+    if (!groupSubmitted) return errors;
+
+    const otherPercent = parseNullableFloat(formData[otherField]);
+    const description = getOtherPolymerDescription(formData, prefix);
+
+    if (description && description.length > POLYMER_OTHER_DESC_MAX_LENGTH) {
+        errors.push(`${groupLabel} "Other" polymer description must be ${POLYMER_OTHER_DESC_MAX_LENGTH} characters or fewer.`);
+    }
+    if (otherPercent > 0 && !description) {
+        errors.push(`${groupLabel} polymer types: describe the "Other" polymer(s) (${specifyField}).`);
+    }
+    if (description && !(otherPercent > 0)) {
+        errors.push(`${groupLabel} polymer types: an "Other" description was given but the Other percentage is blank or 0.`);
+    }
+    return errors;
+}
+
 function hasMicroplasticsDetailData(formData) {
     const detailRows = [
         ...getDetailRows(formData, 'micro_color_details', 'microColorDetails'),
@@ -420,8 +375,7 @@ function hasMicroplasticsDetailData(formData) {
 }
 
 function hasFragmentsDetailData(formData) {
-    return parseNullableInt(formData.fragments_count) > 0 ||
-        parseNullableInt(formData.packaging_count) > 0 ||
+    return getFragmentDebrisCount(formData) > 0 ||
         parseNullableFloat(firstPresent(formData, 'fragments_mass_debris_total', 'fragments_massDebrisTotal')) > 0 ||
         hasDebrisDetailData(formData) ||
         hasAnyFormValue(formData, [
@@ -464,10 +418,115 @@ function hasDebrisDetailData(formData) {
         firstPresent(formData, 'fragments_method_percent_estimate');
 }
 
+// Measurements, counts and amounts that can never be negative. Air temperature,
+// latitude and longitude are deliberately absent. Percent-type fields are
+// additionally capped at 100.
+const NON_NEGATIVE_NUMERIC_FIELDS = {
+    // Page 2
+    rainfall: 'Rainfall',
+    // Page 4 – water
+    volume_sampled: 'Volume sampled',
+    total_water_depth: 'Total water depth',
+    water_depth: 'Water depth',
+    sample_water_depth: 'Sample water depth',
+    water_flow_velocity: 'Water flow velocity',
+    flow_velocity: 'Flow velocity',
+    turbidity: 'Turbidity',
+    total_suspended_solids: 'Total suspended solids',
+    suspended_solids: 'Suspended solids',
+    dissolved_oxygen: 'Dissolved oxygen',
+    conductivity: 'Conductivity',
+    // Page 4 – sediment / soil
+    sediment_depth: 'Sediment sampling depth',
+    sediment_dry_weight: 'Sediment dry weight',
+    soil_depth: 'Soil depth',
+    soil_sample_dry_weight: 'Soil sample dry weight',
+    soil_dry_weight: 'Soil dry weight',
+    surface_area_sampled: 'Area sampled',
+    // Page 5
+    replicates_count: 'Number of replicates',
+    total_sample_amount: 'Total sample amount',
+    totalSampleAmount: 'Total sample amount',
+    microplastics_sample_amount: 'Microplastics sample amount',
+    fragments_sample_amount: 'Fragments sample amount',
+    packaging_sample_amount: 'Packaging sample amount',
+    microplastics_count: 'Microplastics count',
+    fragments_count: 'Fragments count',
+    packaging_count: 'Packaging count',
+    micro_mass_mp_total: 'Total microplastics mass',
+    micro_massMPTotal: 'Total microplastics mass',
+    fragments_mass_debris_total: 'Total fragments mass',
+    fragments_massDebrisTotal: 'Total fragments mass'
+};
+
+const PERCENT_NUMERIC_FIELDS = {
+    sediment_organic_matter: 'Sediment organic matter (%)',
+    sediment_moisture: 'Sediment moisture (%)',
+    sediment_sand: 'Sediment sand (%)',
+    sediment_silt: 'Sediment silt (%)',
+    sediment_clay: 'Sediment clay (%)',
+    soil_organic_matter: 'Soil organic matter (%)',
+    soil_moisture: 'Soil moisture (%)',
+    soil_moisture_content: 'Soil moisture (%)',
+    soil_sand: 'Soil sand (%)',
+    soil_silt: 'Soil silt (%)',
+    soil_clay: 'Soil clay (%)',
+    permeable_surfaces: 'Permeable surfaces (%)',
+    impermeable_surfaces: 'Impermeable surfaces (%)'
+};
+
+const WHOLE_NUMBER_FIELDS = ['replicates_count', 'microplastics_count', 'fragments_count', 'packaging_count'];
+
+// Plain decimal notation only ("12", "0.5", "-3.25"). Exponent and hex forms
+// ("1e3", "0x10") are valid to Number() but the storage path uses
+// parseInt/parseFloat, which read them as 1 and 0 – so they are rejected here.
+const PLAIN_DECIMAL_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)$/;
+const PLAIN_INTEGER_PATTERN = /^[+-]?\d+$/;
+
+function validateNumericRanges(formData) {
+    const errors = [];
+    const check = (fieldName, label, { max = null, integer = false } = {}) => {
+        const raw = formData[fieldName];
+        if (raw === undefined || raw === null || String(raw).trim() === '') return;
+        const text = String(raw).trim();
+        if (!PLAIN_DECIMAL_PATTERN.test(text)) {
+            errors.push(`${label} must be a plain number (digits and a decimal point only).`);
+            return;
+        }
+        const value = Number(text);
+        if (!Number.isFinite(value)) {
+            errors.push(`${label} must be a number.`);
+            return;
+        }
+        if (value < 0) {
+            errors.push(`${label} cannot be negative.`);
+            return;
+        }
+        if (max !== null && value > max) {
+            errors.push(`${label} cannot exceed ${max}.`);
+            return;
+        }
+        if (integer && !PLAIN_INTEGER_PATTERN.test(text)) {
+            errors.push(`${label} must be a whole number.`);
+        }
+    };
+
+    Object.entries(NON_NEGATIVE_NUMERIC_FIELDS).forEach(([fieldName, label]) => {
+        check(fieldName, label, { integer: WHOLE_NUMBER_FIELDS.includes(fieldName) });
+    });
+    Object.entries(PERCENT_NUMERIC_FIELDS).forEach(([fieldName, label]) => {
+        check(fieldName, label, { max: 100 });
+    });
+
+    return errors;
+}
+
 function validateNewSaveRules(formData) {
     const errors = [];
     const totalSampleAmount = firstPresent(formData, 'total_sample_amount', 'totalSampleAmount');
     const sampleUnit = firstPresent(formData, 'sample_unit', 'sampleUnit');
+
+    errors.push(...validateNumericRanges(formData));
 
     // Publication is optional. Only require complete details when the user
     // explicitly opted in via the Yes/No toggle.
@@ -604,6 +663,9 @@ function validateNewSaveRules(formData) {
     if (hasPolymerPercentages(formData, 'mp_polymer_') && !firstPresent(formData, 'micro_method_percent_estimate')) {
         errors.push('Microplastics polymer details require micro_method_percent_estimate.');
     }
+
+    errors.push(...validateOtherPolymerDescription(formData, 'mp_polymer_', 'Microplastics'));
+    errors.push(...validateOtherPolymerDescription(formData, 'fragment_polymer_', 'Fragments'));
 
     return {
         isValid: errors.length === 0,
@@ -2109,8 +2171,7 @@ router.post('/save-form-data',
                     Fragment_UniqueID: fragmentUniqueId,
                     SampleDetails_Num: sampleDetailsId,
                     Mass_Debris_Total: parseNullableFloat(firstPresent(formData, 'fragments_mass_debris_total', 'fragments_massDebrisTotal')),
-                    PurposeKnown_Count: parseNullableInt(formData.packaging_count),
-                    PurposeUnknown_Count: parseNullableInt(formData.fragments_count),
+                    ...(await buildFragmentCountColumns(connection, formData)),
                     Method_Polymer_Num: validatedFragmentsPolymerMethod,
                     Method_Polymer_Other: firstPresent(formData, 'fragments_method_polymer_other', 'fragments_methodPolymerOther'),
                     PercentColor_Clear: parseNullableInt(formData.fragment_color_clear),
@@ -2481,6 +2542,18 @@ async function assertAutoIncrementColumn(connection, tableName, columnName) {
     }
 }
 
+// The Other-polymer description can only be stored once the migration that
+// adds the column has run; refusing loudly beats silently dropping user text.
+function assertPolymerOtherDescColumn(tableName, columns, otherDescription) {
+    if (!otherDescription || columns.has(POLYMER_OTHER_DESC_COLUMN)) return;
+    const error = new Error(
+        `${tableName}.${POLYMER_OTHER_DESC_COLUMN} is missing, so the "Other" polymer description cannot be saved. ` +
+        'Run db/20260815_add_polymer_other_description.sql.'
+    );
+    error.statusCode = 500;
+    throw error;
+}
+
 async function assertStoredPolymerDetails(
     connection,
     tableName,
@@ -2488,10 +2561,12 @@ async function assertStoredPolymerDetails(
     parentId,
     type,
     expectedEntries,
-    expectedMethod
+    expectedMethod,
+    { otherDescription = null, hasDescColumn = false } = {}
 ) {
+    const descSelect = hasDescColumn ? `, ${POLYMER_OTHER_DESC_COLUMN}` : '';
     const [rows] = await connection.execute(`
-        SELECT PolymerID_Num, PolymerType_Legacy, Percentage, Method_PercentEstimate
+        SELECT PolymerID_Num, PolymerType_Legacy, Percentage, Method_PercentEstimate${descSelect}
         FROM ${tableName}
         WHERE ${foreignKey} = ?
     `, [parentId]);
@@ -2540,6 +2615,14 @@ async function assertStoredPolymerDetails(
 
         if (String(stored.Method_PercentEstimate ?? '') !== String(expectedMethod ?? '')) {
             failVerification(`polymer ${polymer.Polymer_Code} has the wrong percent-estimation method.`);
+        }
+
+        if (hasDescColumn) {
+            const expectedDesc = isOtherPolymerCode(polymer.Polymer_Code) ? (otherDescription || null) : null;
+            const storedDesc = stored[POLYMER_OTHER_DESC_COLUMN] ?? null;
+            if (String(storedDesc ?? '') !== String(expectedDesc ?? '')) {
+                failVerification(`polymer ${polymer.Polymer_Code} has the wrong "Other" description.`);
+            }
         }
     }
 
@@ -2590,20 +2673,34 @@ async function insertPolymerDetails(connection, parentId, formData, type) {
     await assertDecimalPercentageStorage(connection, tableName);
     await assertAutoIncrementColumn(connection, tableName, idColumn);
 
+    const otherDescription = getOtherPolymerDescription(formData, fieldPrefix);
+    const columns = await getTableColumns(connection, tableName);
+    assertPolymerOtherDescColumn(tableName, columns, otherDescription);
+    const hasDescColumn = columns.has(POLYMER_OTHER_DESC_COLUMN);
+
     for (const { polymer, field, percentage } of percentagesToInsert) {
+        const insertColumns = [
+            foreignKey, 'PolymerID_Num', 'PolymerType_Legacy',
+            'Percentage', 'Method_PercentEstimate'
+        ];
+        const values = [
+            parentId,
+            polymer.PolymerUniqueID,
+            polymer.Polymer_Code,
+            toDatabasePercentage(percentage, field.fieldName),
+            validatedPercentMethod
+        ];
+        if (hasDescColumn) {
+            insertColumns.push(POLYMER_OTHER_DESC_COLUMN);
+            values.push(isOtherPolymerCode(polymer.Polymer_Code) ? otherDescription : null);
+        }
+
         try {
             await connection.execute(`
                 INSERT INTO ${tableName} (
-                    ${foreignKey}, PolymerID_Num, PolymerType_Legacy,
-                    Percentage, Method_PercentEstimate, DateEntered
-                ) VALUES (?, ?, ?, ?, ?, NOW())
-            `, [
-                parentId,
-                polymer.PolymerUniqueID,
-                polymer.Polymer_Code,
-                toDatabasePercentage(percentage, field.fieldName),
-                validatedPercentMethod
-            ]);
+                    ${insertColumns.join(', ')}, DateEntered
+                ) VALUES (${insertColumns.map(() => '?').join(', ')}, NOW())
+            `, values);
         } catch (error) {
             error.message = `Failed to store ${type} polymer ${polymer.Polymer_Code}: ${error.message}`;
             throw error;
@@ -2617,7 +2714,8 @@ async function insertPolymerDetails(connection, parentId, formData, type) {
         parentId,
         type,
         percentagesToInsert,
-        validatedPercentMethod
+        validatedPercentMethod,
+        { otherDescription, hasDescColumn }
     );
 }
 
@@ -2708,6 +2806,15 @@ async function loadPolymerFieldsForForm(connection, tableName, parentId, prefix,
 
         formFields[fieldName] = toDatabasePercentage(percentage, `${tableName}.${fieldName}`);
         methods.add(String(row.Method_PercentEstimate ?? ''));
+
+        // The "Other" row carries the free-text description of the polymer(s).
+        if (isOtherPolymerCode(code) && columns.has(POLYMER_OTHER_DESC_COLUMN)) {
+            setIfPresent(
+                formFields,
+                `${prefix}${OTHER_POLYMER_SPECIFY_SUFFIX}`,
+                row[POLYMER_OTHER_DESC_COLUMN]
+            );
+        }
     }
 
     if (methods.size > 1) {
@@ -2768,6 +2875,8 @@ async function replacePolymerDetails(connection, options) {
 
     const percentagesToInsert = [];
     let validatedPercentMethod = null;
+    const otherDescription = getOtherPolymerDescription(options.formData, fieldPrefix);
+    const hasDescColumn = columns.has(POLYMER_OTHER_DESC_COLUMN);
 
     for (const { polymer, code, field } of submittedFields) {
 
@@ -2799,6 +2908,7 @@ async function replacePolymerDetails(connection, options) {
             throw error;
         }
         await assertAutoIncrementColumn(connection, tableName, idColumn);
+        assertPolymerOtherDescColumn(tableName, columns, otherDescription);
     }
 
     await connection.execute(
@@ -2816,6 +2926,9 @@ async function replacePolymerDetails(connection, options) {
             Method_PercentEstimate: validatedPercentMethod ?? '',
             DateEntered: new Date()
         };
+        if (hasDescColumn) {
+            dataMap[POLYMER_OTHER_DESC_COLUMN] = isOtherPolymerCode(code) ? otherDescription : null;
+        }
 
         await insertFromMap(connection, tableName, dataMap, columns);
     }
@@ -2829,7 +2942,8 @@ async function replacePolymerDetails(connection, options) {
             parentId,
             type,
             percentagesToInsert,
-            validatedPercentMethod
+            validatedPercentMethod,
+            { otherDescription, hasDescColumn }
         );
     }
 
@@ -2916,8 +3030,7 @@ async function buildSampleFormData(connection, sampleId, userId) {
         packaging_sample_amount: row.PackagingSampleAmount ?? '',
         packaging_sample_unit: row.PackagingSampleUnitCode || '',
         microplastics_count: row.Micro5mmAndSmaller_Count ?? '',
-        fragments_count: row.FragLargerThan5mm_Count ?? '',
-        packaging_count: ''
+        fragments_count: row.FragLargerThan5mm_Count ?? ''
     };
 
     formData.start_year = row.StartYear ?? '';
@@ -2991,8 +3104,9 @@ async function buildSampleFormData(connection, sampleId, userId) {
     let fragmentUniqueId = null;
     if (fragment) {
         fragmentUniqueId = fragment.Fragment_UniqueID;
-        formData.fragments_count = fragment.PurposeUnknown_Count ?? '';
-        formData.packaging_count = fragment.PurposeKnown_Count ?? '';
+        // Prefer the child-table count (merged or legacy split); fall back to
+        // the SampleDetails aggregate already placed in fragments_count.
+        setIfPresent(formData, 'fragments_count', readFragmentCountFromRow(fragment));
         setIfPresent(formData, 'fragments_mass_debris_total', fragment.Mass_Debris_Total);
         setIfPresent(formData, 'fragments_method_polymer_num', fragment.Method_Polymer_Num);
         setIfPresent(formData, 'fragments_method_polymer_other', fragment.Method_Polymer_Other);
@@ -3042,7 +3156,7 @@ async function buildSampleFormData(connection, sampleId, userId) {
 
     const hasQuantitativeData = hasAnyFormValue(formData, [
         'total_sample_amount', 'sample_unit', 'microplastics_count', 'fragments_count',
-        'packaging_count', 'micro_mass_mp_total', 'fragments_mass_debris_total'
+        'micro_mass_mp_total', 'fragments_mass_debris_total'
     ]) || hasMicroplasticsDetailData(formData) || hasFragmentsDetailData(formData);
     formData.has_quantitative_data = hasQuantitativeData ? 'yes' : 'no';
 
@@ -3258,8 +3372,7 @@ async function updateSampleFromFormData(connection, sampleId, userId, formData) 
 
     const fragmentsChildData = {
         Mass_Debris_Total: parseNullableFloat(firstPresent(formData, 'fragments_mass_debris_total', 'fragments_massDebrisTotal')),
-        PurposeKnown_Count: parseNullableInt(formData.packaging_count),
-        PurposeUnknown_Count: parseNullableInt(formData.fragments_count)
+        ...(await buildFragmentCountColumns(connection, formData))
     };
     if (fragmentsPolymerMethodSubmitted) {
         fragmentsChildData.Method_Polymer_Num = validatedFragmentsPolymerMethod;
@@ -4361,7 +4474,6 @@ function generateTemplate(templateType) {
         // Sample Details
         'microplastics_count', 'microplastics_sample_amount', 'microplastics_sample_unit',
         'fragments_count', 'fragments_sample_amount', 'fragments_sample_unit',
-        'packaging_count', 'packaging_sample_amount', 'packaging_sample_unit',
 
         // Microplastics Percentages
         'mp_size_lt_1um', 'mp_size_1_20um', 'mp_size_20_100um', 'mp_size_100um_1mm', 'mp_size_1_5mm',
@@ -4372,14 +4484,7 @@ function generateTemplate(templateType) {
 
         // Polymer Types (sample selection)
         'mp_polymer_pete', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe', 'mp_polymer_pp',
-        'mp_polymer_ps', 'mp_polymer_pa', 'mp_polymer_pc', 'mp_polymer_pla', 'mp_polymer_abs',
-
-        // Packaging Details
-        'packaging_count_single_use', 'packaging_count_multi_use',
-        'single_use_recycle_1', 'single_use_recycle_2', 'single_use_recycle_3', 'single_use_recycle_4',
-        'single_use_recycle_5', 'single_use_recycle_6', 'single_use_recycle_7',
-        'multi_use_recycle_1', 'multi_use_recycle_2', 'multi_use_recycle_3', 'multi_use_recycle_4',
-        'multi_use_recycle_5', 'multi_use_recycle_6', 'multi_use_recycle_7'
+        'mp_polymer_ps', 'mp_polymer_pa', 'mp_polymer_pc', 'mp_polymer_pla', 'mp_polymer_abs'
     ];
 
     if (templateType === 'comprehensive') {
@@ -4400,7 +4505,7 @@ function generateTemplate(templateType) {
         csvContent += '# Missing month/day values remain blank and are not replaced with January or day 1\n';
         csvContent += '# media_type: water, soil_sediment, in_soil, soil_litter, or mixed_composite\n';
         csvContent += '# Percentage fields: Must sum to 100% or leave all blank in each group\n';
-        csvContent += '# Packaging counts: Recycle codes must sum to their respective totals\n';
+        csvContent += '# fragments_count: Count of all items larger than 5mm, whole packaging included\n';
 
         return csvContent;
 
@@ -4485,3 +4590,20 @@ router.get('/map-data', async (req, res) => {
 });
 
 module.exports = router;
+
+// Pure helpers exposed for unit tests (no database access).
+module.exports._internals = {
+    getFragmentDebrisCount,
+    buildFragmentCountColumns,
+    readFragmentCountFromRow,
+    validateNumericRanges,
+    validateNewSaveRules,
+    hasFragmentsDetailData,
+    getOtherPolymerDescription,
+    validateOtherPolymerDescription,
+    assertPolymerOtherDescColumn,
+    insertPolymerDetails,
+    replacePolymerDetails,
+    loadPolymerFieldsForForm,
+    POLYMER_OTHER_DESC_COLUMN
+};
