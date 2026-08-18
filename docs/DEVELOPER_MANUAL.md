@@ -665,6 +665,8 @@ SMTP 端口 465 使用隐式 TLS；其他提交端口强制 STARTTLS，并保持
 | Form_Ref | 包装形态参考 |
 | ColorType_Ref | 颜色类型参考 |
 
+**显示顺序（`SortOrder`）。** `/api/references` 提供的十张参考表（PolymerType_Ref、Purpose_Ref、ColorType_Ref、Form_Ref、Methods_Ref、Opacity_Ref、SoilTexture_Ref、Units_Ref、SizeClass_Ref、PubSource_Ref）都有一列 `SortOrder INT NOT NULL DEFAULT 0`（db/20260817_add_reference_sort_order.sql），录入表单上的所有列表都按 `ORDER BY SortOrder, <ID>` 渲染。普通选项按 10、20、30…递增；兜底项钉在末尾——"Other…" = 900、"Unknown" = 990。要调整某个选项的位置或插入新选项，只需 `UPDATE <表> SET SortOrder = <n> WHERE <code> = '…'`，无需改代码。新增行若留在 0 会显示在列表最前面，这是有意为之，提醒给它赋值。Purposes 采用 PI 数据表的顺序（Products one time → Products multiple times → Other durable goods → Bag → Packing → Other → Unknown）；polymer 先按回收码 1–6，再是其余聚合物，Other 最后。
+
 ---
 
 ## 6. 前端架构
