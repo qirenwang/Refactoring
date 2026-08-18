@@ -1625,7 +1625,7 @@ router.get('/ref/methods', async (req, res) => {
             sql += ' AND AppliesTo_SoilType = 1';
         }
 
-        sql += ' ORDER BY MethodsUniqueID';
+        sql += ' ORDER BY SortOrder, MethodsUniqueID';
 
         const [methods] = await pool.execute(sql, params);
         res.json({ success: true, data: methods });
@@ -1640,7 +1640,7 @@ router.get('/ref/opacity', async (req, res) => {
         const [opacities] = await pool.query(`
             SELECT OpacityUniqueID, Opacity_Code, Opacity_Label
             FROM Opacity_Ref
-            ORDER BY OpacityUniqueID
+            ORDER BY SortOrder, OpacityUniqueID
         `);
         res.json({ success: true, data: opacities });
     } catch (error) {
@@ -1654,7 +1654,7 @@ router.get('/ref/soil-texture', async (req, res) => {
         const [soilTextures] = await pool.query(`
             SELECT SoilTextureUniqueID, SoilTexture_Code, SoilTexture_Definition
             FROM SoilTexture_Ref
-            ORDER BY SoilTextureUniqueID
+            ORDER BY SortOrder, SoilTextureUniqueID
         `);
         res.json({ success: true, data: soilTextures });
     } catch (error) {
@@ -1668,7 +1668,7 @@ router.get('/ref/units', async (req, res) => {
         const [units] = await pool.query(`
             SELECT UnitsUniqueID, Units_Type, Units_Code, Units_Desc
             FROM Units_Ref
-            ORDER BY UnitsUniqueID
+            ORDER BY SortOrder, UnitsUniqueID
         `);
         res.json({ success: true, data: units });
     } catch (error) {
@@ -1678,36 +1678,43 @@ router.get('/ref/units', async (req, res) => {
 });
 
 // Get reference data (polymers, purposes, methods, forms, colors, etc.)
+//
+// The form renders every list in the order returned here, and that order is
+// data: each *_Ref table carries a SortOrder column (regular options 10, 20,
+// 30, ...; catch-alls pinned high — "Other ..." 900, "Unknown" 990 — see
+// db/20260817_add_reference_sort_order.sql). Reordering an option or slotting
+// in a new one is an UPDATE on that column, never a code change. The ID is
+// only the tie-breaker so ties (e.g. new rows still at 0) stay deterministic.
 router.get('/references', async (req, res) => {
     try {
-        const [polymers] = await pool.query('SELECT * FROM PolymerType_Ref ORDER BY Polymer_Code');
-        const [purposes] = await pool.query('SELECT * FROM Purpose_Ref ORDER BY Purpose_Name');
-        const [colors] = await pool.query('SELECT * FROM ColorType_Ref ORDER BY ColorUniqueID');
-        const [forms] = await pool.query('SELECT * FROM Form_Ref ORDER BY FormUniqueID');
+        const [polymers] = await pool.query('SELECT * FROM PolymerType_Ref ORDER BY SortOrder, PolymerUniqueID');
+        const [purposes] = await pool.query('SELECT * FROM Purpose_Ref ORDER BY SortOrder, PurposeUniqueID');
+        const [colors] = await pool.query('SELECT * FROM ColorType_Ref ORDER BY SortOrder, ColorUniqueID');
+        const [forms] = await pool.query('SELECT * FROM Form_Ref ORDER BY SortOrder, FormUniqueID');
         const [methods] = await pool.query(`
             SELECT MethodsUniqueID, MethodType, AppliesTo_MP, AppliesTo_Debris,
                    AppliesTo_SoilType, Method_Code, Method_Label, DateEntered
             FROM Methods_Ref
             WHERE MethodType <> 'Count'
-            ORDER BY MethodsUniqueID
+            ORDER BY SortOrder, MethodsUniqueID
         `);
         const [opacities] = await pool.query(`
             SELECT OpacityUniqueID, Opacity_Code, Opacity_Label
             FROM Opacity_Ref
-            ORDER BY OpacityUniqueID
+            ORDER BY SortOrder, OpacityUniqueID
         `);
         const [soilTextures] = await pool.query(`
             SELECT SoilTextureUniqueID, SoilTexture_Code, SoilTexture_Definition
             FROM SoilTexture_Ref
-            ORDER BY SoilTextureUniqueID
+            ORDER BY SortOrder, SoilTextureUniqueID
         `);
         const [units] = await pool.query(`
             SELECT UnitsUniqueID, Units_Type, Units_Code, Units_Desc
             FROM Units_Ref
-            ORDER BY UnitsUniqueID
+            ORDER BY SortOrder, UnitsUniqueID
         `);
-        const [sizes] = await pool.query('SELECT * FROM SizeClass_Ref ORDER BY SizeUniqueID');
-        const [pubSources] = await pool.query('SELECT * FROM PubSource_Ref ORDER BY PubSourceUniqueID');
+        const [sizes] = await pool.query('SELECT * FROM SizeClass_Ref ORDER BY SortOrder, SizeUniqueID');
+        const [pubSources] = await pool.query('SELECT * FROM PubSource_Ref ORDER BY SortOrder, PubSourceUniqueID');
 
         res.json({
             success: true,

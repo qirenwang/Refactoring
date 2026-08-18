@@ -14,7 +14,7 @@
     "test:publication": "node --test test/publication-ui.test.js",
     "test:account-recovery": "node --test test/account-recovery.test.js test/account-recovery-outbox.test.js test/email-account-recovery.test.js test/migration-runner.test.js test/user-profile-view.test.js test/user-profile-route.test.js",
     "test:signup": "node --test test/signup.test.js",
-    "test": "node --test test/data-summary-utils.test.js test/percentage-utils.test.js test/partial-date-utils.test.js test/sampling-date-api.test.js test/partial-date-integration.test.js test/publication-ui.test.js test/account-recovery.test.js test/account-recovery-outbox.test.js test/email-account-recovery.test.js test/migration-runner.test.js test/user-profile-view.test.js test/user-profile-route.test.js test/signup.test.js test/fragment-count-and-numeric-range.test.js test/other-polymer-description.test.js"
+    "test": "node --test test/data-summary-utils.test.js test/percentage-utils.test.js test/partial-date-utils.test.js test/sampling-date-api.test.js test/partial-date-integration.test.js test/publication-ui.test.js test/account-recovery.test.js test/account-recovery-outbox.test.js test/email-account-recovery.test.js test/migration-runner.test.js test/user-profile-view.test.js test/user-profile-route.test.js test/signup.test.js test/fragment-count-and-numeric-range.test.js test/other-polymer-description.test.js test/reference-sort-order.test.js"
   },
   "dependencies": {
     "@stagewise/toolbar-next": "^0.4.1",

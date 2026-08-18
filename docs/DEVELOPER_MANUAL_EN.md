@@ -666,6 +666,8 @@ collection events use only the start components; device-period events also requi
 | Form_Ref | Package form reference |
 | ColorType_Ref | Color type reference |
 
+**Display order (`SortOrder`).** The ten reference tables served by `/api/references` (PolymerType_Ref, Purpose_Ref, ColorType_Ref, Form_Ref, Methods_Ref, Opacity_Ref, SoilTexture_Ref, Units_Ref, SizeClass_Ref, PubSource_Ref) carry a `SortOrder INT NOT NULL DEFAULT 0` column (db/20260817_add_reference_sort_order.sql), and every list on the data-entry form is rendered in `ORDER BY SortOrder, <ID>`. Regular options count up in tens (10, 20, 30, …); catch-alls are pinned high — "Other …" = 900, "Unknown" = 990 — so they always close the list. To reorder an option or slot in a new one, `UPDATE <table> SET SortOrder = <n> WHERE <code> = '…'`; no code change is needed. A new row left at 0 shows up first in its list on purpose, as a reminder to assign a value. Purposes follow the PI's datasheet order (Products one time → Products multiple times → Other durable goods → Bag → Packing → Other → Unknown); polymers follow recycle codes 1–6, then the remaining polymers, then Other.
+
 ---
 
 ## 6. Frontend Architecture
