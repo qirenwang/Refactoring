@@ -10,3 +10,6 @@ build/
 
 # Live database backups contain private application data.
 db/backups/*.sql
+
+# Generated/distributed copies of the developer manual (md/html/docx); source is docs/DEVELOPER_MANUAL_EN.md
+developer_manual/
