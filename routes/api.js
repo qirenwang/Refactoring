@@ -392,16 +392,16 @@ function hasFragmentsDetailData(formData) {
 // are Published (need a publication year), 5-8 Unpublished (must not have
 // one); only type 4 (Public Database or Data Repository) carries an access
 // date. The database enforces the same rules with CHECK constraints
-// (chk_publication_year, chk_date_accessed); the checks below exist to give
-// the user a readable message instead of a constraint error.
-const PUBLISHED_SOURCE_TYPE_IDS = [1, 2, 3, 4];
-const UNPUBLISHED_SOURCE_TYPE_IDS = [5, 6, 7, 8];
-const DATE_ACCESSED_SOURCE_TYPE_ID = 4;
-const DATA_SOURCE_TEXT_LIMITS = {
-    sourceTitle: ['Source title', 500],
-    sourceIdentifierOrUrl: ['Source identifier or URL', 500],
-    projectOrCollectionName: ['Project or collection name', 255]
-};
+// (chk_publication_year, chk_date_accessed); the checks here exist to give
+// the user a readable message instead of a constraint error. The rules and
+// messages live in public/js/publication-form-utils.js so the entry form
+// checks exactly what is checked here.
+const {
+    PUBLISHED_SOURCE_TYPE_IDS,
+    DATE_ACCESSED_SOURCE_TYPE_ID,
+    DATA_SOURCE_MESSAGES,
+    validateDataSourceDetails
+} = require('../public/js/publication-form-utils');
 
 // New form field names first; the pre-redesign publication_* names stay as
 // fallbacks so older payloads keep resolving.
@@ -420,7 +420,6 @@ const DATA_SOURCE_FIELD_ALIASES = {
 };
 const NEW_DATA_SOURCE_DETAIL_KEYS = Object.keys(DATA_SOURCE_FIELD_ALIASES)
     .filter(key => key !== 'present' && key !== 'dataSourceId');
-const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function trimmedOrNull(value) {
     if (value === undefined || value === null) return null;
@@ -437,60 +436,9 @@ function readDataSourceInput(formData = {}) {
     return input;
 }
 
-function isValidIsoDate(text) {
-    const match = ISO_DATE_PATTERN.exec(text || '');
-    if (!match) return false;
-    const [year, month, day] = match.slice(1).map(Number);
-    const date = new Date(Date.UTC(year, month - 1, day));
-    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
-}
-
 // Validates the details of a NEW data source (input from readDataSourceInput).
 function validateNewDataSource(input) {
-    const errors = [];
-    const typeId = input.sourceTypeId !== null && PLAIN_INTEGER_PATTERN.test(input.sourceTypeId)
-        ? Number(input.sourceTypeId)
-        : null;
-    const isPublished = PUBLISHED_SOURCE_TYPE_IDS.includes(typeId);
-    const isUnpublished = UNPUBLISHED_SOURCE_TYPE_IDS.includes(typeId);
-
-    if (!isPublished && !isUnpublished) {
-        errors.push('Data source type is required: select one of the eight data-source types.');
-    }
-    if (!input.sourceTitle) {
-        errors.push('Source title is required (article, report, dataset, or project title).');
-    }
-    if (!input.authorsOrOrganization) {
-        errors.push('Authors or organization is required for the data source.');
-    }
-
-    if (isPublished) {
-        if (!input.publicationYear) {
-            errors.push('Publication year is required for published data sources (types 1-4).');
-        } else if (!/^\d{4}$/.test(input.publicationYear) || Number(input.publicationYear) < 1000) {
-            errors.push('Publication year must be a four-digit year.');
-        }
-    } else if (isUnpublished && input.publicationYear) {
-        errors.push('Leave the publication year blank for unpublished data sources (types 5-8).');
-    }
-
-    if (typeId === DATE_ACCESSED_SOURCE_TYPE_ID) {
-        if (!input.dateAccessed) {
-            errors.push('Date accessed is required for a Public Database or Data Repository source.');
-        } else if (!isValidIsoDate(input.dateAccessed)) {
-            errors.push('Date accessed must be a valid date (YYYY-MM-DD).');
-        }
-    } else if (typeId !== null && input.dateAccessed) {
-        errors.push('Date accessed only applies to Public Database or Data Repository sources; leave it blank.');
-    }
-
-    Object.entries(DATA_SOURCE_TEXT_LIMITS).forEach(([key, [label, maxLength]]) => {
-        if (input[key] && input[key].length > maxLength) {
-            errors.push(`${label} must be ${maxLength} characters or fewer.`);
-        }
-    });
-
-    return errors;
+    return validateDataSourceDetails(input);
 }
 
 function getPublicationInputState(formData) {
@@ -509,8 +457,7 @@ function getPublicationInputState(formData) {
     };
 }
 
-const DATA_SOURCE_REQUIRED_MESSAGE =
-    'A data source is required: choose one of your previous data sources or enter a new one.';
+const DATA_SOURCE_REQUIRED_MESSAGE = DATA_SOURCE_MESSAGES.required;
 
 // Save-time data-source rules. `required` is true for a NEW sample: it must
 // reference an existing data source or carry a complete new one. Edits pass
@@ -1873,7 +1820,7 @@ router.get('/references', async (req, res) => {
                 units,
                 sizes,
                 dataSourceTypes,
-                // Pre-redesign shape, kept until the form reads dataSourceTypes.
+                // Pre-redesign shape; the form now reads dataSourceTypes, kept for older clients.
                 pubSources: dataSourceTypes.map(type => ({
                     ...type,
                     PubSourceUniqueID: type.source_type_id,
@@ -1891,9 +1838,21 @@ router.get('/references', async (req, res) => {
 
 // Data sources for the form's "reuse a previous data source" list. Every row
 // carries is_mine (entered by the signed-in user) and the list puts the
-// user's own sources first, newest first. The publication_* aliases keep the
-// pre-redesign form working until it reads the new names.
-async function listDataSources(db, userId) {
+// user's own sources first, newest first. The publication_* aliases keep
+// older clients working. With mineOnly the list is limited to the user's
+// previous sources: rows they entered, plus rows their own sampling events
+// already cite (legacy rows whose EnteredBy could not be back-filled).
+async function listDataSources(db, userId, { mineOnly = false } = {}) {
+    const userIdNum = parseNullableInt(userId);
+    if (mineOnly && userIdNum === null) {
+        return [];
+    }
+    const mineFilter = mineOnly
+        ? `WHERE ds.EnteredBy = ?
+           OR EXISTS (SELECT 1 FROM SamplingEvent mine_se
+                      WHERE mine_se.PublicationID_Num = ds.data_source_id
+                        AND mine_se.UserSamplingID = ?)`
+        : '';
     const [rows] = await db.query(`
         SELECT ds.data_source_id,
                ds.source_type_id,
@@ -1918,14 +1877,19 @@ async function listDataSources(db, userId) {
                ds.source_type_id AS publication_pub_source_code
         FROM DataSourceReference ds
         LEFT JOIN DataSourceTypeReference t ON t.source_type_id = ds.source_type_id
+        ${mineFilter}
         ORDER BY is_mine DESC, ds.DateEntered DESC, ds.data_source_id DESC
-    `, [parseNullableInt(userId)]);
+    `, mineOnly ? [userIdNum, userIdNum, userIdNum] : [userIdNum]);
     return rows || [];
 }
 
+// ?scope=mine limits the list to the signed-in user's previous sources (the
+// entry form's "Select Existing Data Source" list).
 router.get(['/publications', '/data-sources'], async (req, res) => {
     try {
-        const dataSources = await listDataSources(pool, req.session && req.session.user_id);
+        const dataSources = await listDataSources(pool, req.session && req.session.user_id, {
+            mineOnly: req.query && req.query.scope === 'mine'
+        });
         res.json({ success: true, data: dataSources });
     } catch (error) {
         console.error('Error fetching data sources:', error);
@@ -2458,7 +2422,8 @@ router.post('/save-form-data',
                 message: 'Data saved successfully',
                 samplingEventId: samplingEventId,
                 sampleDetailsId: sampleDetailsId,
-                publicationId: publicationId
+                publicationId: publicationId,
+                dataSourceId: publicationId
             });
 
         } catch (error) {
@@ -3134,9 +3099,19 @@ async function buildSampleFormData(connection, sampleId, userId) {
             sampleUnit.Units_Code AS SampleUnitCode,
             microUnit.Units_Code AS MicroplasticsSampleUnitCode,
             fragmentUnit.Units_Code AS FragmentsSampleUnitCode,
-            packagingUnit.Units_Code AS PackagingSampleUnitCode
+            packagingUnit.Units_Code AS PackagingSampleUnitCode,
+            ds.source_type_id AS DS_source_type_id,
+            ds.authors_or_organization AS DS_authors_or_organization,
+            ds.publication_year AS DS_publication_year,
+            ds.source_title AS DS_source_title,
+            ds.journal_publisher_or_repository AS DS_journal_publisher_or_repository,
+            ds.source_identifier_or_url AS DS_source_identifier_or_url,
+            ds.project_or_collection_name AS DS_project_or_collection_name,
+            DATE_FORMAT(ds.date_accessed, '%Y-%m-%d') AS DS_date_accessed,
+            ds.citation_text AS DS_citation_text
         FROM SampleDetails sd
         INNER JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
+        LEFT JOIN DataSourceReference ds ON se.PublicationID_Num = ds.data_source_id
         LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
         LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
         LEFT JOIN WaterEnvType_Ref wt ON sd.WaterEnvType_SelectID = wt.WaterEnv_UniqueID
@@ -3174,10 +3149,18 @@ async function buildSampleFormData(connection, sampleId, userId) {
         device_installation_period: row.DeviceInstallationPeriod || 'no',
         sample_time: formatTimeForInput(row.SampleTime) || '',
         sample_description: row.SamplerNames || '',
+        // The data source's details come along so the form can show (and
+        // lock) them even before the reuse list has loaded.
         data_source_id: row.PublicationID_Num ? String(row.PublicationID_Num) : '',
-        data_source_present: row.PublicationID_Num ? 'yes' : 'no',
-        publication_id_num: row.PublicationID_Num ? String(row.PublicationID_Num) : '',
-        publication_present: row.PublicationID_Num ? 'yes' : 'no',
+        data_source_type_id: row.DS_source_type_id != null ? String(row.DS_source_type_id) : '',
+        authors_or_organization: row.DS_authors_or_organization || '',
+        publication_year: row.DS_publication_year != null ? String(row.DS_publication_year) : '',
+        source_title: row.DS_source_title || '',
+        journal_publisher_or_repository: row.DS_journal_publisher_or_repository || '',
+        source_identifier_or_url: row.DS_source_identifier_or_url || '',
+        project_or_collection_name: row.DS_project_or_collection_name || '',
+        date_accessed: row.DS_date_accessed || '',
+        citation_text: row.DS_citation_text || '',
         air_temp: row.AirTemp_C ?? row['AirTemp-C'] ?? '',
         rainfall: row.Rainfall_cm_Precedent24 ?? row['Rainfall-cm-Precedent24'] ?? '',
         additional_notes: row.AdditionalNotes || '',
@@ -4794,6 +4777,7 @@ module.exports._internals = {
     validateNewDataSource,
     validateDataSourceRules,
     getPublicationInputState,
+    listDataSources,
     hasFragmentsDetailData,
     getOtherPolymerDescription,
     validateOtherPolymerDescription,

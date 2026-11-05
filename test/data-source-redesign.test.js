@@ -15,7 +15,8 @@ const {
     validateNewDataSource,
     validateDataSourceRules,
     validateNewSaveRules,
-    getPublicationInputState
+    getPublicationInputState,
+    listDataSources
 } = require('../routes/api')._internals;
 
 const migration = fs.readFileSync(
@@ -130,4 +131,22 @@ test('migration renames the tables, keeps PublicationID_Num, and adds the PI CHE
         .filter(statement => /^(ALTER TABLE|RENAME TABLE)/i.test(statement))
         .filter(statement => !/MODIFY COLUMN/i.test(statement));
     assert.deepEqual(unguarded, [], 'only idempotent MODIFY COLUMN statements run unguarded');
+});
+
+test('scope=mine lists only the user\'s own or already-cited data sources', async () => {
+    const calls = [];
+    const db = { query: async (sql, params) => { calls.push({ sql, params }); return [[]]; } };
+
+    await listDataSources(db, '6', { mineOnly: true });
+    assert.match(calls[0].sql, /WHERE ds\.EnteredBy = \?\s+OR EXISTS \(SELECT 1 FROM SamplingEvent mine_se/);
+    assert.match(calls[0].sql, /mine_se\.UserSamplingID = \?/);
+    assert.deepEqual(calls[0].params, [6, 6, 6]);
+
+    await listDataSources(db, '6');
+    assert.doesNotMatch(calls[1].sql, /WHERE/);
+    assert.deepEqual(calls[1].params, [6]);
+
+    // Signed out: nothing is "mine", and no query runs.
+    assert.deepEqual(await listDataSources(db, undefined, { mineOnly: true }), []);
+    assert.equal(calls.length, 2);
 });

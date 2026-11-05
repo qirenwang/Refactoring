@@ -24,7 +24,13 @@ test('sampling-event form uses six date components and no exact-date controls', 
     });
 
     assert.doesNotMatch(template, /name="(?:sample_date|device_start_date|device_end_date)"/);
-    assert.doesNotMatch(template, /type="date"/);
+    // The only exact date on the page is a data source's access date
+    // (DataSourceReference.date_accessed), not a sampling date.
+    const dateInputs = template.match(/<input[^>]*type="date"[^>]*>/g) || [];
+    assert.deepEqual(
+        dateInputs.map(input => (input.match(/name="([^"]+)"/) || [])[1]),
+        ['date_accessed']
+    );
 });
 
 test('browser entry points load the shared partial-date utility before consumers', () => {

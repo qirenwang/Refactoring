@@ -299,16 +299,12 @@ function validateForm(formElement) {
 function validateTask5Rules(state = {}) {
     const errors = [];
 
-    const publicationSelected = state.publication_id_num || state.publication_id || state.publicationId;
-    const publicationFields = [
-        state.publication_year,
-        state.publication_authors,
-        state.publication_journal,
-        state.publication_full_citation_apa,
-        state.publication_pub_source_code
-    ];
-    if (!publicationSelected && !publicationFields.every(value => value !== undefined && value !== null && String(value).trim() !== '')) {
-        errors.push('Please select or enter a publication source.');
+    // Same data-source rules and messages as routes/api.js.
+    const dataSourceUtils = window.PublicationFormUtils;
+    if (dataSourceUtils) {
+        errors.push(...dataSourceUtils.validateDataSourceSelection(
+            dataSourceUtils.migrateLegacyDataSourceFields(state)
+        ));
     }
 
     if ((state.total_sample_amount && !state.sample_unit) || (!state.total_sample_amount && state.sample_unit)) {
