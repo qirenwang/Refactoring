@@ -95,8 +95,8 @@ if (includeLocations) {
 }
 if (includePublications) {
     OPTIONAL_STEPS.push({
-        table: 'Publications',
-        where: 'DateEntered < ? AND PublicationUniqueID NOT IN (SELECT PublicationID_Num FROM SamplingEvent WHERE PublicationID_Num IS NOT NULL AND DateEntered >= ?)',
+        table: 'DataSourceReference', // was Publications before db/20261105_redesign_data_source_tables.sql
+        where: 'DateEntered < ? AND data_source_id NOT IN (SELECT PublicationID_Num FROM SamplingEvent WHERE PublicationID_Num IS NOT NULL AND DateEntered >= ?)',
         params: 2
     });
 }
@@ -129,7 +129,7 @@ async function main() {
         console.log(`Database: ${meta.db} @ ${meta.host}  (server time ${meta.now.toISOString?.() || meta.now})`);
         console.log(`Mode    : ${execute ? '*** EXECUTE — rows will be deleted ***' : 'DRY RUN — nothing is modified'}`);
         console.log(`Cutoff  : DateEntered < ${cutoff} 00:00:00`);
-        console.log(`Scope   : sampling data${includeLocations ? ' + unreferenced Location rows' : ''}${includePublications ? ' + unreferenced Publications rows' : ''}`);
+        console.log(`Scope   : sampling data${includeLocations ? ' + unreferenced Location rows' : ''}${includePublications ? ' + unreferenced DataSourceReference rows' : ''}`);
         console.log('');
 
         // Consistency checks worth seeing before deciding anything.
@@ -165,8 +165,8 @@ async function main() {
         }
         if (!includeLocations || !includePublications) {
             const locKept = await countRows(connection, 'Location', 'DateCreated < ?', [cutoff]);
-            const pubKept = await countRows(connection, 'Publications', 'DateEntered < ?', [cutoff]);
-            console.log(`Note: ${!includeLocations ? `${locKept} Location rows created before the cutoff are KEPT (add --include-locations to drop the unreferenced ones)` : ''}${!includeLocations && !includePublications ? '; ' : ''}${!includePublications ? `${pubKept} Publications rows entered before the cutoff are KEPT (add --include-publications)` : ''}.`);
+            const pubKept = await countRows(connection, 'DataSourceReference', 'DateEntered < ?', [cutoff]);
+            console.log(`Note: ${!includeLocations ? `${locKept} Location rows created before the cutoff are KEPT (add --include-locations to drop the unreferenced ones)` : ''}${!includeLocations && !includePublications ? '; ' : ''}${!includePublications ? `${pubKept} DataSourceReference (data source) rows entered before the cutoff are KEPT (add --include-publications)` : ''}.`);
         }
         console.log('');
 

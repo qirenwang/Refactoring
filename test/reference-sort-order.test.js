@@ -30,8 +30,18 @@ const REFERENCE_TABLES = {
     SoilTexture_Ref: 'SoilTextureUniqueID',
     Units_Ref: 'UnitsUniqueID',
     SizeClass_Ref: 'SizeUniqueID',
-    PubSource_Ref: 'PubSourceUniqueID'
+    // Was PubSource_Ref (PubSourceUniqueID) when the SortOrder migration ran;
+    // renamed by db/20261105_redesign_data_source_tables.sql.
+    DataSourceTypeReference: 'source_type_id'
 };
+
+// Table names as they were when db/20260817_add_reference_sort_order.sql ran.
+const SORT_ORDER_MIGRATION_TABLES = Object.keys(REFERENCE_TABLES)
+    .map(table => (table === 'DataSourceTypeReference' ? 'PubSource_Ref' : table));
+
+// /api/references also returns the data-source list (a data table, not a
+// reference list); it is ordered by owner/recency and checked separately.
+const DATA_SOURCE_LIST_PATTERN = /FROM\s+DataSourceReference\b/;
 
 function loadApiRouterWithRecordingPool(recordedSql) {
     const databaseModulePath = require.resolve('../config/database');
@@ -82,7 +92,7 @@ async function withServer(router, run) {
 }
 
 function referenceTableOf(sql) {
-    const match = sql.match(/FROM\s+`?(\w+_Ref)`?/i);
+    const match = sql.match(/FROM\s+`?(\w+_Ref|DataSourceTypeReference)`?/i);
     return match ? match[1] : null;
 }
 
@@ -97,7 +107,8 @@ test('/api/references and /api/ref/* order every reference table by SortOrder, I
         assert.equal(payload.success, true);
         assert.deepEqual(
             Object.keys(payload.data).sort(),
-            ['colors', 'forms', 'methods', 'opacities', 'polymers', 'pubSources', 'purposes', 'sizes', 'soilTextures', 'units']
+            ['colors', 'dataSourceTypes', 'dataSources', 'forms', 'methods', 'opacities', 'polymers',
+                'pubSources', 'purposes', 'sizes', 'soilTextures', 'units']
         );
 
         const referencesTables = recordedSql.map(referenceTableOf).filter(Boolean).sort();
@@ -110,8 +121,13 @@ test('/api/references and /api/ref/* order every reference table by SortOrder, I
         }
     });
 
-    assert.ok(recordedSql.length >= Object.keys(REFERENCE_TABLES).length + 4);
-    for (const sql of recordedSql) {
+    const dataSourceListSql = recordedSql.filter(sql => DATA_SOURCE_LIST_PATTERN.test(sql));
+    assert.equal(dataSourceListSql.length, 1, '/api/references reads the data-source list once');
+    assert.match(dataSourceListSql[0], /ORDER BY\s+is_mine DESC,\s*ds\.DateEntered DESC,\s*ds\.data_source_id DESC\s*$/);
+
+    const referenceSql = recordedSql.filter(sql => !DATA_SOURCE_LIST_PATTERN.test(sql));
+    assert.ok(referenceSql.length >= Object.keys(REFERENCE_TABLES).length + 4);
+    for (const sql of referenceSql) {
         const table = referenceTableOf(sql);
         assert.ok(table, `unexpected non-reference query: ${sql}`);
         const idColumn = REFERENCE_TABLES[table];
@@ -125,7 +141,7 @@ test('/api/references and /api/ref/* order every reference table by SortOrder, I
 test('the SortOrder migration covers every reference table the API orders by', () => {
     const migration = fs.readFileSync(migrationPath, 'utf8');
 
-    for (const table of Object.keys(REFERENCE_TABLES)) {
+    for (const table of SORT_ORDER_MIGRATION_TABLES) {
         assert.match(
             migration,
             new RegExp(`ALTER TABLE \`${table}\` ADD COLUMN \`SortOrder\` INT NOT NULL DEFAULT 0`),

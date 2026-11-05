@@ -14,33 +14,36 @@ const {
 
 const projectRoot = path.join(__dirname, '..');
 
+// Rows as GET /api/data-sources returns them (DataSourceReference columns).
 const publications = [
     {
-        publication_id_num: 101,
+        data_source_id: 101,
+        source_type_id: 1,
         publication_year: 2024,
-        publication_authors: 'Allen Smith; Maria Chen',
-        publication_journal: 'Water Research',
-        publication_full_citation_apa: 'Smith, A., & Chen, M. (2024). Microplastics in lakes. Water Research, 10(2), 1–10.',
-        publication_pub_source_code: 1
+        authors_or_organization: 'Allen Smith; Maria Chen',
+        source_title: 'Microplastics in lakes',
+        journal_publisher_or_repository: 'Water Research',
+        citation_text: 'Smith, A., & Chen, M. (2024). Microplastics in lakes. Water Research, 10(2), 1–10.'
     },
     {
-        publication_id_num: 102,
+        data_source_id: 102,
+        source_type_id: 1,
         publication_year: 2024,
-        publication_authors: 'Allen Smith; Maria Chen',
-        publication_journal: 'Water Research',
-        publication_full_citation_apa: 'Smith, A., & Chen, M. (2024). Microplastics in rivers. Water Research, 11(1), 20–30.',
-        publication_pub_source_code: 1
+        authors_or_organization: 'Allen Smith; Maria Chen',
+        source_title: 'Microplastics in rivers',
+        journal_publisher_or_repository: 'Water Research',
+        citation_text: 'Smith, A., & Chen, M. (2024). Microplastics in rivers. Water Research, 11(1), 20–30.'
     }
 ];
 
 test('same-author same-year publications are distinguished by full citation and ID', () => {
     assert.equal(
         getPublicationOptionLabel(publications[0]),
-        publications[0].publication_full_citation_apa
+        publications[0].citation_text
     );
     assert.equal(
         getPublicationOptionLabel(publications[1]),
-        publications[1].publication_full_citation_apa
+        publications[1].citation_text
     );
     assert.notEqual(
         getPublicationOptionLabel(publications[0]),
@@ -52,8 +55,10 @@ test('same-author same-year publications are distinguished by full citation and 
     assert.equal(selection.locked, true);
     assert.equal(
         selection.fields.publication_full_citation_apa,
-        publications[1].publication_full_citation_apa
+        publications[1].citation_text
     );
+    assert.equal(selection.fields.publication_authors, 'Allen Smith; Maria Chen');
+    assert.equal(selection.fields.publication_pub_source_code, 1);
 });
 
 test('blank publication selection leaves details editable and empty', () => {
