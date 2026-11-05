@@ -3,13 +3,59 @@
  * Displays real sample data from the database
  */
 
+/**
+ * Fixed marker colors by sampling medium (MediaType_WithinLitterWaterSoil_Ref.MediaTypeOverall).
+ * Colors encode the medium only; they are deliberately not a red/orange "heat" scale,
+ * which field users misread as severity. Listed in legend display order.
+ */
+const MEDIA_TYPE_COLORS = [
+    { key: 'in water', label: 'In Water', color: '#1E90FF' },
+    { key: 'in soil/sediment', label: 'In Soil/Sediment', color: '#5C4033' },
+    { key: 'on soil', label: 'On Soil', color: '#D8B14A' },
+    { key: 'mixed media', label: 'Mixed Media', color: '#888888' }
+];
+const UNKNOWN_MEDIA_TYPE = { key: 'unknown', label: 'Other / Unspecified', color: '#666666' };
+
+// Case- and whitespace-insensitive key: " in soil / SEDIMENT " -> "in soil/sediment"
+function normalizeMediaTypeKey(type) {
+    if (type === null || type === undefined) return '';
+    return String(type)
+        .trim()
+        .toLowerCase()
+        .replace(/\s*\/\s*/g, '/')
+        .replace(/\s+/g, ' ');
+}
+
+// Legend entry ({ key, label, color }) for a MediaTypeOverall value; unknown types share one entry
+function getMediaTypeEntry(type) {
+    const key = normalizeMediaTypeKey(type);
+    return MEDIA_TYPE_COLORS.find(entry => entry.key === key) || UNKNOWN_MEDIA_TYPE;
+}
+
+// Marker color for a MediaTypeOverall value
+function getColorForType(type) {
+    return getMediaTypeEntry(type).color;
+}
+
+// Legend entries for the types present, in fixed order; unknown types (if any) last
+function buildLegendEntries(types) {
+    const presentKeys = new Set(
+        Array.from(types || []).map(type => getMediaTypeEntry(type).key)
+    );
+    return MEDIA_TYPE_COLORS
+        .concat(UNKNOWN_MEDIA_TYPE)
+        .filter(entry => presentKeys.has(entry.key));
+}
+
 // Document ready function for home page
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize the home map
-    if (document.getElementById('home-map')) {
-        initHomeMap();
-    }
-});
+if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize the home map
+        if (document.getElementById('home-map')) {
+            initHomeMap();
+        }
+    });
+}
 
 function getPointDateParts(point, prefix) {
     return {
@@ -60,20 +106,6 @@ function initHomeMap() {
         maxZoom: 19
     }).addTo(map);
 
-    // Define different marker colors for different sample types
-    const markerColors = [
-        '#e41a1c', // red
-        '#377eb8', // blue
-        '#4daf4a', // green
-        '#984ea3', // purple
-        '#ff7f00', // orange
-        '#ffff33', // yellow
-        '#a65628', // brown
-        '#f781bf', // pink
-        '#999999', // grey
-        '#66c2a5'  // teal
-    ];
-
     // Fetch real map data from the API
     fetch('/api/map-data')
         .then(response => response.json())
@@ -96,8 +128,8 @@ function initHomeMap() {
                     // Track sample types for the legend
                     sampleTypesSet.add(sampleType);
 
-                    // Assign a color based on the sample type (hashing the string to pick a color)
-                    const markerColor = getColorForType(sampleType, markerColors);
+                    // Fixed color for the sampling medium
+                    const markerColor = getColorForType(sampleType);
 
                     const markerHtml = `
                         <div style="background-color: ${markerColor}; width: 12px; height: 12px;
@@ -131,10 +163,8 @@ function initHomeMap() {
                     markers.push(marker);
                 });
 
-                // Update the map legend with actual sample types
-                const sampleTypes = Array.from(sampleTypesSet);
-                const legendColors = sampleTypes.map(type => getColorForType(type, markerColors));
-                updateMapLegend(legendColors, sampleTypes);
+                // Legend: media types present in the data, fixed order, same colors as markers
+                updateMapLegend(buildLegendEntries(sampleTypesSet));
 
                 // Fit map to markers if we have any
                 if (markers.length > 0) {
@@ -154,15 +184,6 @@ function initHomeMap() {
         });
 }
 
-// Get consistent color for a sample type
-function getColorForType(type, colors) {
-    let typeIndex = 0;
-    for (let i = 0; i < type.length; i++) {
-        typeIndex += type.charCodeAt(i);
-    }
-    return colors[typeIndex % colors.length];
-}
-
 // Show message when no data is available
 function showNoDataMessage() {
     const legend = document.querySelector('.map-legend');
@@ -171,21 +192,21 @@ function showNoDataMessage() {
     }
 }
 
-// Update the map legend with the marker colors and sample types
-function updateMapLegend(colors, types) {
+// Update the map legend from entries built by buildLegendEntries ({ label, color })
+function updateMapLegend(entries) {
     const legend = document.querySelector('.map-legend');
     if (!legend) return;
 
     legend.innerHTML = ''; // Clear existing legend
 
-    if (types.length === 0) {
+    if (entries.length === 0) {
         legend.innerHTML = '<div class="legend-item"><span>No data available</span></div>';
         return;
     }
 
     // Create rows with 4 columns each
     const itemsPerRow = 4;
-    const totalRows = Math.ceil(types.length / itemsPerRow);
+    const totalRows = Math.ceil(entries.length / itemsPerRow);
 
     for (let row = 0; row < totalRows; row++) {
         const legendRow = document.createElement('div');
@@ -194,16 +215,15 @@ function updateMapLegend(colors, types) {
         // Add up to 4 items per row
         for (let col = 0; col < itemsPerRow; col++) {
             const index = row * itemsPerRow + col;
-            if (index >= types.length) break;
+            if (index >= entries.length) break;
 
-            const type = types[index];
-            const color = colors[index];
+            const entry = entries[index];
 
             const legendItem = document.createElement('div');
             legendItem.className = 'legend-item';
             legendItem.innerHTML = `
-                <span class="legend-marker" style="background-color: ${color};"></span>
-                <span>${type}</span>
+                <span class="legend-marker" style="background-color: ${entry.color};"></span>
+                <span>${entry.label}</span>
             `;
 
             legendRow.appendChild(legendItem);
@@ -211,4 +231,16 @@ function updateMapLegend(colors, types) {
 
         legend.appendChild(legendRow);
     }
+}
+
+// Expose the pure color helpers to Node tests (no effect in the browser)
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        MEDIA_TYPE_COLORS,
+        UNKNOWN_MEDIA_TYPE,
+        buildLegendEntries,
+        getColorForType,
+        getMediaTypeEntry,
+        normalizeMediaTypeKey
+    };
 }
