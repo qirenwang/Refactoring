@@ -4659,8 +4659,10 @@ function generateTemplate(templateType) {
         'fragment_color_clear', 'fragment_color_opaque_light', 'fragment_color_opaque_dark', 'fragment_color_mixed',
 
         // Polymer Types (sample selection)
-        'mp_polymer_pete', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe', 'mp_polymer_pp',
-        'mp_polymer_ps', 'mp_polymer_pa', 'mp_polymer_pc', 'mp_polymer_pla', 'mp_polymer_abs'
+        // (field suffix = normalized PolymerType_Ref.Polymer_Code; PETE became
+        // PET and PLA left the PI list in db/20261105_polymer_table_v2.sql)
+        'mp_polymer_pet', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe', 'mp_polymer_pp',
+        'mp_polymer_ps', 'mp_polymer_pa', 'mp_polymer_pc', 'mp_polymer_pe', 'mp_polymer_abs'
     ];
 
     if (templateType === 'comprehensive') {

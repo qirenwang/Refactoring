@@ -1191,14 +1191,32 @@ function isOtherPolymerSpecifyField(fieldName) {
     return typeof fieldName === 'string' && fieldName.endsWith(`_${OTHER_POLYMER_SPECIFY_SUFFIX}`);
 }
 
+// "PET - Polyethylene terephthalate", but "Other Polymer" / "Unknown Polymer"
+// / "Rubber" alone (DataSummaryUtils.formatPolymerName, shared with the summary).
 function polymerRowLabel(polymer) {
     const code = String(polymer.Polymer_Code || '').trim();
     const fullName = String(polymer.Polymer_FullName || '').trim();
-    if (isOtherPolymerCode(code)) {
-        // "Other - Other polymer type" reads oddly; show the descriptive name only.
-        return fullName && fullName.toLowerCase() !== code.toLowerCase() ? fullName : 'Other polymer type';
+    if (isOtherPolymerCode(code) && (!fullName || fullName.toLowerCase() === code.toLowerCase())) {
+        return 'Other polymer type';
+    }
+    if (window.DataSummaryUtils && typeof window.DataSummaryUtils.formatPolymerName === 'function') {
+        return window.DataSummaryUtils.formatPolymerName(polymer);
     }
     return `${code} - ${fullName || code}`;
+}
+
+// Hover help for a polymer row: the PI's "when to use" note and typical
+// sources (PolymerType_Ref.ClassificationNotes / CommonApplications), plus
+// alternate abbreviations such as PETE or PUR.
+function polymerRowHint(polymer) {
+    const parts = [];
+    const altCodes = String(polymer.Polymer_AltCodes || '').trim();
+    const notes = String(polymer.ClassificationNotes || '').trim();
+    const applications = String(polymer.CommonApplications || '').trim();
+    if (altCodes) parts.push(`Also reported as: ${altCodes}`);
+    if (notes) parts.push(notes);
+    if (applications) parts.push(`Common sources: ${applications}`);
+    return parts.join('\n');
 }
 
 // Removes every reference-driven polymer field (percentages and the Other
@@ -1260,7 +1278,10 @@ window.loadPolymerOptions = function loadPolymerOptions() {
                 <label class="form-label"></label>
                 <input type="number" name="${fieldName}" class="form-input" placeholder="percentage" min="0" max="100" step="0.0001">
             `;
-            row.querySelector('label').textContent = `${polymerRowLabel(polymer)}:`;
+            const label = row.querySelector('label');
+            label.textContent = `${polymerRowLabel(polymer)}:`;
+            const hint = polymerRowHint(polymer);
+            if (hint) label.title = hint;
             const input = row.querySelector('input');
             if (input && formData[fieldName] !== undefined) {
                 input.value = formData[fieldName];
@@ -1277,7 +1298,7 @@ window.loadPolymerOptions = function loadPolymerOptions() {
             specifyRow.style.display = 'none';
             specifyRow.innerHTML = `
                 <label class="form-label" for="${specifyName}">Describe the other polymer(s):</label>
-                <input type="text" id="${specifyName}" name="${specifyName}" class="form-input polymer-other-specify" maxlength="255" placeholder="e.g. PTFE, polyurethane foam" autocomplete="off">
+                <input type="text" id="${specifyName}" name="${specifyName}" class="form-input polymer-other-specify" maxlength="255" placeholder="e.g. polyoxymethylene (POM), PEEK" autocomplete="off">
             `;
             const specifyInput = specifyRow.querySelector('input');
             if (specifyInput && formData[specifyName] !== undefined) {
