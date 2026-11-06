@@ -4,6 +4,7 @@ require('dotenv').config();
 // Database connection configuration
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASS || 'mysql',
     database: process.env.DB_NAME || 'sweetl23_partner_demo',
