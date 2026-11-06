@@ -243,11 +243,11 @@ function initHomeMap() {
                     // Add popup with sample information
                     marker.bindPopup(`
                         <div class="marker-popup">
-                            <h4>${sampleType}</h4>
-                            <p>Location: <span class="data-value">${location || 'N/A'}</span></p>
+                            <h4>${escapeHtml(sampleType)}</h4>
+                            <p>Location: <span class="data-value">${escapeHtml(location || 'N/A')}</span></p>
                             ${concentrationHtml}
                             <p>Coordinates: <span class="data-value">${lat.toFixed(4)}, ${lng.toFixed(4)}</span></p>
-                            <p>Collected: <span class="data-value">${dateStr}</span></p>
+                            <p>Collected: <span class="data-value">${escapeHtml(dateStr)}</span></p>
                         </div>
                     `);
 
