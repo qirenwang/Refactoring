@@ -47,6 +47,94 @@ function buildLegendEntries(types) {
         .filter(entry => presentKeys.has(entry.key));
 }
 
+// Units_Ref.Units_Code -> popup suffix ("km2" renders as km²)
+const UNIT_DISPLAY = { l: 'L', g: 'g', km2: 'km²' };
+
+function formatUnitLabel(unitCode) {
+    if (unitCode === null || unitCode === undefined) return '';
+    const code = String(unitCode).trim();
+    return UNIT_DISPLAY[code.toLowerCase()] || code;
+}
+
+// Finite number or null (API sends DECIMAL columns as strings, missing values as null)
+function toFiniteNumber(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+// >= 10: whole number with thousands separators; < 10: two significant digits
+function formatConcentrationValue(value) {
+    if (Math.abs(value) >= 10) {
+        return Math.round(value).toLocaleString('en-US');
+    }
+    // Number() drops trailing zeros from toPrecision ("0.50" -> 0.5, "0.0" -> 0)
+    return String(Number(value.toPrecision(2)));
+}
+
+/**
+ * Popup text for one size class: count ÷ sample amount per unit.
+ * The class's own amount/unit is used when it is a usable (> 0) number,
+ * otherwise the sample's TotalSampleAmount/SampleUnit.
+ *   count missing             -> "Not analyzed"
+ *   no usable amount anywhere -> "<count> particles (no sample amount recorded)"
+ */
+function formatConcentration(count, amount, unit, fallbackAmount, fallbackUnit) {
+    const countValue = toFiniteNumber(count);
+    if (countValue === null) return 'Not analyzed';
+
+    let amountValue = toFiniteNumber(amount);
+    let unitCode = unit;
+    if (amountValue === null || amountValue <= 0) {
+        amountValue = toFiniteNumber(fallbackAmount);
+        unitCode = fallbackUnit;
+    } else if (!formatUnitLabel(unitCode)) {
+        unitCode = fallbackUnit;
+    }
+
+    if (amountValue === null || amountValue <= 0) {
+        return `${countValue} particle${countValue === 1 ? '' : 's'} (no sample amount recorded)`;
+    }
+
+    const unitLabel = formatUnitLabel(unitCode);
+    const valueText = formatConcentrationValue(countValue / amountValue);
+    return unitLabel ? `${valueText} /${unitLabel}` : `${valueText} per sample amount (unit not recorded)`;
+}
+
+// The two concentration lines shown in a map popup
+function buildConcentrationLines(point) {
+    return [
+        {
+            label: 'Plastic fragments (>5mm)',
+            value: formatConcentration(
+                point.fragments_count,
+                point.fragments_sample_amount,
+                point.fragments_sample_unit,
+                point.total_sample_amount,
+                point.total_sample_unit
+            )
+        },
+        {
+            label: 'Microplastics (<5mm)',
+            value: formatConcentration(
+                point.microplastics_count,
+                point.microplastics_sample_amount,
+                point.microplastics_sample_unit,
+                point.total_sample_amount,
+                point.total_sample_unit
+            )
+        }
+    ];
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 // Document ready function for home page
 if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', function() {
@@ -148,13 +236,16 @@ function initHomeMap() {
                     const marker = L.marker([lat, lng], { icon: icon }).addTo(map);
 
                     const dateStr = formatPointCollectionDate(point);
+                    const concentrationHtml = buildConcentrationLines(point)
+                        .map(line => `<p>${escapeHtml(line.label)}: <span class="data-value">${escapeHtml(line.value)}</span></p>`)
+                        .join('');
 
                     // Add popup with sample information
                     marker.bindPopup(`
                         <div class="marker-popup">
                             <h4>${sampleType}</h4>
                             <p>Location: <span class="data-value">${location || 'N/A'}</span></p>
-                            <p>Particle Count: <span class="data-value">${point.particleCount || 1}</span></p>
+                            ${concentrationHtml}
                             <p>Coordinates: <span class="data-value">${lat.toFixed(4)}, ${lng.toFixed(4)}</span></p>
                             <p>Collected: <span class="data-value">${dateStr}</span></p>
                         </div>
@@ -233,12 +324,16 @@ function updateMapLegend(entries) {
     }
 }
 
-// Expose the pure color helpers to Node tests (no effect in the browser)
+// Expose the pure helpers to Node tests (no effect in the browser)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         MEDIA_TYPE_COLORS,
         UNKNOWN_MEDIA_TYPE,
+        buildConcentrationLines,
         buildLegendEntries,
+        formatConcentration,
+        formatConcentrationValue,
+        formatUnitLabel,
         getColorForType,
         getMediaTypeEntry,
         normalizeMediaTypeKey

@@ -1630,7 +1630,9 @@ router.get('/php/get_map_data.php', async (req, res) => {
     }
 });
 
-// Get map data
+// Get map data for the home page - public endpoint listing every geolocated sample.
+// Counts, sample amounts and unit codes feed the popup's concentration lines
+// (count / amount per unit, computed in public/js/map-home.js).
 router.get('/map-data', async (req, res) => {
     try {
         const [rows] = await pool.execute(`
@@ -1647,11 +1649,22 @@ router.get('/map-data', async (req, res) => {
                 se.EndMonth as end_month,
                 se.EndDay as end_day,
                 se.DeviceInstallationPeriod as device_installation_period,
-                se.UserSamplingID as created_by
+                se.UserSamplingID as created_by,
+                sd.FragLargerThan5mm_Count as fragments_count,
+                sd.Micro5mmAndSmaller_Count as microplastics_count,
+                sd.FragmentsSampleAmount as fragments_sample_amount,
+                uf.Units_Code as fragments_sample_unit,
+                sd.MicroplasticsSampleAmount as microplastics_sample_amount,
+                um.Units_Code as microplastics_sample_unit,
+                sd.TotalSampleAmount as total_sample_amount,
+                ut.Units_Code as total_sample_unit
             FROM SampleDetails sd
             LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
             LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
             LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
+            LEFT JOIN Units_Ref uf ON sd.FragmentsSampleUnit_Num = uf.UnitsUniqueID
+            LEFT JOIN Units_Ref um ON sd.MicroplasticsSampleUnit_Num = um.UnitsUniqueID
+            LEFT JOIN Units_Ref ut ON sd.SampleUnit_Num = ut.UnitsUniqueID
             WHERE l.\`Lat_DecimalDegree\` IS NOT NULL
             AND l.\`Long_DecimalDegree\` IS NOT NULL
             ORDER BY se.StartYear DESC, se.StartMonth DESC, se.StartDay DESC, se.SamplingEventUniqueID DESC
@@ -4699,73 +4712,6 @@ function generateTemplate(templateType) {
 
     return headers.join(',') + '\n';
 }
-
-// Get map data for home page - public endpoint showing all sample locations
-router.get('/map-data', async (req, res) => {
-    try {
-        const sql = `
-            SELECT
-                sd.SampleUniqueID as id,
-                l.LocationName as location,
-                l.\`Lat_DecimalDegree\` as lat,
-                l.\`Long_DecimalDegree\` as lng,
-                mt.MediaTypeOverall as sampleType,
-                se.StartYear as start_year,
-                se.StartMonth as start_month,
-                se.StartDay as start_day,
-                se.EndYear as end_year,
-                se.EndMonth as end_month,
-                se.EndDay as end_day,
-                se.DeviceInstallationPeriod as device_installation_period,
-                COUNT(DISTINCT sd.SampleUniqueID) as particleCount
-            FROM SampleDetails sd
-            LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
-            LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
-            LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
-            WHERE l.\`Lat_DecimalDegree\` IS NOT NULL
-              AND l.\`Long_DecimalDegree\` IS NOT NULL
-            GROUP BY
-                sd.SampleUniqueID,
-                l.LocationName,
-                l.\`Lat_DecimalDegree\`,
-                l.\`Long_DecimalDegree\`,
-                mt.MediaTypeOverall,
-                se.StartYear,
-                se.StartMonth,
-                se.StartDay,
-                se.EndYear,
-                se.EndMonth,
-                se.EndDay,
-                se.DeviceInstallationPeriod,
-                se.SamplingEventUniqueID
-            ORDER BY se.StartYear DESC, se.StartMonth DESC, se.StartDay DESC, se.SamplingEventUniqueID DESC
-        `;
-
-        const [rows] = await pool.execute(sql);
-        const formattedRows = rows.map(row => {
-            const presentedRow = addPartialDatePresentation(row);
-            return {
-                ...presentedRow,
-                date: presentedRow.collection_date,
-                date_display: presentedRow.collection_date_display
-            };
-        });
-
-        res.json({
-            success: true,
-            data: formattedRows,
-            count: formattedRows.length
-        });
-
-    } catch (error) {
-        console.error('Error fetching map data:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching map data',
-            data: []
-        });
-    }
-});
 
 module.exports = router;
 

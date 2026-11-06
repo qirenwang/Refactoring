@@ -271,7 +271,7 @@ All responses are JSON `{ success, message?, data?, errors? }`. Auth = `requireA
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/api/map-data` | – | all geolocated samples with partial-date presentation (a second, shadowed registration exists at `api.js:4533`) |
+| GET | `/api/map-data` | – | all geolocated samples with partial-date presentation, size-class counts, sample amounts and unit codes (the home-map popup computes count ÷ amount per unit) |
 | GET | `/api/php/get_map_data.php` | – | legacy PHP-shaped payload; `?zipcode`, `?plastic_type` |
 
 **Reference data**
@@ -750,7 +750,6 @@ Verified against commit `2092d2a`; none of these are blocking, but each has bitt
 
 **Runtime behaviour**
 - `PUT /api/admin/contact-submissions/:id/status` with `status=resolved` throws (`req.session.user.username` — `req.session.user` is never set) → 500. `GET …/contact-submissions` computes `stats` but never populates them.
-- A second `GET /api/map-data` handler (`api.js:4533`) is shadowed by the first and is dead.
 - `POST /api/test-save` is unauthenticated and echoes the whole `req.session`; `POST /api/add-test-location-data` seeds test rows into production tables. Both should be removed or guarded.
 - No role/permission checks anywhere (`users.role` exists but is not enforced): `/admin/contact` and `/api/admin/*` are open to any logged-in user.
 - Sessions live in the express-session MemoryStore (single process, lost on restart); `secure: false` is hard-coded on the cookie.
