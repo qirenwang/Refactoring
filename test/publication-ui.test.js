@@ -153,6 +153,16 @@ test('data source form: mandatory type select plus the ten-field detail block', 
         /id="authors-or-organization"[^>]*aria-describedby="authors-or-organization-help"/
     );
     assert.match(normalizedHtml, /using the format First Last \(e\.g\., Allen Smith\)/);
+    // Journal and full citation are required (validator enforces it); the
+    // identifier/URL and project/collection stay optional.
+    assert.match(normalizedHtml, /Journal, Publisher, or Repository \(<span class="required-marker">\*<\/span>\):/);
+    assert.match(normalizedHtml, /Full Citation \(APA\) \(<span class="required-marker">\*<\/span>\):/);
+    assert.match(normalizedHtml, /Identifier or URL:<\/label>/);
+    assert.match(normalizedHtml, /Project or Collection Name:<\/label>/);
+    // Publication year: lower bound in the input, upper bound (next year) in the validator.
+    const yearInput = normalizedHtml.match(/<input type="number" id="publication-year"[^>]*>/)[0];
+    assert.match(yearInput, /min="1900"/);
+    assert.doesNotMatch(yearInput, /max=/);
 });
 
 test('source-type rules: year for types 1-4, access date only for type 4', () => {
@@ -172,8 +182,11 @@ const journalArticle = {
     data_source_type_id: '1',
     source_title: 'Microplastics in Great Lakes Tributaries',
     authors_or_organization: 'Smith, J. A., & Lee, B.',
-    publication_year: '2025'
+    publication_year: '2025',
+    journal_publisher_or_repository: 'Journal of Great Lakes Research',
+    citation_text: 'Smith, J. A., & Lee, B. (2025). Microplastics in Great Lakes Tributaries. Journal of Great Lakes Research.'
 };
+const currentYear = new Date().getUTCFullYear();
 
 // Every case is checked by the form (validateDataSourceSelection) and by the
 // API (validateDataSourceRules); both must give the same messages.
@@ -183,6 +196,16 @@ const parityCases = [
     ['type 1 complete', journalArticle],
     ['type 1 without year', { ...journalArticle, publication_year: '' }],
     ['type 1 two-digit year', { ...journalArticle, publication_year: '25' }],
+    ['type 1 year 1899', { ...journalArticle, publication_year: '1899' }],
+    ['type 1 year two years ahead', { ...journalArticle, publication_year: String(currentYear + 2) }],
+    ['type 1 current year', { ...journalArticle, publication_year: String(currentYear) }],
+    ['type 1 next year (in press)', { ...journalArticle, publication_year: String(currentYear + 1) }],
+    ['type 1 without journal', { ...journalArticle, journal_publisher_or_repository: '' }],
+    ['type 1 without citation', { ...journalArticle, citation_text: '' }],
+    ['type 7 without journal or citation', {
+        ...journalArticle, data_source_type_id: '7', publication_year: '',
+        journal_publisher_or_repository: '', citation_text: ''
+    }],
     ['type 4 without access date', { ...journalArticle, data_source_type_id: '4' }],
     ['type 4 bad access date', { ...journalArticle, data_source_type_id: '4', date_accessed: '2026-02-30' }],
     ['type 4 complete', { ...journalArticle, data_source_type_id: '4', date_accessed: '2026-10-15' }],
@@ -205,6 +228,37 @@ test('form and API give identical data-source messages (new sample)', () => {
     assert.deepEqual(validateDataSourceSelection(journalArticle), []);
     assert.ok(validateDataSourceSelection({ ...journalArticle, data_source_type_id: '8' })
         .includes(DATA_SOURCE_MESSAGES.yearNotAllowed));
+});
+
+test('new data source: journal and APA citation are required', () => {
+    assert.deepEqual(
+        validateDataSourceSelection({ ...journalArticle, journal_publisher_or_repository: '' }),
+        [DATA_SOURCE_MESSAGES.journalRequired]
+    );
+    assert.deepEqual(
+        validateDataSourceSelection({ ...journalArticle, citation_text: ' ' }),
+        [DATA_SOURCE_MESSAGES.citationRequired]
+    );
+    const unpublished = { ...journalArticle, data_source_type_id: '6', publication_year: '' };
+    assert.deepEqual(validateDataSourceSelection(unpublished), []);
+    assert.deepEqual(
+        validateDataSourceSelection({ ...unpublished, journal_publisher_or_repository: '', citation_text: '' }),
+        [DATA_SOURCE_MESSAGES.journalRequired, DATA_SOURCE_MESSAGES.citationRequired]
+    );
+    // Reusing an existing source is not re-validated.
+    assert.deepEqual(validateDataSourceSelection({ data_source_id: '12', citation_text: '' }), []);
+});
+
+test('publication year: 1900 through next calendar year', () => {
+    const yearErrors = year => validateDataSourceSelection({ ...journalArticle, publication_year: year });
+    const rangeMessage = `Publication year must be a four-digit year from 1900 to ${currentYear + 1}.`;
+    assert.equal(DATA_SOURCE_MESSAGES.yearFormat, rangeMessage);
+    assert.deepEqual(yearErrors('1899'), [rangeMessage]);
+    assert.deepEqual(yearErrors(String(currentYear + 2)), [rangeMessage]);
+    assert.deepEqual(yearErrors('20255'), [rangeMessage]);
+    assert.deepEqual(yearErrors('1900'), []);
+    assert.deepEqual(yearErrors(String(currentYear)), []);
+    assert.deepEqual(yearErrors(String(currentYear + 1)), []);
 });
 
 test('legacy sample edit: nothing entered is allowed, partial input is not', () => {

@@ -4235,6 +4235,12 @@ document.addEventListener('DOMContentLoaded', function() {
         navigateToPage(1);
         clearAllFormFields();
         showTemporaryMessage('Data saved! Starting fresh data entry for new location and date', 'success');
+
+        // A data source reused for the saved sample left the page-2 details
+        // locked; unlock them so a new source can be chosen or entered.
+        setPublicationDetailsLocked(false);
+        updateDataSourceTypeUi();
+        syncDataSourceLegacyNotice();
     }
 
     function preserveNextStepFields(fieldNames) {

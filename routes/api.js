@@ -1295,10 +1295,22 @@ async function createPublication(connection, input, enteredByUserId = null) {
     return dataSourceId;
 }
 
+// A data source `ds` is the user's own when they entered it, or when one of
+// their own sampling events already cites it (legacy rows whose EnteredBy could
+// not be back-filled). Shared by the "my data sources" list (listDataSources)
+// and the save-time check in resolvePublicationId so the two always agree.
+// Binds two parameters: the user ID, twice.
+const MY_DATA_SOURCE_CONDITION = `ds.EnteredBy = ?
+           OR EXISTS (SELECT 1 FROM SamplingEvent mine_se
+                      WHERE mine_se.PublicationID_Num = ds.data_source_id
+                        AND mine_se.UserSamplingID = ?)`;
+
 // Returns the DataSourceReference ID to store in SamplingEvent.PublicationID_Num:
 // the selected existing data source, a newly created one, or NULL when nothing
-// was supplied. Whether NULL is acceptable is decided by the caller
-// (validateDataSourceRules for new samples, updateSampleFromFormData for edits).
+// was supplied. An existing data source is accepted only if it is one of the
+// user's own (MY_DATA_SOURCE_CONDITION). Whether NULL is acceptable is decided
+// by the caller (validateDataSourceRules for new samples,
+// updateSampleFromFormData for edits).
 async function resolvePublicationId(connection, formData, { userId = null } = {}) {
     const state = getPublicationInputState(formData);
     if (state.present === 'no') {
@@ -1306,12 +1318,19 @@ async function resolvePublicationId(connection, formData, { userId = null } = {}
     }
 
     if (state.selectedPublication) {
-        const [rows] = await connection.execute(
-            'SELECT data_source_id FROM DataSourceReference WHERE data_source_id = ? LIMIT 1',
-            [state.selectedPublication]
-        );
+        const userIdNum = parseNullableInt(userId);
+        const [rows] = await connection.execute(`
+            SELECT ds.data_source_id,
+                   CASE WHEN ${MY_DATA_SOURCE_CONDITION} THEN 1 ELSE 0 END AS is_mine
+            FROM DataSourceReference ds
+            WHERE ds.data_source_id = ?
+            LIMIT 1
+        `, [userIdNum, userIdNum, state.selectedPublication]);
         if (rows.length === 0) {
             throw badRequest('The selected data source no longer exists. Choose another one or enter a new data source.');
+        }
+        if (Number(rows[0].is_mine) !== 1) {
+            throw badRequest('This data source is not one of yours. Choose one of your data sources or enter a new data source.');
         }
         return state.selectedPublication;
     }
@@ -1469,77 +1488,6 @@ const upload = multer({
     }
 });
 
-// Test endpoint to add sample location data with ZIP codes
-router.post('/add-test-location-data', requireAuth, async (req, res) => {
-    try {
-        // Sample Detroit area ZIP codes with coordinates
-        const testLocations = [
-            { name: 'Downtown Detroit', lat: 42.3314, lng: -83.0458, zipCode: 48226, city: 'Detroit', state: 'MI' },
-            { name: 'Belle Isle Park', lat: 42.3401, lng: -82.9849, zipCode: 48207, city: 'Detroit', state: 'MI' },
-            { name: 'Detroit Riverfront', lat: 42.3298, lng: -83.0365, zipCode: 48226, city: 'Detroit', state: 'MI' },
-            { name: 'Campus Martius', lat: 42.3314, lng: -83.0457, zipCode: 48226, city: 'Detroit', state: 'MI' },
-            { name: 'Eastern Market', lat: 42.3481, lng: -83.0401, zipCode: 48207, city: 'Detroit', state: 'MI' }
-        ];
-
-        // Insert test locations
-        for (const loc of testLocations) {
-            // Insert location
-            const [locationResult] = await pool.execute(`
-                INSERT INTO Location (
-                    LocationName, Location_Desc, \`Env_Indoor_SelectID\`,
-                    \`Lat_DecimalDegree\`, \`Long_DecimalDegree\`,
-                    City, State, Country, ZipCode,
-                    UserCreated
-                ) VALUES (?, ?, 1, ?, ?, ?, ?, 'USA', ?, ?)
-            `, [
-                loc.name,
-                `Test location for ${loc.name}`,
-                loc.lat,
-                loc.lng,
-                loc.city,
-                loc.state,
-                loc.zipCode,
-                req.session.user_id
-            ]);
-
-            const locationId = locationResult.insertId;
-
-            // Insert sampling event
-            const [eventResult] = await pool.execute(`
-                INSERT INTO SamplingEvent (
-                    SamplingEventUniqueID, LocationID_Num, DeviceInstallationPeriod,
-                    StartYear, StartMonth, StartDay, UserSamplingID, DateEntered
-                ) VALUES (?, ?, 'no', YEAR(CURDATE()), MONTH(CURDATE()), DAY(CURDATE()), ?, NOW())
-            `, [locationId, locationId, req.session.user_id]);
-
-            // Insert sample details
-            await pool.execute(`
-                INSERT INTO SampleDetails (
-                    SampleUniqueID, SamplingEvent_Num, MediaType_SelectID,
-                    Micro5mmAndSmaller_Count, FragLargerThan5mm_Count
-                ) VALUES (?, ?, 1, ?, ?)
-            `, [
-                locationId,
-                locationId,
-                Math.floor(Math.random() * 100) + 10,
-                Math.floor(Math.random() * 50) + 5
-            ]);
-        }
-
-        res.json({
-            success: true,
-            message: `Added ${testLocations.length} test locations with sample data`
-        });
-
-    } catch (error) {
-        console.error('Error adding test data:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error adding test data: ' + error.message
-        });
-    }
-});
-
 // Get map data from SampleDetails and related tables
 router.get('/php/get_map_data.php', async (req, res) => {
     try {
@@ -1683,22 +1631,6 @@ router.get('/map-data', async (req, res) => {
     }
 });
 
-// Test endpoint without authentication
-router.post('/test-save', async (req, res) => {
-    console.log('=== TEST SAVE ENDPOINT ===');
-    console.log('Request method:', req.method);
-    console.log('Request headers:', JSON.stringify(req.headers, null, 2));
-    console.log('Request body:', JSON.stringify(req.body, null, 2));
-    console.log('Session data:', JSON.stringify(req.session, null, 2));
-
-    res.json({
-        success: true,
-        message: 'Test endpoint working',
-        session: req.session,
-        body: req.body
-    });
-});
-
 // Reference data endpoints
 router.get('/ref/methods', async (req, res) => {
     try {
@@ -1784,6 +1716,8 @@ router.get('/ref/units', async (req, res) => {
 // db/20260817_add_reference_sort_order.sql). Reordering an option or slotting
 // in a new one is an UPDATE on that column, never a code change. The ID is
 // only the tie-breaker so ties (e.g. new rows still at 0) stay deterministic.
+// Data sources are not reference data and are not returned here; the form
+// loads the user's own from GET /api/data-sources.
 router.get('/references', async (req, res) => {
     try {
         const [polymers] = await pool.query('SELECT * FROM PolymerType_Ref ORDER BY SortOrder, PolymerUniqueID');
@@ -1818,7 +1752,6 @@ router.get('/references', async (req, res) => {
             FROM DataSourceTypeReference
             ORDER BY SortOrder, source_type_id
         `);
-        const dataSources = await listDataSources(pool, req.session && req.session.user_id);
 
         res.json({
             success: true,
@@ -1839,8 +1772,7 @@ router.get('/references', async (req, res) => {
                     PubSourceUniqueID: type.source_type_id,
                     PubSourceLabel: type.source_type_name,
                     PubSourceDescription: type.description
-                })),
-                dataSources
+                }))
             }
         });
     } catch (error) {
@@ -1849,23 +1781,16 @@ router.get('/references', async (req, res) => {
     }
 });
 
-// Data sources for the form's "reuse a previous data source" list. Every row
-// carries is_mine (entered by the signed-in user) and the list puts the
-// user's own sources first, newest first. The publication_* aliases keep
-// older clients working. With mineOnly the list is limited to the user's
-// previous sources: rows they entered, plus rows their own sampling events
-// already cite (legacy rows whose EnteredBy could not be back-filled).
-async function listDataSources(db, userId, { mineOnly = false } = {}) {
+// Data sources for the form's "reuse a previous data source" list: only the
+// user's previous sources, i.e. rows they entered plus rows their own sampling
+// events already cite (MY_DATA_SOURCE_CONDITION); signed out, none. Every row
+// carries is_mine (entered by the signed-in user) and the list puts those
+// first, newest first. The publication_* aliases keep older clients working.
+async function listDataSources(db, userId) {
     const userIdNum = parseNullableInt(userId);
-    if (mineOnly && userIdNum === null) {
+    if (userIdNum === null) {
         return [];
     }
-    const mineFilter = mineOnly
-        ? `WHERE ds.EnteredBy = ?
-           OR EXISTS (SELECT 1 FROM SamplingEvent mine_se
-                      WHERE mine_se.PublicationID_Num = ds.data_source_id
-                        AND mine_se.UserSamplingID = ?)`
-        : '';
     const [rows] = await db.query(`
         SELECT ds.data_source_id,
                ds.source_type_id,
@@ -1890,19 +1815,19 @@ async function listDataSources(db, userId, { mineOnly = false } = {}) {
                ds.source_type_id AS publication_pub_source_code
         FROM DataSourceReference ds
         LEFT JOIN DataSourceTypeReference t ON t.source_type_id = ds.source_type_id
-        ${mineFilter}
+        WHERE ${MY_DATA_SOURCE_CONDITION}
         ORDER BY is_mine DESC, ds.DateEntered DESC, ds.data_source_id DESC
-    `, mineOnly ? [userIdNum, userIdNum, userIdNum] : [userIdNum]);
+    `, [userIdNum, userIdNum, userIdNum]);
     return rows || [];
 }
 
-// ?scope=mine limits the list to the signed-in user's previous sources (the
-// entry form's "Select Existing Data Source" list).
+// The entry form's "Select Existing Data Source" list: only the signed-in
+// user's own data sources, whatever ?scope says (the form still sends
+// ?scope=mine). Signed out, the list is empty. There is no endpoint for the
+// full list: other users' sources (and who entered them) are not exposed.
 router.get(['/publications', '/data-sources'], async (req, res) => {
     try {
-        const dataSources = await listDataSources(pool, req.session && req.session.user_id, {
-            mineOnly: req.query && req.query.scope === 'mine'
-        });
+        const dataSources = await listDataSources(pool, req.session && req.session.user_id);
         res.json({ success: true, data: dataSources });
     } catch (error) {
         console.error('Error fetching data sources:', error);
@@ -4715,7 +4640,8 @@ function generateTemplate(templateType) {
 
 module.exports = router;
 
-// Pure helpers exposed for unit tests (no database access).
+// Helpers exposed for unit tests (no database access of their own; the ones
+// that query take the db/connection as an argument).
 module.exports._internals = {
     getFragmentDebrisCount,
     buildFragmentCountColumns,
@@ -4726,6 +4652,7 @@ module.exports._internals = {
     validateDataSourceRules,
     getPublicationInputState,
     listDataSources,
+    resolvePublicationId,
     hasFragmentsDetailData,
     getOtherPolymerDescription,
     validateOtherPolymerDescription,

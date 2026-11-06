@@ -17,6 +17,8 @@
     // db/20261105_redesign_data_source_tables.sql: types 1-4 are Published and
     // need a publication year, types 5-8 are Unpublished and must not have one,
     // and only type 4 (Public Database or Data Repository) has an access date.
+    // Title, authors/organization, journal/publisher/repository and the APA
+    // citation are required here only; their columns stay nullable.
     const PUBLISHED_SOURCE_TYPE_IDS = [1, 2, 3, 4];
     const UNPUBLISHED_SOURCE_TYPE_IDS = [5, 6, 7, 8];
     const DATE_ACCESSED_SOURCE_TYPE_ID = 4;
@@ -25,6 +27,9 @@
         sourceIdentifierOrUrl: ['Source identifier or URL', 500],
         projectOrCollectionName: ['Project or collection name', 255]
     };
+    // Publication years run from 1900 to next year (in-press work); the upper
+    // bound follows the calendar, so it is read when a check runs.
+    const MIN_PUBLICATION_YEAR = 1900;
     const PLAIN_INTEGER_PATTERN = /^\d+$/;
     const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -33,8 +38,12 @@
         typeRequired: 'Data source type is required: select one of the eight data-source types.',
         titleRequired: 'Source title is required (article, report, dataset, or project title).',
         authorsRequired: 'Authors or organization is required for the data source.',
+        journalRequired: 'Journal, publisher, or repository is required for the data source.',
+        citationRequired: 'Full citation (APA) is required for the data source.',
         yearRequired: 'Publication year is required for published data sources (types 1-4).',
-        yearFormat: 'Publication year must be a four-digit year.',
+        get yearFormat() {
+            return `Publication year must be a four-digit year from ${MIN_PUBLICATION_YEAR} to ${getMaxPublicationYear()}.`;
+        },
         yearNotAllowed: 'Leave the publication year blank for unpublished data sources (types 5-8).',
         dateAccessedRequired: 'Date accessed is required for a Public Database or Data Repository source.',
         dateAccessedFormat: 'Date accessed must be a valid date (YYYY-MM-DD).',
@@ -92,6 +101,18 @@
         return hasText(value) ? String(value).trim() : null;
     }
 
+    // Next year (in-press work). UTC, so the form and the API (which share this
+    // code) agree on the bound whatever the browser's and server's time zones.
+    function getMaxPublicationYear() {
+        return new Date().getUTCFullYear() + 1;
+    }
+
+    function isValidPublicationYear(text) {
+        if (!/^\d{4}$/.test(text)) return false;
+        const year = Number(text);
+        return year >= MIN_PUBLICATION_YEAR && year <= getMaxPublicationYear();
+    }
+
     function parseSourceTypeId(value) {
         const text = trimmedOrNull(value);
         return text !== null && PLAIN_INTEGER_PATTERN.test(text) ? Number(text) : null;
@@ -139,11 +160,17 @@
         if (!hasText(input.authorsOrOrganization)) {
             errors.push(DATA_SOURCE_MESSAGES.authorsRequired);
         }
+        if (!hasText(input.journalPublisherOrRepository)) {
+            errors.push(DATA_SOURCE_MESSAGES.journalRequired);
+        }
+        if (!hasText(input.citationText)) {
+            errors.push(DATA_SOURCE_MESSAGES.citationRequired);
+        }
 
         if (rules.isPublished) {
             if (!publicationYear) {
                 errors.push(DATA_SOURCE_MESSAGES.yearRequired);
-            } else if (!/^\d{4}$/.test(publicationYear) || Number(publicationYear) < 1000) {
+            } else if (!isValidPublicationYear(publicationYear)) {
                 errors.push(DATA_SOURCE_MESSAGES.yearFormat);
             }
         } else if (rules.isUnpublished && publicationYear) {

@@ -28,7 +28,9 @@ const journalArticle = {
     data_source_type_id: '1',
     source_title: 'Microplastics in Great Lakes Tributaries',
     authors_or_organization: 'Smith, J. A., & Lee, B.',
-    publication_year: '2025'
+    publication_year: '2025',
+    journal_publisher_or_repository: 'Journal of Great Lakes Research',
+    citation_text: 'Smith, J. A., & Lee, B. (2025). Microplastics in Great Lakes Tributaries. Journal of Great Lakes Research.'
 };
 
 function errorsFor(formData) {
@@ -41,6 +43,17 @@ test('published types need a year, unpublished types must not have one', () => {
         .some(message => /Publication year is required/.test(message)));
     assert.ok(errorsFor({ ...journalArticle, publication_year: '25' })
         .some(message => /four-digit year/.test(message)));
+
+    // 1900 through next year (in-press work); the upper bound tracks the calendar.
+    const currentYear = new Date().getUTCFullYear();
+    const yearRange = new RegExp(`from 1900 to ${currentYear + 1}\\.`);
+    ['1899', String(currentYear + 2)].forEach(year => {
+        assert.ok(errorsFor({ ...journalArticle, publication_year: year })
+            .some(message => yearRange.test(message)), year);
+    });
+    ['1900', String(currentYear), String(currentYear + 1)].forEach(year => {
+        assert.deepEqual(errorsFor({ ...journalArticle, publication_year: year }), [], year);
+    });
 
     const research = { ...journalArticle, data_source_type_id: '5', publication_year: '' };
     assert.deepEqual(errorsFor(research), []);
@@ -59,11 +72,27 @@ test('only type 4 carries a valid access date', () => {
         .some(message => /only applies to Public Database/.test(message)));
 });
 
-test('type, title, and authors/organization are required; unknown type rejected', () => {
+test('type, title, authors/organization, journal, and citation are required; unknown type rejected', () => {
     const errors = validateNewDataSource({});
     assert.ok(errors.some(message => /Data source type is required/.test(message)));
     assert.ok(errors.some(message => /Source title is required/.test(message)));
     assert.ok(errors.some(message => /Authors or organization is required/.test(message)));
+    assert.ok(errors.some(message => /Journal, publisher, or repository is required/.test(message)));
+    assert.ok(errors.some(message => /Full citation \(APA\) is required/.test(message)));
+    // Required for all eight types, published or not.
+    [1, 2, 3, 4, 5, 6, 7, 8].forEach(typeId => {
+        const source = {
+            ...journalArticle,
+            data_source_type_id: String(typeId),
+            publication_year: typeId <= 4 ? '2025' : '',
+            date_accessed: typeId === 4 ? '2026-10-15' : ''
+        };
+        assert.deepEqual(errorsFor(source), [], `type ${typeId} complete`);
+        assert.deepEqual(errorsFor({ ...source, journal_publisher_or_repository: '' }),
+            ['Journal, publisher, or repository is required for the data source.'], `type ${typeId} journal`);
+        assert.deepEqual(errorsFor({ ...source, citation_text: '  ' }),
+            ['Full citation (APA) is required for the data source.'], `type ${typeId} citation`);
+    });
     assert.ok(errorsFor({ ...journalArticle, data_source_type_id: '9' })
         .some(message => /one of the eight/.test(message)));
 });
@@ -133,20 +162,16 @@ test('migration renames the tables, keeps PublicationID_Num, and adds the PI CHE
     assert.deepEqual(unguarded, [], 'only idempotent MODIFY COLUMN statements run unguarded');
 });
 
-test('scope=mine lists only the user\'s own or already-cited data sources', async () => {
+test('the data-source list holds only the user\'s own or already-cited data sources', async () => {
     const calls = [];
     const db = { query: async (sql, params) => { calls.push({ sql, params }); return [[]]; } };
 
-    await listDataSources(db, '6', { mineOnly: true });
+    await listDataSources(db, '6');
     assert.match(calls[0].sql, /WHERE ds\.EnteredBy = \?\s+OR EXISTS \(SELECT 1 FROM SamplingEvent mine_se/);
     assert.match(calls[0].sql, /mine_se\.UserSamplingID = \?/);
     assert.deepEqual(calls[0].params, [6, 6, 6]);
 
-    await listDataSources(db, '6');
-    assert.doesNotMatch(calls[1].sql, /WHERE/);
-    assert.deepEqual(calls[1].params, [6]);
-
     // Signed out: nothing is "mine", and no query runs.
-    assert.deepEqual(await listDataSources(db, undefined, { mineOnly: true }), []);
-    assert.equal(calls.length, 2);
+    assert.deepEqual(await listDataSources(db, undefined), []);
+    assert.equal(calls.length, 1);
 });

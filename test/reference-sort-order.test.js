@@ -39,8 +39,9 @@ const REFERENCE_TABLES = {
 const SORT_ORDER_MIGRATION_TABLES = Object.keys(REFERENCE_TABLES)
     .map(table => (table === 'DataSourceTypeReference' ? 'PubSource_Ref' : table));
 
-// /api/references also returns the data-source list (a data table, not a
-// reference list); it is ordered by owner/recency and checked separately.
+// /api/references returns reference lists only. The data-source list (a data
+// table, scoped to the signed-in user) is served by /api/data-sources, so
+// /api/references must not read it.
 const DATA_SOURCE_LIST_PATTERN = /FROM\s+DataSourceReference\b/;
 
 function loadApiRouterWithRecordingPool(recordedSql) {
@@ -107,7 +108,7 @@ test('/api/references and /api/ref/* order every reference table by SortOrder, I
         assert.equal(payload.success, true);
         assert.deepEqual(
             Object.keys(payload.data).sort(),
-            ['colors', 'dataSourceTypes', 'dataSources', 'forms', 'methods', 'opacities', 'polymers',
+            ['colors', 'dataSourceTypes', 'forms', 'methods', 'opacities', 'polymers',
                 'pubSources', 'purposes', 'sizes', 'soilTextures', 'units']
         );
 
@@ -122,10 +123,10 @@ test('/api/references and /api/ref/* order every reference table by SortOrder, I
     });
 
     const dataSourceListSql = recordedSql.filter(sql => DATA_SOURCE_LIST_PATTERN.test(sql));
-    assert.equal(dataSourceListSql.length, 1, '/api/references reads the data-source list once');
-    assert.match(dataSourceListSql[0], /ORDER BY\s+is_mine DESC,\s*ds\.DateEntered DESC,\s*ds\.data_source_id DESC\s*$/);
+    assert.deepEqual(dataSourceListSql, [], '/api/references does not read the data-source list');
 
-    const referenceSql = recordedSql.filter(sql => !DATA_SOURCE_LIST_PATTERN.test(sql));
+    // Every query is a reference-list read (anything else fails below).
+    const referenceSql = recordedSql;
     assert.ok(referenceSql.length >= Object.keys(REFERENCE_TABLES).length + 4);
     for (const sql of referenceSql) {
         const table = referenceTableOf(sql);

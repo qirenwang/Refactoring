@@ -191,7 +191,7 @@
                     <div class="form-row" id="publication-year-row" hidden>
                         <label class="form-label" for="publication-year">Publication Year (<span class="required-marker">*</span>):</label>
                         <input type="number" id="publication-year" name="publication_year"
-                               class="form-input publication-detail-field" min="1000" max="9999"
+                               class="form-input publication-detail-field" min="1900"
                                inputmode="numeric" placeholder="YYYY">
                     </div>
                     <div class="form-row" id="date-accessed-row" hidden>
@@ -206,7 +206,7 @@
                         </div>
                     </div>
                     <div class="form-row">
-                        <label class="form-label" for="journal-publisher-or-repository">Journal, Publisher, or Repository:</label>
+                        <label class="form-label" for="journal-publisher-or-repository">Journal, Publisher, or Repository (<span class="required-marker">*</span>):</label>
                         <input type="text" id="journal-publisher-or-repository" name="journal_publisher_or_repository"
                                class="form-input publication-detail-field"
                                placeholder="Journal, publisher, agency, institution, or data repository">
@@ -224,10 +224,10 @@
                                placeholder="Associated monitoring program, project, or collection">
                     </div>
                     <div class="form-row">
-                        <label class="form-label" for="citation-text">Full Citation (APA):</label>
+                        <label class="form-label" for="citation-text">Full Citation (APA) (<span class="required-marker">*</span>):</label>
                         <textarea id="citation-text" name="citation_text"
                                   class="form-textarea publication-detail-field" rows="3"
-                                  placeholder="Complete APA-style citation, if there is one"></textarea>
+                                  placeholder="Complete APA-style citation"></textarea>
                     </div>
                 </div>
             </div>
