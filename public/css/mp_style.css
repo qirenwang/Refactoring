@@ -989,49 +989,6 @@ body {
     display: inline-block;
 }
 
-
-/* Color definitions for legend markers */
-
-.map-legend .legend-marker.red {
-    background-color: #FF0000;
-}
-
-.map-legend .legend-marker.blue {
-    background-color: #0066CC;
-}
-
-.map-legend .legend-marker.green {
-    background-color: #33CC33;
-}
-
-.map-legend .legend-marker.purple {
-    background-color: #9933CC;
-}
-
-.map-legend .legend-marker.orange {
-    background-color: #FF9900;
-}
-
-.map-legend .legend-marker.yellow {
-    background-color: #FFFF00;
-}
-
-.map-legend .legend-marker.brown {
-    background-color: #996633;
-}
-
-.map-legend .legend-marker.pink {
-    background-color: #FF99CC;
-}
-
-.map-legend .legend-marker.gray {
-    background-color: #999999;
-}
-
-.map-legend .legend-marker.teal {
-    background-color: #33CCCC;
-}
-
 .marker-popup {
     text-align: center;
 }

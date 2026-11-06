@@ -13,3 +13,6 @@ db/backups/*.sql
 
 # Generated/distributed copies of the developer manual (md/html/docx); source is docs/DEVELOPER_MANUAL_EN.md
 developer_manual/
+
+# Python bytecode caches (e.g. Testing/excel_verification/)
+__pycache__/
