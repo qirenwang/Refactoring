@@ -1,5 +1,10 @@
 -- Reference-table display order: make it data instead of an accident.
 --
+-- ALREADY APPLIED to production on 2026-08-18. Do not run it again after
+-- db/20261105_redesign_data_source_tables.sql: that migration renames
+-- PubSource_Ref to DataSourceTypeReference, and this file still targets
+-- PubSource_Ref, so a re-run fails.
+--
 -- Every drop-down / percentage list on the data-entry form is rendered from
 -- GET /api/references in the order the query returns. Until now that order was
 -- whatever column each query happened to sort by: Purpose_Ref by Purpose_Name

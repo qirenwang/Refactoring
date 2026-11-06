@@ -27,8 +27,11 @@
 --      The old code is kept in PubSource_Legacy (the code itself when the
 --      column is empty or already holds it, otherwise appended as
 --      " [PubSource_Ref <n>]"), so the original category is never lost.
---      All remapped rows land on Published types (1/3), so their existing year
---      satisfies the new CHECK rules.
+--      Rows that are already 1 or 3 keep their type, so their PubSource_Legacy
+--      is only filled when empty.
+--      All remapped rows land on Published types (1/3), so they need a year
+--      for the new CHECK rules; the self-check before step 1 stops the run
+--      before any change if one of them has none.
 --   3. Renames / adds DataSourceReference columns (PI §A2):
 --        PublicationUniqueID -> data_source_id
 --        PubSource_Code      -> source_type_id                 (NOT NULL, FK)
@@ -71,6 +74,23 @@
 --   2. Run this migration: node scripts/update-database.js db/20261105_redesign_data_source_tables.sql
 --      (the runner does not print SELECT results; run the pre-flight and
 --      post-migration SELECTs by hand in phpMyAdmin if you want to see them).
+--      The run starts with a self-check: if a data source that is or will be on
+--      type 1-4 has no year, it stops before changing anything with
+--        Table '<db>.ABORTED - type 1-4 data source has no Year - fill Year first' doesn't exist
+--      On an un-migrated database the check is defensive only: the legacy
+--      Publications.Year is INT NOT NULL (the old app always required a year),
+--      so it can only fire on a schema where the year column is NULL-able, e.g.
+--      after a failed earlier run, when the table is already DataSourceReference.
+--      Find the rows with
+--        SELECT * FROM DataSourceReference
+--        WHERE publication_year IS NULL AND source_type_id IN (1, 2, 3, 4);
+--      (`Year` instead of publication_year while the column has its old name;
+--      while PubSource_Code still exists every row counts, so drop the
+--      source_type_id filter),
+--      fill the year, then run the migration again. Run this file only through
+--      scripts/update-database.js (it connects as utf8mb4); the mysql CLI's
+--      default latin1 connection fails at step 3 on the utf8mb4 COLLATE clauses
+--      (or pass --default-character-set=utf8mb4).
 --   3. Review the rows that were old type 6 "Other" (moved to type 3):
 --        SELECT * FROM DataSourceReference
 --        WHERE PubSource_Legacy = '6' OR PubSource_Legacy LIKE '%[PubSource_Ref 6]';
@@ -105,6 +125,41 @@ SET @sql = IF(@legacy_pub_table = 1,
     'SELECT PublicationUniqueID AS legacy_type_other_id, Year, Authors, FullCitation_APA
      FROM `Publications` WHERE PubSource_Code = 6 ORDER BY PublicationUniqueID',
     'SELECT ''Publications already migrated'' AS notice');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ---------------------------------------------------------------------------
+-- Self-check (before any change): every data source that is or will be on a
+-- Published type (1-4) needs a year, or the chk_publication_year CHECK in
+-- step 7 fails with the database half-migrated. While PubSource_Code exists
+-- every row counts (step 3 sends them all to 1 or 3); after that only types
+-- 1-4 do, so type 5-8 rows without a year never trip it and a re-run on a
+-- migrated database passes. The year column is Year before step 4a renames it,
+-- publication_year after; the table is Publications before step 1 renames it.
+-- The legacy Publications.Year is INT NOT NULL, so on an un-migrated database
+-- this never fires; it guards a schema whose year column is NULL-able.
+-- SIGNAL only works inside stored programs, so the abort selects from a table
+-- that does not exist and whose name is the message; the runner sends the file
+-- as one multi-statement query, so that error stops the run.
+-- ---------------------------------------------------------------------------
+SET @chk_ds_year = (SELECT MAX(COLUMN_NAME) FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'DataSourceReference'
+                      AND COLUMN_NAME IN ('Year', 'publication_year'));
+SET @chk_ds_legacy = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'DataSourceReference' AND COLUMN_NAME = 'PubSource_Code');
+SET @chk_pub_year = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Publications' AND COLUMN_NAME = 'Year');
+SET @sql = CASE
+    WHEN @chk_ds_year IS NOT NULL THEN CONCAT(
+        'SELECT COUNT(*) INTO @missing_year FROM `DataSourceReference`
+         WHERE (`', @chk_ds_year, '` IS NULL OR TRIM(`', @chk_ds_year, '`) = '''')',
+        IF(@chk_ds_legacy = 1, '', ' AND `source_type_id` IN (1, 2, 3, 4)'))
+    WHEN @chk_pub_year = 1 THEN
+        'SELECT COUNT(*) INTO @missing_year FROM `Publications` WHERE `Year` IS NULL OR TRIM(`Year`) = '''''
+    ELSE 'SELECT 0 INTO @missing_year' END;
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @sql = IF(@missing_year > 0,
+    'SELECT * FROM `ABORTED - type 1-4 data source has no Year - fill Year first`',
+    'SELECT ''Self-check passed: every type 1-4 data source has a year'' AS notice');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- ---------------------------------------------------------------------------
@@ -159,8 +214,9 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 -- ---------------------------------------------------------------------------
 -- Step 3: remap legacy source types. Runs only while PubSource_Code still
 -- exists (the rename in step 4 retires it), so new-style type 5-8 rows are
--- never touched by a re-run. The mapping is also idempotent on its own
--- (1 -> 1, 3 -> 3), so a crash between this UPDATE and the rename is safe.
+-- never touched by a re-run. Row by row it only touches rows that still need
+-- it (type not yet 1/3, or no legacy marker yet), so a crash between this
+-- UPDATE and the rename is safe: the re-run leaves remapped rows alone.
 -- ---------------------------------------------------------------------------
 SET @legacy_pub_cols = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
                         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'DataSourceReference' AND COLUMN_NAME = 'PubSource_Code');
@@ -172,7 +228,8 @@ SET @sql = IF(@legacy_pub_cols = 1,
              WHEN TRIM(`PubSource_Legacy`) = CAST(`PubSource_Code` AS CHAR) COLLATE utf8mb4_unicode_ci
                  THEN `PubSource_Legacy`
              ELSE CONCAT(`PubSource_Legacy`, '' [PubSource_Ref '', `PubSource_Code`, '']'' COLLATE utf8mb4_unicode_ci) END,
-         `PubSource_Code` = CASE WHEN `PubSource_Code` = 1 THEN 1 ELSE 3 END',
+         `PubSource_Code` = CASE WHEN `PubSource_Code` = 1 THEN 1 ELSE 3 END
+     WHERE `PubSource_Code` NOT IN (1, 3) OR `PubSource_Legacy` IS NULL OR TRIM(`PubSource_Legacy`) = ''''',
     'SELECT ''Legacy source types already remapped'' AS notice');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -281,29 +338,29 @@ SET @sql = IF(@has_entered_by = 0,
     'SELECT ''EnteredBy already exists'' AS notice');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- Back-fill EnteredBy once (only in the run that created the column): the
--- single user whose sampling events cite the source. Sources cited by events of
--- several users, or by none, stay NULL.
-SET @sql = IF(@has_entered_by = 0,
-    'UPDATE `DataSourceReference` ds
-     JOIN (SELECT `PublicationID_Num` AS data_source_id, MIN(`UserSamplingID`) AS user_id
-           FROM `SamplingEvent`
-           WHERE `PublicationID_Num` IS NOT NULL
-           GROUP BY `PublicationID_Num`
-           HAVING COUNT(DISTINCT `UserSamplingID`) = 1) owner
-       ON owner.data_source_id = ds.`data_source_id`
-     JOIN `users` u ON u.`User_UniqueID` = owner.user_id
-     SET ds.`EnteredBy` = owner.user_id
-     WHERE ds.`EnteredBy` IS NULL',
-    'SELECT ''EnteredBy back-fill already done'' AS notice');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+-- Back-fill EnteredBy: the single user whose sampling events cite the source.
+-- Sources cited by events of several users, or by none, stay NULL. Only empty
+-- values are filled, so this runs on every pass (a run that stopped between the
+-- ADD COLUMN and here still gets its back-fill on the re-run).
+UPDATE `DataSourceReference` ds
+JOIN (SELECT `PublicationID_Num` AS data_source_id, MIN(`UserSamplingID`) AS user_id
+      FROM `SamplingEvent`
+      WHERE `PublicationID_Num` IS NOT NULL
+      GROUP BY `PublicationID_Num`
+      HAVING COUNT(DISTINCT `UserSamplingID`) = 1) owner
+  ON owner.data_source_id = ds.`data_source_id`
+JOIN `users` u ON u.`User_UniqueID` = owner.user_id
+SET ds.`EnteredBy` = owner.user_id
+WHERE ds.`EnteredBy` IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- Step 4b: back-fill source_title, then make it mandatory.
 -- ---------------------------------------------------------------------------
 -- Citations pasted from publishers often use non-breaking spaces (U+00A0)
--- after the periods; normalise them before looking for ". ".
-SET @nbsp = CONVERT(X'C2A0' USING utf8mb4);
+-- after the periods; normalise them before looking for ". ". The explicit
+-- COLLATE matches the table's columns: on MariaDB the variable would otherwise
+-- get utf8mb4_general_ci and REPLACE() would fail with "Illegal mix of collations".
+SET @nbsp = CONVERT(X'C2A0' USING utf8mb4) COLLATE utf8mb4_unicode_ci;
 UPDATE `DataSourceReference`
 SET `source_title` = LEFT(TRIM(COALESCE(
         -- Title segment of an APA citation: "... (2016). <Title>. <Journal>, ..."
@@ -335,10 +392,11 @@ SET @sql = IF(@has_col = 0,
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- Rewrite the six legacy rows in place (ids 1-6 keep their primary keys), only
--- while the legacy PubSourceLabel column still exists, so a later manual edit
--- of a label or SortOrder is never overwritten by a re-run.
+-- while PubSourceUniqueID still exists, so a later manual edit of a label or
+-- SortOrder is never overwritten by a re-run. PubSourceUniqueID is the first of
+-- the three legacy columns renamed below, so while it exists all three do.
 SET @legacy_type_cols = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-                         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'DataSourceTypeReference' AND COLUMN_NAME = 'PubSourceLabel');
+                         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'DataSourceTypeReference' AND COLUMN_NAME = 'PubSourceUniqueID');
 SET @sql = IF(@legacy_type_cols = 1,
     'UPDATE `DataSourceTypeReference`
      SET `SortOrder` = `PubSourceUniqueID` * 10,

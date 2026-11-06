@@ -63,10 +63,11 @@
 --      label a few rows less neatly ("RUBBER - Rubber").
 --   Note: a form draft started BEFORE the migration that still holds a PETE
 --   percentage posts mp_polymer_pete / fragment_polymer_pete, which the API
---   rejects after the migration (400 "Unknown polymer percentage field(s)").
---   The user re-enters that value on page 5 as PET. Saved samples keep
---   PolymerID_Num 1, which is now PET (and their PETE snapshot becomes PET,
---   see Step 2b).
+--   rejects after the migration (400 "Unknown polymer percentage field(s)"),
+--   and the user cannot clear that field from the form. So deploy in a
+--   maintenance window and ask users beforehand to submit or discard any
+--   in-progress entry. Saved samples keep PolymerID_Num 1, which is now PET
+--   (and their PETE snapshot becomes PET, see Step 2b).
 --
 -- scripts/update-database.js does not print SELECT results; run the pre-flight
 -- and post-check SELECTs by hand to see them.
