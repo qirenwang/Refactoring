@@ -57,8 +57,7 @@ router.get('/home', (req, res) => {
         user: req.session.user_id ? {
             username: req.session.username,
             email: req.session.email
-        } : null,
-        pageSpecificJS: ['js/map-home.js']
+        } : null
     });
 });
 
@@ -159,8 +158,7 @@ router.get('/enter_and_edit_data', (req, res) => {
         user: req.session.user_id ? {
             username: req.session.username,
             email: req.session.email
-        } : null,
-        pageSpecificJS: ['js/enter-and-edit-map.js']
+        } : null
     });
 });
 
@@ -183,8 +181,7 @@ router.get('/enter_data_by_form', requireAuth, (req, res) => {
             username: req.session.username,
             email: req.session.email
         },
-        editSampleId,
-        pageSpecificJS: ['js/form-handler.js', 'js/map-data-entry.js']
+        editSampleId
     });
 });
 
@@ -196,8 +193,7 @@ router.get('/enter_data_by_file', requireAuth, (req, res) => {
         user: {
             username: req.session.username,
             email: req.session.email
-        },
-        pageSpecificJS: ['js/form-loader.js', 'js/multi-form-handler.js']
+        }
     });
 });
 

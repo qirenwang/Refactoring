@@ -989,49 +989,6 @@ body {
     display: inline-block;
 }
 
-
-/* Color definitions for legend markers */
-
-.map-legend .legend-marker.red {
-    background-color: #FF0000;
-}
-
-.map-legend .legend-marker.blue {
-    background-color: #0066CC;
-}
-
-.map-legend .legend-marker.green {
-    background-color: #33CC33;
-}
-
-.map-legend .legend-marker.purple {
-    background-color: #9933CC;
-}
-
-.map-legend .legend-marker.orange {
-    background-color: #FF9900;
-}
-
-.map-legend .legend-marker.yellow {
-    background-color: #FFFF00;
-}
-
-.map-legend .legend-marker.brown {
-    background-color: #996633;
-}
-
-.map-legend .legend-marker.pink {
-    background-color: #FF99CC;
-}
-
-.map-legend .legend-marker.gray {
-    background-color: #999999;
-}
-
-.map-legend .legend-marker.teal {
-    background-color: #33CCCC;
-}
-
 .marker-popup {
     text-align: center;
 }
@@ -2014,6 +1971,27 @@ body {
     color: #495057;
     cursor: not-allowed;
     opacity: 1;
+}
+
+/* Data source section (form page 2) */
+.data-source-section [hidden] {
+    display: none !important;
+}
+
+.data-source-step {
+    margin: 16px 0 8px;
+    font-size: 1rem;
+    color: #495057;
+}
+
+.data-source-legacy-notice {
+    margin: 8px 0 12px;
+    padding: 10px 12px;
+    border-left: 4px solid #f0ad4e;
+    background-color: #fff8e6;
+    color: #6b4e16;
+    border-radius: 3px;
+    line-height: 1.4;
 }
 
 .inline-category-details.validation-error {

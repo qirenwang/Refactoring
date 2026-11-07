@@ -386,21 +386,103 @@ function hasFragmentsDetailData(formData) {
         ]);
 }
 
+// Data sources (db/20261105_redesign_data_source_tables.sql): every sample's
+// SamplingEvent.PublicationID_Num points at a DataSourceReference row whose
+// source_type_id is one of the eight DataSourceTypeReference types. Types 1-4
+// are Published (need a publication year), 5-8 Unpublished (must not have
+// one); only type 4 (Public Database or Data Repository) carries an access
+// date. The database enforces the same rules with CHECK constraints
+// (chk_publication_year, chk_date_accessed); the checks here exist to give
+// the user a readable message instead of a constraint error. The rules and
+// messages live in public/js/publication-form-utils.js so the entry form
+// checks exactly what is checked here.
+const {
+    PUBLISHED_SOURCE_TYPE_IDS,
+    DATE_ACCESSED_SOURCE_TYPE_ID,
+    DATA_SOURCE_MESSAGES,
+    validateDataSourceDetails
+} = require('../public/js/publication-form-utils');
+
+// New form field names first; the pre-redesign publication_* names stay as
+// fallbacks so older payloads keep resolving.
+const DATA_SOURCE_FIELD_ALIASES = {
+    present: ['data_source_present', 'publication_present', 'publicationPresent'],
+    dataSourceId: ['data_source_id', 'publication_id_num', 'publication_id', 'publicationId'],
+    sourceTypeId: ['data_source_type_id', 'source_type_id', 'publication_pub_source_code', 'publicationPubSourceCode'],
+    authorsOrOrganization: ['authors_or_organization', 'publication_authors', 'publicationAuthors'],
+    publicationYear: ['publication_year', 'publicationYear'],
+    sourceTitle: ['source_title', 'sourceTitle'],
+    journalPublisherOrRepository: ['journal_publisher_or_repository', 'publication_journal', 'publicationJournal'],
+    sourceIdentifierOrUrl: ['source_identifier_or_url', 'sourceIdentifierOrUrl'],
+    projectOrCollectionName: ['project_or_collection_name', 'projectOrCollectionName'],
+    dateAccessed: ['date_accessed', 'dateAccessed'],
+    citationText: ['citation_text', 'publication_full_citation_apa', 'publicationFullCitationApa']
+};
+const NEW_DATA_SOURCE_DETAIL_KEYS = Object.keys(DATA_SOURCE_FIELD_ALIASES)
+    .filter(key => key !== 'present' && key !== 'dataSourceId');
+
+function trimmedOrNull(value) {
+    if (value === undefined || value === null) return null;
+    const trimmed = String(value).trim();
+    return trimmed === '' ? null : trimmed;
+}
+
+function readDataSourceInput(formData = {}) {
+    const input = {};
+    Object.entries(DATA_SOURCE_FIELD_ALIASES).forEach(([key, aliases]) => {
+        input[key] = trimmedOrNull(firstPresent(formData, ...aliases));
+    });
+    if (input.present) input.present = input.present.toLowerCase();
+    return input;
+}
+
+// Validates the details of a NEW data source (input from readDataSourceInput).
+function validateNewDataSource(input) {
+    return validateDataSourceDetails(input);
+}
+
 function getPublicationInputState(formData) {
-    const selectedPublication = parseNullableInt(firstPresent(formData, 'publication_id_num', 'publication_id', 'publicationId'));
-    const newPublicationFields = [
-        firstPresent(formData, 'publication_year', 'publicationYear'),
-        firstPresent(formData, 'publication_authors', 'publicationAuthors'),
-        firstPresent(formData, 'publication_journal', 'publicationJournal'),
-        firstPresent(formData, 'publication_full_citation_apa', 'publicationFullCitationApa'),
-        firstPresent(formData, 'publication_pub_source_code', 'publicationPubSourceCode')
-    ];
+    const input = readDataSourceInput(formData);
+    const selectedPublication = parseNullableInt(input.dataSourceId);
+    const hasNewPublicationInput = NEW_DATA_SOURCE_DETAIL_KEYS.some(key => input[key] !== null);
+    const newPublicationErrors = hasNewPublicationInput ? validateNewDataSource(input) : [];
 
     return {
+        input,
+        present: input.present,
         selectedPublication,
-        hasNewPublicationInput: newPublicationFields.some(value => value !== null),
-        hasCompleteNewPublication: newPublicationFields.every(value => value !== null)
+        hasNewPublicationInput,
+        hasCompleteNewPublication: hasNewPublicationInput && newPublicationErrors.length === 0,
+        newPublicationErrors
     };
+}
+
+const DATA_SOURCE_REQUIRED_MESSAGE = DATA_SOURCE_MESSAGES.required;
+
+// Save-time data-source rules. `required` is true for a NEW sample: it must
+// reference an existing data source or carry a complete new one. Edits pass
+// required=false so legacy samples saved before the redesign (NULL data
+// source) stay editable; updateSampleFromFormData() still refuses to remove a
+// data source a sample already has.
+function validateDataSourceRules(formData, { required = false } = {}) {
+    const state = getPublicationInputState(formData);
+
+    if (state.present === 'no') {
+        return required ? [DATA_SOURCE_REQUIRED_MESSAGE] : [];
+    }
+    if (state.selectedPublication) {
+        return [];
+    }
+    if (state.hasNewPublicationInput) {
+        return state.newPublicationErrors;
+    }
+    if (required) {
+        return [DATA_SOURCE_REQUIRED_MESSAGE];
+    }
+    if (state.present === 'yes') {
+        return ['Data source is incomplete. Choose an existing data source or fill in the new data-source details.'];
+    }
+    return [];
 }
 
 function hasDebrisDetailData(formData) {
@@ -521,21 +603,16 @@ function validateNumericRanges(formData) {
     return errors;
 }
 
-function validateNewSaveRules(formData) {
+function validateNewSaveRules(formData, { requireDataSource = false } = {}) {
     const errors = [];
     const totalSampleAmount = firstPresent(formData, 'total_sample_amount', 'totalSampleAmount');
     const sampleUnit = firstPresent(formData, 'sample_unit', 'sampleUnit');
 
     errors.push(...validateNumericRanges(formData));
 
-    // Publication is optional. Only require complete details when the user
-    // explicitly opted in via the Yes/No toggle.
-    const publicationPresent = firstPresent(formData, 'publication_present', 'publicationPresent');
-    const publicationInput = getPublicationInputState(formData);
-    if (publicationPresent === 'yes' &&
-        !publicationInput.selectedPublication && !publicationInput.hasCompleteNewPublication) {
-        errors.push('Publication source is incomplete. Please fill in the publication details or choose "No".');
-    }
+    // Data source: mandatory for new samples, validated whenever new details
+    // are submitted (see validateDataSourceRules).
+    errors.push(...validateDataSourceRules(formData, { required: requireDataSource }));
 
     if ((totalSampleAmount && !sampleUnit) || (!totalSampleAmount && sampleUnit)) {
         errors.push('Total Sample Amount and Sample Unit must be entered together.');
@@ -1182,65 +1259,93 @@ async function loadDetailRowsForForm(connection, config, parentId) {
         .filter(Boolean);
 }
 
-async function createPublication(connection, publicationData) {
-    const publicationId = await nextTableId(connection, 'Publications', 'PublicationUniqueID');
-    await connection.execute(`
-        INSERT INTO Publications (
-            PublicationUniqueID, Year, Authors, Journal, FullCitation_APA,
-            PubSource_Code, PubSource_Legacy, DateEntered
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE())
-    `, [
-        publicationId,
-        parseNullableInt(publicationData.year),
-        publicationData.authors,
-        publicationData.journal,
-        publicationData.fullCitationApa,
-        parseNullableInt(publicationData.pubSourceCode),
-        publicationData.pubSourceLegacy || String(publicationData.pubSourceCode || '')
-    ]);
-    return publicationId;
+function badRequest(message) {
+    const error = new Error(message);
+    error.statusCode = 400;
+    return error;
 }
 
-async function resolvePublicationId(connection, formData) {
-    // Publication is now optional. The SamplingEvent.PublicationID_Num column is
-    // nullable, so we store NULL whenever a publication is absent.
-    const publicationPresent = firstPresent(formData, 'publication_present', 'publicationPresent');
-    if (publicationPresent === 'no') {
+// Inserts a DataSourceReference row from validated readDataSourceInput()
+// values. Publication year / access date are written only for the types that
+// allow them, mirroring the table's CHECK constraints.
+async function createPublication(connection, input, enteredByUserId = null) {
+    const sourceTypeId = parseNullableInt(input.sourceTypeId);
+    const isPublished = PUBLISHED_SOURCE_TYPE_IDS.includes(sourceTypeId);
+    const dataSourceId = await nextTableId(connection, 'DataSourceReference', 'data_source_id');
+    await connection.execute(`
+        INSERT INTO DataSourceReference (
+            data_source_id, source_type_id, authors_or_organization, publication_year,
+            source_title, journal_publisher_or_repository, source_identifier_or_url,
+            project_or_collection_name, date_accessed, citation_text,
+            PubSource_Legacy, EnteredBy, DateEntered
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, CURDATE())
+    `, [
+        dataSourceId,
+        sourceTypeId,
+        input.authorsOrOrganization,
+        isPublished ? parseNullableInt(input.publicationYear) : null,
+        input.sourceTitle,
+        input.journalPublisherOrRepository,
+        input.sourceIdentifierOrUrl,
+        input.projectOrCollectionName,
+        sourceTypeId === DATE_ACCESSED_SOURCE_TYPE_ID ? input.dateAccessed : null,
+        input.citationText,
+        parseNullableInt(enteredByUserId)
+    ]);
+    return dataSourceId;
+}
+
+// A data source `ds` is the user's own when they entered it, or when one of
+// their own sampling events already cites it (legacy rows whose EnteredBy could
+// not be back-filled). Shared by the "my data sources" list (listDataSources)
+// and the save-time check in resolvePublicationId so the two always agree.
+// Binds two parameters: the user ID, twice.
+const MY_DATA_SOURCE_CONDITION = `ds.EnteredBy = ?
+           OR EXISTS (SELECT 1 FROM SamplingEvent mine_se
+                      WHERE mine_se.PublicationID_Num = ds.data_source_id
+                        AND mine_se.UserSamplingID = ?)`;
+
+// Returns the DataSourceReference ID to store in SamplingEvent.PublicationID_Num:
+// the selected existing data source, a newly created one, or NULL when nothing
+// was supplied. An existing data source is accepted only if it is one of the
+// user's own (MY_DATA_SOURCE_CONDITION). Whether NULL is acceptable is decided
+// by the caller (validateDataSourceRules for new samples,
+// updateSampleFromFormData for edits).
+async function resolvePublicationId(connection, formData, { userId = null } = {}) {
+    const state = getPublicationInputState(formData);
+    if (state.present === 'no') {
         return null;
     }
 
-    const selectedPublication = firstPresent(formData, 'publication_id_num', 'publication_id', 'publicationId');
-    if (selectedPublication) {
-        return parseNullableInt(selectedPublication);
+    if (state.selectedPublication) {
+        const userIdNum = parseNullableInt(userId);
+        const [rows] = await connection.execute(`
+            SELECT ds.data_source_id,
+                   CASE WHEN ${MY_DATA_SOURCE_CONDITION} THEN 1 ELSE 0 END AS is_mine
+            FROM DataSourceReference ds
+            WHERE ds.data_source_id = ?
+            LIMIT 1
+        `, [userIdNum, userIdNum, state.selectedPublication]);
+        if (rows.length === 0) {
+            throw badRequest('The selected data source no longer exists. Choose another one or enter a new data source.');
+        }
+        if (Number(rows[0].is_mine) !== 1) {
+            throw badRequest('This data source is not one of yours. Choose one of your data sources or enter a new data source.');
+        }
+        return state.selectedPublication;
     }
 
-    const year = firstPresent(formData, 'publication_year', 'publicationYear');
-    const authors = firstPresent(formData, 'publication_authors', 'publicationAuthors');
-    const journal = firstPresent(formData, 'publication_journal', 'publicationJournal');
-    const citation = firstPresent(formData, 'publication_full_citation_apa', 'publicationFullCitationApa');
-    const sourceCode = firstPresent(formData, 'publication_pub_source_code', 'publicationPubSourceCode');
-
-    if (year && authors && journal && citation && sourceCode) {
-        return createPublication(connection, {
-            year,
-            authors,
-            journal,
-            fullCitationApa: citation,
-            pubSourceCode: sourceCode,
-            pubSourceLegacy: null
-        });
+    if (state.hasNewPublicationInput) {
+        if (state.newPublicationErrors.length > 0) {
+            throw badRequest(state.newPublicationErrors.join(' '));
+        }
+        return createPublication(connection, state.input, userId);
     }
 
-    // If the user opted in ('yes') but left required publication fields incomplete,
-    // surface a clear error; otherwise treat publication as optional and skip it.
-    if (publicationPresent === 'yes') {
-        const error = new Error('Publication source is incomplete. Please fill in the publication details or choose "No".');
-        error.statusCode = 400;
-        throw error;
+    if (state.present === 'yes') {
+        throw badRequest('Data source is incomplete. Choose an existing data source or fill in the new data-source details.');
     }
 
-    // No publication provided and the user didn't opt in: store NULL
-    // (PublicationID_Num is nullable).
     return null;
 }
 
@@ -1383,77 +1488,6 @@ const upload = multer({
     }
 });
 
-// Test endpoint to add sample location data with ZIP codes
-router.post('/add-test-location-data', requireAuth, async (req, res) => {
-    try {
-        // Sample Detroit area ZIP codes with coordinates
-        const testLocations = [
-            { name: 'Downtown Detroit', lat: 42.3314, lng: -83.0458, zipCode: 48226, city: 'Detroit', state: 'MI' },
-            { name: 'Belle Isle Park', lat: 42.3401, lng: -82.9849, zipCode: 48207, city: 'Detroit', state: 'MI' },
-            { name: 'Detroit Riverfront', lat: 42.3298, lng: -83.0365, zipCode: 48226, city: 'Detroit', state: 'MI' },
-            { name: 'Campus Martius', lat: 42.3314, lng: -83.0457, zipCode: 48226, city: 'Detroit', state: 'MI' },
-            { name: 'Eastern Market', lat: 42.3481, lng: -83.0401, zipCode: 48207, city: 'Detroit', state: 'MI' }
-        ];
-
-        // Insert test locations
-        for (const loc of testLocations) {
-            // Insert location
-            const [locationResult] = await pool.execute(`
-                INSERT INTO Location (
-                    LocationName, Location_Desc, \`Env_Indoor_SelectID\`,
-                    \`Lat_DecimalDegree\`, \`Long_DecimalDegree\`,
-                    City, State, Country, ZipCode,
-                    UserCreated
-                ) VALUES (?, ?, 1, ?, ?, ?, ?, 'USA', ?, ?)
-            `, [
-                loc.name,
-                `Test location for ${loc.name}`,
-                loc.lat,
-                loc.lng,
-                loc.city,
-                loc.state,
-                loc.zipCode,
-                req.session.user_id
-            ]);
-
-            const locationId = locationResult.insertId;
-
-            // Insert sampling event
-            const [eventResult] = await pool.execute(`
-                INSERT INTO SamplingEvent (
-                    SamplingEventUniqueID, LocationID_Num, DeviceInstallationPeriod,
-                    StartYear, StartMonth, StartDay, UserSamplingID, DateEntered
-                ) VALUES (?, ?, 'no', YEAR(CURDATE()), MONTH(CURDATE()), DAY(CURDATE()), ?, NOW())
-            `, [locationId, locationId, req.session.user_id]);
-
-            // Insert sample details
-            await pool.execute(`
-                INSERT INTO SampleDetails (
-                    SampleUniqueID, SamplingEvent_Num, MediaType_SelectID,
-                    Micro5mmAndSmaller_Count, FragLargerThan5mm_Count
-                ) VALUES (?, ?, 1, ?, ?)
-            `, [
-                locationId,
-                locationId,
-                Math.floor(Math.random() * 100) + 10,
-                Math.floor(Math.random() * 50) + 5
-            ]);
-        }
-
-        res.json({
-            success: true,
-            message: `Added ${testLocations.length} test locations with sample data`
-        });
-
-    } catch (error) {
-        console.error('Error adding test data:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error adding test data: ' + error.message
-        });
-    }
-});
-
 // Get map data from SampleDetails and related tables
 router.get('/php/get_map_data.php', async (req, res) => {
     try {
@@ -1544,7 +1578,9 @@ router.get('/php/get_map_data.php', async (req, res) => {
     }
 });
 
-// Get map data
+// Get map data for the home page - public endpoint listing every geolocated sample.
+// Counts, sample amounts and unit codes feed the popup's concentration lines
+// (count / amount per unit, computed in public/js/map-home.js).
 router.get('/map-data', async (req, res) => {
     try {
         const [rows] = await pool.execute(`
@@ -1561,11 +1597,22 @@ router.get('/map-data', async (req, res) => {
                 se.EndMonth as end_month,
                 se.EndDay as end_day,
                 se.DeviceInstallationPeriod as device_installation_period,
-                se.UserSamplingID as created_by
+                se.UserSamplingID as created_by,
+                sd.FragLargerThan5mm_Count as fragments_count,
+                sd.Micro5mmAndSmaller_Count as microplastics_count,
+                sd.FragmentsSampleAmount as fragments_sample_amount,
+                uf.Units_Code as fragments_sample_unit,
+                sd.MicroplasticsSampleAmount as microplastics_sample_amount,
+                um.Units_Code as microplastics_sample_unit,
+                sd.TotalSampleAmount as total_sample_amount,
+                ut.Units_Code as total_sample_unit
             FROM SampleDetails sd
             LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
             LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
             LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
+            LEFT JOIN Units_Ref uf ON sd.FragmentsSampleUnit_Num = uf.UnitsUniqueID
+            LEFT JOIN Units_Ref um ON sd.MicroplasticsSampleUnit_Num = um.UnitsUniqueID
+            LEFT JOIN Units_Ref ut ON sd.SampleUnit_Num = ut.UnitsUniqueID
             WHERE l.\`Lat_DecimalDegree\` IS NOT NULL
             AND l.\`Long_DecimalDegree\` IS NOT NULL
             ORDER BY se.StartYear DESC, se.StartMonth DESC, se.StartDay DESC, se.SamplingEventUniqueID DESC
@@ -1582,22 +1629,6 @@ router.get('/map-data', async (req, res) => {
             message: 'Error fetching map data'
         });
     }
-});
-
-// Test endpoint without authentication
-router.post('/test-save', async (req, res) => {
-    console.log('=== TEST SAVE ENDPOINT ===');
-    console.log('Request method:', req.method);
-    console.log('Request headers:', JSON.stringify(req.headers, null, 2));
-    console.log('Request body:', JSON.stringify(req.body, null, 2));
-    console.log('Session data:', JSON.stringify(req.session, null, 2));
-
-    res.json({
-        success: true,
-        message: 'Test endpoint working',
-        session: req.session,
-        body: req.body
-    });
 });
 
 // Reference data endpoints
@@ -1685,6 +1716,8 @@ router.get('/ref/units', async (req, res) => {
 // db/20260817_add_reference_sort_order.sql). Reordering an option or slotting
 // in a new one is an UPDATE on that column, never a code change. The ID is
 // only the tie-breaker so ties (e.g. new rows still at 0) stay deterministic.
+// Data sources are not reference data and are not returned here; the form
+// loads the user's own from GET /api/data-sources.
 router.get('/references', async (req, res) => {
     try {
         const [polymers] = await pool.query('SELECT * FROM PolymerType_Ref ORDER BY SortOrder, PolymerUniqueID');
@@ -1714,7 +1747,11 @@ router.get('/references', async (req, res) => {
             ORDER BY SortOrder, UnitsUniqueID
         `);
         const [sizes] = await pool.query('SELECT * FROM SizeClass_Ref ORDER BY SortOrder, SizeUniqueID');
-        const [pubSources] = await pool.query('SELECT * FROM PubSource_Ref ORDER BY SortOrder, PubSourceUniqueID');
+        const [dataSourceTypes] = await pool.query(`
+            SELECT source_type_id, source_type_name, publication_status, description, SortOrder
+            FROM DataSourceTypeReference
+            ORDER BY SortOrder, source_type_id
+        `);
 
         res.json({
             success: true,
@@ -1728,7 +1765,14 @@ router.get('/references', async (req, res) => {
                 soilTextures,
                 units,
                 sizes,
-                pubSources
+                dataSourceTypes,
+                // Pre-redesign shape; the form now reads dataSourceTypes, kept for older clients.
+                pubSources: dataSourceTypes.map(type => ({
+                    ...type,
+                    PubSourceUniqueID: type.source_type_id,
+                    PubSourceLabel: type.source_type_name,
+                    PubSourceDescription: type.description
+                }))
             }
         });
     } catch (error) {
@@ -1737,59 +1781,80 @@ router.get('/references', async (req, res) => {
     }
 });
 
-router.get('/publications', async (req, res) => {
+// Data sources for the form's "reuse a previous data source" list: only the
+// user's previous sources, i.e. rows they entered plus rows their own sampling
+// events already cite (MY_DATA_SOURCE_CONDITION); signed out, none. Every row
+// carries is_mine (entered by the signed-in user) and the list puts those
+// first, newest first. The publication_* aliases keep older clients working.
+async function listDataSources(db, userId) {
+    const userIdNum = parseNullableInt(userId);
+    if (userIdNum === null) {
+        return [];
+    }
+    const [rows] = await db.query(`
+        SELECT ds.data_source_id,
+               ds.source_type_id,
+               t.source_type_name,
+               t.publication_status,
+               ds.authors_or_organization,
+               ds.publication_year,
+               ds.source_title,
+               ds.journal_publisher_or_repository,
+               ds.source_identifier_or_url,
+               ds.project_or_collection_name,
+               DATE_FORMAT(ds.date_accessed, '%Y-%m-%d') AS date_accessed,
+               ds.citation_text,
+               ds.PubSource_Legacy,
+               ds.EnteredBy,
+               DATE_FORMAT(ds.DateEntered, '%Y-%m-%d') AS date_entered,
+               CASE WHEN ds.EnteredBy IS NOT NULL AND ds.EnteredBy = ? THEN 1 ELSE 0 END AS is_mine,
+               ds.data_source_id AS publication_id_num,
+               ds.authors_or_organization AS publication_authors,
+               ds.journal_publisher_or_repository AS publication_journal,
+               ds.citation_text AS publication_full_citation_apa,
+               ds.source_type_id AS publication_pub_source_code
+        FROM DataSourceReference ds
+        LEFT JOIN DataSourceTypeReference t ON t.source_type_id = ds.source_type_id
+        WHERE ${MY_DATA_SOURCE_CONDITION}
+        ORDER BY is_mine DESC, ds.DateEntered DESC, ds.data_source_id DESC
+    `, [userIdNum, userIdNum, userIdNum]);
+    return rows || [];
+}
+
+// The entry form's "Select Existing Data Source" list: only the signed-in
+// user's own data sources, whatever ?scope says (the form still sends
+// ?scope=mine). Signed out, the list is empty. There is no endpoint for the
+// full list: other users' sources (and who entered them) are not exposed.
+router.get(['/publications', '/data-sources'], async (req, res) => {
     try {
-        const [publications] = await pool.query(`
-            SELECT PublicationUniqueID as publication_id_num,
-                   Year as publication_year,
-                   Authors as publication_authors,
-                   Journal as publication_journal,
-                   FullCitation_APA as publication_full_citation_apa,
-                   PubSource_Code as publication_pub_source_code,
-                   PubSource_Legacy as publication_pub_source_legacy,
-                   DateEntered as date_entered
-            FROM Publications
-            ORDER BY Year DESC, PublicationUniqueID DESC
-        `);
-        res.json({ success: true, data: publications });
+        const dataSources = await listDataSources(pool, req.session && req.session.user_id);
+        res.json({ success: true, data: dataSources });
     } catch (error) {
-        console.error('Error fetching publications:', error);
-        res.status(500).json({ success: false, message: 'Error fetching publications' });
+        console.error('Error fetching data sources:', error);
+        res.status(500).json({ success: false, message: 'Error fetching data sources' });
     }
 });
 
-router.post('/publications', requireAuth, async (req, res) => {
+router.post(['/publications', '/data-sources'], requireAuth, async (req, res) => {
+    const state = getPublicationInputState(req.body || {});
+    const errors = state.hasNewPublicationInput
+        ? state.newPublicationErrors
+        : ['Enter the data-source details (type, title, authors or organization, ...).'];
+    if (errors.length > 0) {
+        return res.status(400).json({ success: false, message: errors.join(' '), errors });
+    }
+
     const connection = await pool.getConnection();
     try {
-        const year = parseNullableInt(req.body.publication_year);
-        const authors = firstPresent(req.body, 'publication_authors');
-        const journal = firstPresent(req.body, 'publication_journal');
-        const citation = firstPresent(req.body, 'publication_full_citation_apa');
-        const sourceCode = parseNullableInt(firstPresent(req.body, 'publication_pub_source_code'));
-
-        if (!year || !authors || !journal || !citation || !sourceCode) {
-            return res.status(400).json({
-                success: false,
-                message: 'publication_year, publication_authors, publication_journal, publication_full_citation_apa, and publication_pub_source_code are required'
-            });
-        }
-
         await connection.beginTransaction();
-        const publicationId = await createPublication(connection, {
-            year,
-            authors,
-            journal,
-            fullCitationApa: citation,
-            pubSourceCode: sourceCode,
-            pubSourceLegacy: null
-        });
+        const dataSourceId = await createPublication(connection, state.input, req.session.user_id);
         await connection.commit();
 
-        res.json({ success: true, publication_id_num: publicationId });
+        res.json({ success: true, data_source_id: dataSourceId, publication_id_num: dataSourceId });
     } catch (error) {
         await connection.rollback();
-        console.error('Error creating publication:', error);
-        res.status(500).json({ success: false, message: 'Error creating publication: ' + error.message });
+        console.error('Error creating data source:', error);
+        res.status(500).json({ success: false, message: 'Error creating data source: ' + error.message });
     } finally {
         connection.release();
     }
@@ -1836,7 +1901,7 @@ router.post('/save-form-data',
 
             // FragmentsPurposes row totals validate purpose data.
 
-            const newSaveValidationResult = validateNewSaveRules(formData);
+            const newSaveValidationResult = validateNewSaveRules(formData, { requireDataSource: true });
             if (!newSaveValidationResult.isValid) {
                 return res.status(400).json({
                     success: false,
@@ -1883,7 +1948,10 @@ router.post('/save-form-data',
             console.log('Starting database transaction...');
 
             // Step 1: Insert into SamplingEvent table (complete fields)
-            const publicationId = await resolvePublicationId(connection, formData);
+            const publicationId = await resolvePublicationId(connection, formData, { userId: req.session.user_id });
+            if (publicationId === null) {
+                throw badRequest(DATA_SOURCE_REQUIRED_MESSAGE);
+            }
             const samplingEventData = {
                 LocationID_Num: parseInt(locationId),
                 PublicationID_Num: publicationId,
@@ -2292,7 +2360,8 @@ router.post('/save-form-data',
                 message: 'Data saved successfully',
                 samplingEventId: samplingEventId,
                 sampleDetailsId: sampleDetailsId,
-                publicationId: publicationId
+                publicationId: publicationId,
+                dataSourceId: publicationId
             });
 
         } catch (error) {
@@ -2968,9 +3037,19 @@ async function buildSampleFormData(connection, sampleId, userId) {
             sampleUnit.Units_Code AS SampleUnitCode,
             microUnit.Units_Code AS MicroplasticsSampleUnitCode,
             fragmentUnit.Units_Code AS FragmentsSampleUnitCode,
-            packagingUnit.Units_Code AS PackagingSampleUnitCode
+            packagingUnit.Units_Code AS PackagingSampleUnitCode,
+            ds.source_type_id AS DS_source_type_id,
+            ds.authors_or_organization AS DS_authors_or_organization,
+            ds.publication_year AS DS_publication_year,
+            ds.source_title AS DS_source_title,
+            ds.journal_publisher_or_repository AS DS_journal_publisher_or_repository,
+            ds.source_identifier_or_url AS DS_source_identifier_or_url,
+            ds.project_or_collection_name AS DS_project_or_collection_name,
+            DATE_FORMAT(ds.date_accessed, '%Y-%m-%d') AS DS_date_accessed,
+            ds.citation_text AS DS_citation_text
         FROM SampleDetails sd
         INNER JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
+        LEFT JOIN DataSourceReference ds ON se.PublicationID_Num = ds.data_source_id
         LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
         LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
         LEFT JOIN WaterEnvType_Ref wt ON sd.WaterEnvType_SelectID = wt.WaterEnv_UniqueID
@@ -3008,8 +3087,18 @@ async function buildSampleFormData(connection, sampleId, userId) {
         device_installation_period: row.DeviceInstallationPeriod || 'no',
         sample_time: formatTimeForInput(row.SampleTime) || '',
         sample_description: row.SamplerNames || '',
-        publication_id_num: row.PublicationID_Num ? String(row.PublicationID_Num) : '',
-        publication_present: row.PublicationID_Num ? 'yes' : 'no',
+        // The data source's details come along so the form can show (and
+        // lock) them even before the reuse list has loaded.
+        data_source_id: row.PublicationID_Num ? String(row.PublicationID_Num) : '',
+        data_source_type_id: row.DS_source_type_id != null ? String(row.DS_source_type_id) : '',
+        authors_or_organization: row.DS_authors_or_organization || '',
+        publication_year: row.DS_publication_year != null ? String(row.DS_publication_year) : '',
+        source_title: row.DS_source_title || '',
+        journal_publisher_or_repository: row.DS_journal_publisher_or_repository || '',
+        source_identifier_or_url: row.DS_source_identifier_or_url || '',
+        project_or_collection_name: row.DS_project_or_collection_name || '',
+        date_accessed: row.DS_date_accessed || '',
+        citation_text: row.DS_citation_text || '',
         air_temp: row.AirTemp_C ?? row['AirTemp-C'] ?? '',
         rainfall: row.Rainfall_cm_Precedent24 ?? row['Rainfall-cm-Precedent24'] ?? '',
         additional_notes: row.AdditionalNotes || '',
@@ -3192,7 +3281,7 @@ async function upsertChildRow(connection, tableName, idColumn, sampleId, dataMap
 
 async function updateSampleFromFormData(connection, sampleId, userId, formData) {
     const [ownerRows] = await connection.execute(`
-        SELECT sd.SampleUniqueID, sd.SamplingEvent_Num
+        SELECT sd.SampleUniqueID, sd.SamplingEvent_Num, se.PublicationID_Num
         FROM SampleDetails sd
         INNER JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
         WHERE sd.SampleUniqueID = ? AND se.UserSamplingID = ?
@@ -3206,7 +3295,19 @@ async function updateSampleFromFormData(connection, sampleId, userId, formData) 
     const samplingEventId = ownerRows[0].SamplingEvent_Num;
     const eventDates = normalizeSamplingEventDates(formData);
 
-    const publicationId = await resolvePublicationId(connection, formData);
+    // A sample saved before data sources became mandatory may keep NULL, but a
+    // sample that has a data source cannot lose it through an edit. A payload
+    // that carries no data-source fields at all leaves the current one as is.
+    let publicationId = await resolvePublicationId(connection, formData, { userId });
+    const existingDataSourceId = ownerRows[0].PublicationID_Num;
+    if (publicationId === null && existingDataSourceId !== null) {
+        const submitted = getPublicationInputState(formData);
+        if (submitted.present === null && !submitted.hasNewPublicationInput) {
+            publicationId = existingDataSourceId;
+        } else {
+            throw badRequest('This sample already has a data source and it cannot be removed. Choose another data source instead.');
+        }
+    }
     const mediaTypeId = await getMediaTypeId(connection, formData.media_type);
     const waterEnvTypeId = formData.environment_type ? await getWaterEnvTypeId(connection, formData.environment_type) : null;
     const totalSampleAmountVal = firstPresent(
@@ -3470,7 +3571,8 @@ async function updateSampleFromFormData(connection, sampleId, userId, formData) 
         }
     }
 
-    return true;
+    // Truthy result; dataSourceId lets the route add the legacy-sample notice.
+    return { dataSourceId: publicationId };
 }
 
 // Upload and process file data
@@ -3754,11 +3856,16 @@ router.put('/my-samples/:id/form-data', requireAuth, async (req, res) => {
         }
         await connection.commit();
 
-        res.json({
+        const response = {
             success: true,
             message: 'Sample updated successfully',
             sampleDetailsId: sampleId
-        });
+        };
+        if (updated.dataSourceId === null) {
+            // Legacy sample saved before data sources became mandatory.
+            response.notice = 'This sample has no data source yet. Please add one when you can.';
+        }
+        res.json(response);
     } catch (error) {
         await connection.rollback();
         console.error('Error updating sample from form data:', error);
@@ -4490,8 +4597,10 @@ function generateTemplate(templateType) {
         'fragment_color_clear', 'fragment_color_opaque_light', 'fragment_color_opaque_dark', 'fragment_color_mixed',
 
         // Polymer Types (sample selection)
-        'mp_polymer_pete', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe', 'mp_polymer_pp',
-        'mp_polymer_ps', 'mp_polymer_pa', 'mp_polymer_pc', 'mp_polymer_pla', 'mp_polymer_abs'
+        // (field suffix = normalized PolymerType_Ref.Polymer_Code; PETE became
+        // PET and PLA left the PI list in db/20261105_polymer_table_v2.sql)
+        'mp_polymer_pet', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe', 'mp_polymer_pp',
+        'mp_polymer_ps', 'mp_polymer_pa', 'mp_polymer_pc', 'mp_polymer_pe', 'mp_polymer_abs'
     ];
 
     if (templateType === 'comprehensive') {
@@ -4529,82 +4638,21 @@ function generateTemplate(templateType) {
     return headers.join(',') + '\n';
 }
 
-// Get map data for home page - public endpoint showing all sample locations
-router.get('/map-data', async (req, res) => {
-    try {
-        const sql = `
-            SELECT
-                sd.SampleUniqueID as id,
-                l.LocationName as location,
-                l.\`Lat_DecimalDegree\` as lat,
-                l.\`Long_DecimalDegree\` as lng,
-                mt.MediaTypeOverall as sampleType,
-                se.StartYear as start_year,
-                se.StartMonth as start_month,
-                se.StartDay as start_day,
-                se.EndYear as end_year,
-                se.EndMonth as end_month,
-                se.EndDay as end_day,
-                se.DeviceInstallationPeriod as device_installation_period,
-                COUNT(DISTINCT sd.SampleUniqueID) as particleCount
-            FROM SampleDetails sd
-            LEFT JOIN SamplingEvent se ON sd.SamplingEvent_Num = se.SamplingEventUniqueID
-            LEFT JOIN Location l ON se.LocationID_Num = l.Loc_UniqueID
-            LEFT JOIN MediaType_WithinLitterWaterSoil_Ref mt ON sd.MediaType_SelectID = mt.MediaTypeUniqueID
-            WHERE l.\`Lat_DecimalDegree\` IS NOT NULL
-              AND l.\`Long_DecimalDegree\` IS NOT NULL
-            GROUP BY
-                sd.SampleUniqueID,
-                l.LocationName,
-                l.\`Lat_DecimalDegree\`,
-                l.\`Long_DecimalDegree\`,
-                mt.MediaTypeOverall,
-                se.StartYear,
-                se.StartMonth,
-                se.StartDay,
-                se.EndYear,
-                se.EndMonth,
-                se.EndDay,
-                se.DeviceInstallationPeriod,
-                se.SamplingEventUniqueID
-            ORDER BY se.StartYear DESC, se.StartMonth DESC, se.StartDay DESC, se.SamplingEventUniqueID DESC
-        `;
-
-        const [rows] = await pool.execute(sql);
-        const formattedRows = rows.map(row => {
-            const presentedRow = addPartialDatePresentation(row);
-            return {
-                ...presentedRow,
-                date: presentedRow.collection_date,
-                date_display: presentedRow.collection_date_display
-            };
-        });
-
-        res.json({
-            success: true,
-            data: formattedRows,
-            count: formattedRows.length
-        });
-
-    } catch (error) {
-        console.error('Error fetching map data:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching map data',
-            data: []
-        });
-    }
-});
-
 module.exports = router;
 
-// Pure helpers exposed for unit tests (no database access).
+// Helpers exposed for unit tests (no database access of their own; the ones
+// that query take the db/connection as an argument).
 module.exports._internals = {
     getFragmentDebrisCount,
     buildFragmentCountColumns,
     readFragmentCountFromRow,
     validateNumericRanges,
     validateNewSaveRules,
+    validateNewDataSource,
+    validateDataSourceRules,
+    getPublicationInputState,
+    listDataSources,
+    resolvePublicationId,
     hasFragmentsDetailData,
     getOtherPolymerDescription,
     validateOtherPolymerDescription,

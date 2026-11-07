@@ -30,18 +30,31 @@
             .replace(/\b\w/g, letter => letter.toUpperCase());
     }
 
-    function formatPolymerLabel(polymer = {}, fallbackCode = '') {
+    // True when the full name already starts with the code as a whole word
+    // ("OTHER" / "Other Polymer", "UNKNOWN" / "Unknown Polymer", "RUBBER" /
+    // "Rubber"), so "<code> - <full name>" would just repeat the word.
+    function fullNameRepeatsCode(code, fullName) {
+        const lowerCode = String(code || '').toLowerCase();
+        const lowerName = String(fullName || '').toLowerCase();
+        return lowerCode !== '' &&
+            lowerName.startsWith(lowerCode) &&
+            !/[a-z0-9]/.test(lowerName.charAt(lowerCode.length));
+    }
+
+    // Display name of a PolymerType_Ref row, shared by the form (page 5) and
+    // the summary. Word codes (OTHER, UNKNOWN, RUBBER, ...) show their
+    // descriptive name alone; abbreviations keep "PET - Polyethylene
+    // terephthalate".
+    function formatPolymerName(polymer = {}, fallbackCode = '') {
         const code = String(polymer.Polymer_Code || fallbackCode || '').trim();
         const fullName = String(polymer.Polymer_FullName || '').trim();
+        if (!fullName) return code;
+        return fullNameRepeatsCode(code, fullName) ? fullName : `${code} - ${fullName}`;
+    }
+
+    function formatPolymerLabel(polymer = {}, fallbackCode = '') {
+        const name = formatPolymerName(polymer, fallbackCode);
         const recycleCode = polymer.RecycleCode;
-        // "Other - Other polymer type" reads oddly, so the Other reference
-        // polymer shows its descriptive name alone.
-        const isOtherPolymer = normalizeReferenceCode(code) === 'other';
-        const name = fullName && fullName.toLowerCase() !== code.toLowerCase()
-            ? (isOtherPolymer && fullName.toLowerCase().startsWith(code.toLowerCase())
-                ? fullName
-                : `${code} - ${fullName}`)
-            : code;
         const recycleLabel = recycleCode !== undefined &&
             recycleCode !== null &&
             String(recycleCode).trim() !== ''
@@ -197,6 +210,7 @@
     return {
         buildParticleSummary,
         formatPolymerLabel,
+        formatPolymerName,
         getDetailMethodLabels,
         getPolymerSummaryEntries,
         hasSummaryValue,

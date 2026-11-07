@@ -21,6 +21,11 @@ let referenceDataPromise = null;
 let publicationsCache = null;
 let publicationsPromise = null;
 const publicationCarryForwardKey = 'microplastics_publication_by_location';
+// Data-source form fields (data_source_id + the new-source details).
+const DATA_SOURCE_FORM_FIELDS = publicationFormUtils.DATA_SOURCE_FORM_FIELDS;
+// In edit mode: the data source the sample had when it was loaded ('' for a
+// legacy sample saved before data sources were required).
+let editOriginalDataSourceId = null;
 
 const DETAIL_TABLES = [
     'fragments_color_details',
@@ -164,7 +169,7 @@ function isPolymerGroupChanged(groupKey, state = formData) {
 }
 
 function buildSubmissionPayload(state) {
-    const payload = { ...state };
+    const payload = publicationFormUtils.normalizeDataSourcePayload(state);
     payload.device_installation_period = state.device_installation_period || 'no';
 
     ['start_year', 'start_month', 'start_day', 'end_year', 'end_month', 'end_day']
@@ -262,16 +267,29 @@ document.addEventListener('click', event => {
     }
 }, true);
 
-function hasPublicationSource(state = {}) {
-    const selected = state.publication_id_num || state.publication_id || state.publicationId;
-    const newFields = [
-        state.publication_year,
-        state.publication_authors,
-        state.publication_journal,
-        state.publication_full_citation_apa,
-        state.publication_pub_source_code
-    ];
-    return !!selected || newFields.every(value => value !== undefined && value !== null && String(value).trim() !== '');
+// A data source is mandatory for new samples and for edits of samples that
+// already have one. A legacy sample (saved before data sources were required)
+// stays editable without one, but any data-source input it gets must be
+// complete. Same rules and messages as routes/api.js validateDataSourceRules().
+function isDataSourceRequired() {
+    return !isEditMode || Boolean(editOriginalDataSourceId);
+}
+
+function getDataSourceIssues(state = {}) {
+    // Judge what will be sent: a year / access date the chosen type does not
+    // allow is dropped from the payload (buildSubmissionPayload), not an error.
+    return publicationFormUtils.validateDataSourceSelection(
+        publicationFormUtils.normalizeDataSourcePayload(state),
+        { required: isDataSourceRequired() }
+    );
+}
+
+function hasDataSource(state = {}) {
+    return publicationFormUtils.validateDataSourceSelection(state, { required: true }).length === 0;
+}
+
+function isLegacySampleWithoutDataSource() {
+    return isEditMode && editOriginalDataSourceId === '' && !formData.data_source_id;
 }
 
 function hasDebrisDetailData(state = {}) {
@@ -512,18 +530,19 @@ async function loadReferenceData() {
 async function loadPublications() {
     if (publicationsCache) return publicationsCache;
     if (!publicationsPromise) {
-        publicationsPromise = fetch('/api/publications')
+        // Only the signed-in user's previous data sources are offered for reuse.
+        publicationsPromise = fetch('/api/data-sources?scope=mine')
             .then(response => response.json())
             .then(payload => {
                 if (!payload.success) {
-                    throw new Error(payload.message || 'Could not load publications');
+                    throw new Error(payload.message || 'Could not load data sources');
                 }
                 publicationsCache = payload.data || [];
                 return publicationsCache;
             })
             .catch(error => {
                 publicationsPromise = null;
-                console.error('Error loading publications:', error);
+                console.error('Error loading data sources:', error);
                 throw error;
             });
     }
@@ -603,14 +622,7 @@ function populateReferenceDrivenControls() {
         updateDetailSectionOptions(section.dataset.detailSection);
     });
 
-    document.querySelectorAll('.publication-source-select').forEach(select => {
-        const options = (referenceDataCache.pubSources || []).map(item => ({
-            id: item.PubSourceUniqueID,
-            code: item.PubSourceUniqueID,
-            label: item.PubSourceLabel
-        }));
-        populateSelectOptions(select, options, '-- Select Source Type --');
-    });
+    document.querySelectorAll('.publication-source-select').forEach(populateDataSourceTypeSelect);
 
     updateSampleAmountUnits(formData.media_type);
     restoreDetailRowsFromFormData();
@@ -630,28 +642,131 @@ async function initializeReferenceData() {
     }
 }
 
+// The eight data-source types, grouped Published / Unpublished.
+function populateDataSourceTypeSelect(select) {
+    if (!select) return;
+    const currentValue = select.value || formData[select.name] || '';
+    const types = referenceDataCache?.dataSourceTypes || [];
+    select.innerHTML = '<option value="">-- Select Source Type --</option>';
+    ['Published', 'Unpublished'].forEach(status => {
+        const group = document.createElement('optgroup');
+        group.label = status;
+        types
+            .filter(type => type.publication_status === status)
+            .forEach(type => {
+                const option = document.createElement('option');
+                option.value = type.source_type_id;
+                option.textContent = type.source_type_name;
+                option.dataset.description = type.description || '';
+                option.dataset.status = type.publication_status || '';
+                group.appendChild(option);
+            });
+        if (group.children.length > 0) {
+            select.appendChild(group);
+        }
+    });
+    if (currentValue) {
+        select.value = String(currentValue);
+    }
+    updateDataSourceTypeUi();
+}
+
+// Shows the detail fields once a type is chosen (or a source is reused), the
+// publication year only for Published types (1-4) and the access date only for
+// type 4, with the chosen type's description as help text. A year or date the
+// type does not allow is cleared, unless the fields are locked to an existing
+// source.
+function updateDataSourceTypeUi() {
+    const typeSelect = document.getElementById('data-source-type-id');
+    if (!typeSelect) return;
+
+    const typeId = typeSelect.value || formData.data_source_type_id || '';
+    const rules = publicationFormUtils.getSourceTypeRules(typeId);
+    const locked = Boolean(formData.data_source_id);
+
+    const details = document.getElementById('data-source-detail-fields');
+    if (details) {
+        details.hidden = !(rules.typeId !== null || locked);
+    }
+
+    [
+        ['publication-year-row', 'publication_year', rules.requiresYear],
+        ['date-accessed-row', 'date_accessed', rules.requiresDateAccessed]
+    ].forEach(([rowId, fieldName, applies]) => {
+        const row = document.getElementById(rowId);
+        if (!row) return;
+        const input = row.querySelector(`[name="${fieldName}"]`);
+        const show = applies || (locked && Boolean(input?.value));
+        row.hidden = !show;
+        if (input) {
+            input.required = applies && !locked;
+        }
+        if (!show && !locked && rules.typeId !== null) {
+            if (input) input.value = '';
+            if (formData[fieldName]) delete formData[fieldName];
+        }
+    });
+
+    const help = document.getElementById('data-source-type-help');
+    if (help) {
+        if (!help.dataset.defaultText) {
+            help.dataset.defaultText = help.textContent.trim();
+        }
+        const option = typeSelect.selectedOptions && typeSelect.selectedOptions[0];
+        const description = option?.dataset.description || '';
+        const status = option?.dataset.status || '';
+        if (rules.typeId !== null && description) {
+            const yearNote = rules.requiresYear
+                ? 'A publication year is required.'
+                : 'Unpublished data has no publication year.';
+            const dateNote = rules.requiresDateAccessed ? ' The date you accessed it is required.' : '';
+            help.textContent = `${status}: ${description}. ${yearNote}${dateNote}`;
+        } else {
+            help.textContent = help.dataset.defaultText;
+        }
+    }
+}
+
+// An edited sample's data source arrives with the sample (buildSampleFormData);
+// keep it selectable even if the reuse list does not include it.
+function ensureSelectedDataSourceListed() {
+    const selectedId = String(formData.data_source_id || '');
+    if (!selectedId || !Array.isArray(publicationsCache)) return;
+    const listed = publicationsCache.some(item => String(item.data_source_id) === selectedId);
+    if (listed || !formData.source_title) return;
+    publicationsCache.unshift({
+        data_source_id: selectedId,
+        source_type_id: formData.data_source_type_id || '',
+        authors_or_organization: formData.authors_or_organization || '',
+        publication_year: formData.publication_year || '',
+        source_title: formData.source_title || '',
+        journal_publisher_or_repository: formData.journal_publisher_or_repository || '',
+        source_identifier_or_url: formData.source_identifier_or_url || '',
+        project_or_collection_name: formData.project_or_collection_name || '',
+        date_accessed: formData.date_accessed || '',
+        citation_text: formData.citation_text || ''
+    });
+}
+
 function populatePublicationControls() {
+    ensureSelectedDataSourceListed();
     document.querySelectorAll('.publication-select').forEach(select => {
-        const currentValue = select.value || formData.publication_id_num || '';
-        select.innerHTML = '<option value="">-- Select Existing Publication --</option>';
+        const currentValue = select.value || formData.data_source_id || '';
+        select.innerHTML = '<option value="">-- Enter a new data source --</option>';
         (publicationsCache || []).forEach(publication => {
             const option = document.createElement('option');
-            option.value = publication.publication_id_num;
+            option.value = publication.data_source_id;
             option.textContent = publicationFormUtils.getPublicationOptionLabel(publication);
-            option.dataset.year = publication.publication_year || '';
-            option.dataset.authors = publication.publication_authors || '';
-            option.dataset.journal = publication.publication_journal || '';
-            option.dataset.citation = publication.publication_full_citation_apa || '';
-            option.dataset.sourceCode = publication.publication_pub_source_code || '';
             select.appendChild(option);
         });
         if (currentValue) {
-            select.value = currentValue;
+            select.value = String(currentValue);
         }
         if (select.value) {
             applySelectedPublication(select);
         } else {
             setPublicationDetailsLocked(false);
+            updateDataSourceTypeUi();
         }
     });
 }
@@ -675,7 +790,9 @@ function applySelectedPublication(select) {
         if (select) {
             select.value = '';
         }
-        delete formData.publication_id_num;
+        // Clearing the selection unlocks and empties the details so a new
+        // data source can be entered.
+        delete formData.data_source_id;
         publicationAutofillFields.forEach(([fieldName]) => {
             delete formData[fieldName];
             document.querySelectorAll(`[name="${fieldName}"]`).forEach(element => {
@@ -683,13 +800,14 @@ function applySelectedPublication(select) {
             });
         });
         setPublicationDetailsLocked(false);
+        updateDataSourceTypeUi();
+        syncDataSourceLegacyNotice();
         sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
         rememberPublicationForLocation();
         return;
     }
 
-    formData.publication_present = 'yes';
-    formData.publication_id_num = selection.publicationId;
+    formData.data_source_id = selection.publicationId;
 
     publicationAutofillFields.forEach(([fieldName]) => {
         const value = selection.fields[fieldName] ?? '';
@@ -700,13 +818,26 @@ function applySelectedPublication(select) {
     });
 
     setPublicationDetailsLocked(true);
+    updateDataSourceTypeUi();
+    syncDataSourceLegacyNotice();
     sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
     rememberPublicationForLocation();
 }
 
+function syncDataSourceLegacyNotice() {
+    const notice = document.getElementById('data-source-legacy-notice');
+    if (notice) {
+        notice.hidden = !isLegacySampleWithoutDataSource();
+    }
+}
+
 function getPublicationCarryForwardStore() {
     try {
-        return JSON.parse(sessionStorage.getItem(publicationCarryForwardKey) || '{}');
+        const store = JSON.parse(sessionStorage.getItem(publicationCarryForwardKey) || '{}');
+        Object.keys(store).forEach(locationId => {
+            store[locationId] = publicationFormUtils.migrateLegacyDataSourceFields(store[locationId]);
+        });
+        return store;
     } catch (_) {
         return {};
     }
@@ -716,16 +847,8 @@ function rememberPublicationForLocation() {
     const locationId = formData.location_id || document.getElementById('location-select')?.value;
     if (!locationId) return;
 
-    const publicationFields = [
-        'publication_id_num',
-        'publication_year',
-        'publication_authors',
-        'publication_journal',
-        'publication_full_citation_apa',
-        'publication_pub_source_code'
-    ];
     const publicationData = {};
-    publicationFields.forEach(field => {
+    DATA_SOURCE_FORM_FIELDS.forEach(field => {
         if (formData[field]) {
             publicationData[field] = formData[field];
         }
@@ -743,6 +866,9 @@ function rememberPublicationForLocation() {
 }
 
 function applyPublicationCarryForward() {
+    // An edited sample keeps its own data source (or, for a legacy sample,
+    // none until the user adds one).
+    if (isEditMode) return;
     const locationId = formData.location_id || document.getElementById('location-select')?.value;
     if (!locationId) return;
 
@@ -759,34 +885,47 @@ function applyPublicationCarryForward() {
     });
 
     const select = document.querySelector('.publication-select');
-    if (formData.publication_id_num && select) {
-        select.value = String(formData.publication_id_num);
+    if (formData.data_source_id && select) {
+        select.value = String(formData.data_source_id);
         applySelectedPublication(select);
     } else {
         setPublicationDetailsLocked(false);
+        updateDataSourceTypeUi();
     }
 
     sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
 }
 
 function handleSavedPublication(data) {
-    if (!data || !data.publicationId) return;
-    const publicationId = String(data.publicationId);
-    formData.publication_id_num = publicationId;
-    formData.publication_present = 'yes';
+    if (data && data.notice && typeof window.showTemporaryMessage === 'function') {
+        // e.g. an edited legacy sample that still has no data source.
+        window.showTemporaryMessage(data.notice, 'info');
+    }
+    const savedId = data && (data.dataSourceId || data.publicationId);
+    if (!savedId) return;
+    const publicationId = String(savedId);
+    formData.data_source_id = publicationId;
+    if (isEditMode) {
+        editOriginalDataSourceId = publicationId;
+    }
 
-    // A newly created publication is not in the cache loaded when the form
+    // A newly created data source is not in the list loaded when the form
     // opened. Add it immediately so the carried-forward ID remains selectable
-    // when the user reaches the Publication Source section in the next case.
+    // when the user reaches the Data Source section in the next case.
     if (Array.isArray(publicationsCache) &&
-        !publicationsCache.some(publication => String(publication.publication_id_num) === publicationId)) {
+        !publicationsCache.some(publication => String(publication.data_source_id) === publicationId)) {
         publicationsCache.unshift({
-            publication_id_num: publicationId,
+            data_source_id: publicationId,
+            source_type_id: formData.data_source_type_id || '',
+            authors_or_organization: formData.authors_or_organization || '',
             publication_year: formData.publication_year || '',
-            publication_authors: formData.publication_authors || '',
-            publication_journal: formData.publication_journal || '',
-            publication_full_citation_apa: formData.publication_full_citation_apa || '',
-            publication_pub_source_code: formData.publication_pub_source_code || ''
+            source_title: formData.source_title || '',
+            journal_publisher_or_repository: formData.journal_publisher_or_repository || '',
+            source_identifier_or_url: formData.source_identifier_or_url || '',
+            project_or_collection_name: formData.project_or_collection_name || '',
+            date_accessed: formData.date_accessed || '',
+            citation_text: formData.citation_text || '',
+            is_mine: 1
         });
     }
 
@@ -1052,14 +1191,32 @@ function isOtherPolymerSpecifyField(fieldName) {
     return typeof fieldName === 'string' && fieldName.endsWith(`_${OTHER_POLYMER_SPECIFY_SUFFIX}`);
 }
 
+// "PET - Polyethylene terephthalate", but "Other Polymer" / "Unknown Polymer"
+// / "Rubber" alone (DataSummaryUtils.formatPolymerName, shared with the summary).
 function polymerRowLabel(polymer) {
     const code = String(polymer.Polymer_Code || '').trim();
     const fullName = String(polymer.Polymer_FullName || '').trim();
-    if (isOtherPolymerCode(code)) {
-        // "Other - Other polymer type" reads oddly; show the descriptive name only.
-        return fullName && fullName.toLowerCase() !== code.toLowerCase() ? fullName : 'Other polymer type';
+    if (isOtherPolymerCode(code) && (!fullName || fullName.toLowerCase() === code.toLowerCase())) {
+        return 'Other polymer type';
+    }
+    if (window.DataSummaryUtils && typeof window.DataSummaryUtils.formatPolymerName === 'function') {
+        return window.DataSummaryUtils.formatPolymerName(polymer);
     }
     return `${code} - ${fullName || code}`;
+}
+
+// Hover help for a polymer row: the PI's "when to use" note and typical
+// sources (PolymerType_Ref.ClassificationNotes / CommonApplications), plus
+// alternate abbreviations such as PETE or PUR.
+function polymerRowHint(polymer) {
+    const parts = [];
+    const altCodes = String(polymer.Polymer_AltCodes || '').trim();
+    const notes = String(polymer.ClassificationNotes || '').trim();
+    const applications = String(polymer.CommonApplications || '').trim();
+    if (altCodes) parts.push(`Also reported as: ${altCodes}`);
+    if (notes) parts.push(notes);
+    if (applications) parts.push(`Common sources: ${applications}`);
+    return parts.join('\n');
 }
 
 // Removes every reference-driven polymer field (percentages and the Other
@@ -1121,7 +1278,10 @@ window.loadPolymerOptions = function loadPolymerOptions() {
                 <label class="form-label"></label>
                 <input type="number" name="${fieldName}" class="form-input" placeholder="percentage" min="0" max="100" step="0.0001">
             `;
-            row.querySelector('label').textContent = `${polymerRowLabel(polymer)}:`;
+            const label = row.querySelector('label');
+            label.textContent = `${polymerRowLabel(polymer)}:`;
+            const hint = polymerRowHint(polymer);
+            if (hint) label.title = hint;
             const input = row.querySelector('input');
             if (input && formData[fieldName] !== undefined) {
                 input.value = formData[fieldName];
@@ -1138,7 +1298,7 @@ window.loadPolymerOptions = function loadPolymerOptions() {
             specifyRow.style.display = 'none';
             specifyRow.innerHTML = `
                 <label class="form-label" for="${specifyName}">Describe the other polymer(s):</label>
-                <input type="text" id="${specifyName}" name="${specifyName}" class="form-input polymer-other-specify" maxlength="255" placeholder="e.g. PTFE, polyurethane foam" autocomplete="off">
+                <input type="text" id="${specifyName}" name="${specifyName}" class="form-input polymer-other-specify" maxlength="255" placeholder="e.g. polyoxymethylene (POM), PEEK" autocomplete="off">
             `;
             const specifyInput = specifyRow.querySelector('input');
             if (specifyInput && formData[specifyName] !== undefined) {
@@ -1377,10 +1537,8 @@ function preValidateBeforeSubmit(state) {
     if (!state.media_type) {
         issues.push('Please select Media Type on Page 2.');
     }
-    // Publication is optional. Only require complete details when the user opted in.
-    if (state.publication_present === 'yes' && !hasPublicationSource(state)) {
-        issues.push('Please select or enter a publication source, or choose "No".');
-    }
+    // Data source: mandatory for new samples (same rules as the API).
+    issues.push(...getDataSourceIssues(state));
 
     if ((state.total_sample_amount && !state.sample_unit) || (!state.total_sample_amount && state.sample_unit)) {
         issues.push('Total Sample Amount and Sample Unit must be entered together.');
@@ -2165,26 +2323,11 @@ function syncPage2SectionVisibility() {
     }
     initializePartialDateControls();
 
-    // Publication source section visibility. Default to "No" unless the user
-    // selected "Yes" or publication data has been carried forward.
-    const hasPubData = !!(formData.publication_id_num || formData.publication_year ||
-        formData.publication_authors || formData.publication_journal ||
-        formData.publication_full_citation_apa || formData.publication_pub_source_code);
-    const showPublication = formData.publication_present === 'yes' || hasPubData;
-    if (showPublication) {
-        formData.publication_present = 'yes';
-    }
-    const yesRadio = document.querySelector('input[name="publication_present"][value="yes"]');
-    const noRadio = document.querySelector('input[name="publication_present"][value="no"]');
-    if (yesRadio && noRadio) {
-        yesRadio.checked = showPublication;
-        noRadio.checked = !showPublication;
-    }
-    const publicationFields = document.getElementById('publication-source-fields');
-    if (publicationFields) {
-        publicationFields.style.display = showPublication ? 'block' : 'none';
-    }
-    setPublicationDetailsLocked(showPublication && Boolean(formData.publication_id_num));
+    // Data source section: lock the details to a reused source, show the
+    // fields the chosen type needs, and flag a legacy sample without one.
+    setPublicationDetailsLocked(Boolean(formData.data_source_id));
+    updateDataSourceTypeUi();
+    syncDataSourceLegacyNotice();
 }
 
 // Function to update page 3 content based on page 2 data
@@ -2437,6 +2580,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize form data from session storage or create new object
     formData = JSON.parse(sessionStorage.getItem(formStorageKey)) || {};
+    // Drop pre-redesign publication_* keys a stored session may still carry.
+    formData = publicationFormUtils.migrateLegacyDataSourceFields(formData);
     setEditFormLocked(isEditMode);
 
     // Initialize device installation period radio button default selection
@@ -2499,6 +2644,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 edit_mode: 'true',
                 sample_id: editSampleId
             };
+            editOriginalDataSourceId = String(formData.data_source_id || '');
             sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
             isPageInitialLoad = false;
 
@@ -3635,44 +3781,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Add event delegation for publication source Yes/No toggle in form-page2
+    // Data source section in form-page2: reusing a source autofills and
+    // locks the details; the source type decides which details apply.
     document.addEventListener('change', function(event) {
         if (event.target.classList.contains('publication-select')) {
             applySelectedPublication(event.target);
         }
 
-        if (event.target.classList.contains('toggle-publication-source')) {
-            const showPublication = event.target.value === 'yes';
-            const publicationFields = document.getElementById('publication-source-fields');
-
-            if (publicationFields) {
-                publicationFields.style.display = showPublication ? 'block' : 'none';
-
-                // When switching to "No", clear all publication field data
-                if (!showPublication) {
-                    const publicationFieldNames = [
-                        'publication_id_num',
-                        'publication_year',
-                        'publication_authors',
-                        'publication_journal',
-                        'publication_full_citation_apa',
-                        'publication_pub_source_code'
-                    ];
-                    publicationFieldNames.forEach(name => {
-                        const el = publicationFields.querySelector(`[name="${name}"]`);
-                        if (el) el.value = '';
-                    });
-                    setPublicationDetailsLocked(false);
-                }
-            }
-
-            // Persist the toggle (and cleared fields) to formData
-            formData[event.target.name] = event.target.value;
-            if (event.target.value === 'no') {
-                ['publication_id_num', 'publication_year', 'publication_authors',
-                 'publication_journal', 'publication_full_citation_apa',
-                 'publication_pub_source_code'].forEach(name => { delete formData[name]; });
-            }
+        if (event.target.name === 'data_source_type_id') {
+            formData.data_source_type_id = event.target.value;
+            updateDataSourceTypeUi();
             sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
             rememberPublicationForLocation();
         }
@@ -3936,14 +4054,14 @@ document.addEventListener('DOMContentLoaded', function() {
             </button>
         `;
 
-        // Option D: New Case, Same Publication
+        // Option D: New Case, Same Data Source
         const optionD = document.createElement('div');
         optionD.className = 'option-item';
         optionD.innerHTML = `
             <button type="button" class="btn btn-outline-primary option-button" id="same-publication-case" style="width: 100%; margin-bottom: 15px; padding: 15px; text-align: left;">
-                <strong>D) New Case, Same Publication</strong>
+                <strong>D) New Case, Same Data Source</strong>
                 <div style="font-size: 0.9em; color: #6c757d; margin-top: 5px;">
-                    Start a brand-new case keeping only this publication source
+                    Start a brand-new case keeping only this data source
                 </div>
             </button>
         `;
@@ -4117,6 +4235,12 @@ document.addEventListener('DOMContentLoaded', function() {
         navigateToPage(1);
         clearAllFormFields();
         showTemporaryMessage('Data saved! Starting fresh data entry for new location and date', 'success');
+
+        // A data source reused for the saved sample left the page-2 details
+        // locked; unlock them so a new source can be chosen or entered.
+        setPublicationDetailsLocked(false);
+        updateDataSourceTypeUi();
+        syncDataSourceLegacyNotice();
     }
 
     function preserveNextStepFields(fieldNames) {
@@ -4158,13 +4282,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'end_month',
             'end_day',
             'sample_time',
-            'publication_present',
-            'publication_id_num',
-            'publication_year',
-            'publication_authors',
-            'publication_journal',
-            'publication_full_citation_apa',
-            'publication_pub_source_code'
+            ...DATA_SOURCE_FORM_FIELDS
         ]);
 
         formData = preservedData;
@@ -4202,13 +4320,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'end_month',
             'end_day',
             'sample_time',
-            'publication_present',
-            'publication_id_num',
-            'publication_year',
-            'publication_authors',
-            'publication_journal',
-            'publication_full_citation_apa',
-            'publication_pub_source_code',
+            ...DATA_SOURCE_FORM_FIELDS,
             'media_type',
             'water_type',
             'water_type_other_description',
@@ -4225,21 +4337,12 @@ document.addEventListener('DOMContentLoaded', function() {
         showTemporaryMessage('Data saved! Enter additional sample for same media and location', 'success');
     }
 
-    // Handler for Option D: New Case, Same Publication
-    // Keeps ONLY the publication block and starts a brand-new case from page 1.
+    // Handler for Option D: New Case, Same Data Source
+    // Keeps ONLY the data-source block and starts a brand-new case from page 1.
     function handleSamePublication() {
-        const preservedData = preserveNextStepFields([
-            'publication_present',
-            'publication_id_num',
-            'publication_year',
-            'publication_authors',
-            'publication_journal',
-            'publication_full_citation_apa',
-            'publication_pub_source_code'
-        ]);
-
-        if (hasPublicationSource(preservedData)) {
-            preservedData.publication_present = 'yes';
+        const preservedData = preserveNextStepFields(DATA_SOURCE_FORM_FIELDS);
+        if (!hasDataSource(preservedData)) {
+            DATA_SOURCE_FORM_FIELDS.forEach(field => { delete preservedData[field]; });
         }
 
         formData = preservedData;
@@ -4257,7 +4360,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
 
-        showTemporaryMessage('Data saved! Starting a new case with the same publication', 'success');
+        showTemporaryMessage('Data saved! Starting a new case with the same data source', 'success');
     }
 
     // Function to navigate to a specific page (load if not exists, then scroll)
@@ -4764,7 +4867,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     formData[element.name] = element.value;
                 }
 
-                if (element.name && element.name.startsWith('publication_')) {
+                if (DATA_SOURCE_FORM_FIELDS.includes(element.name)) {
                     rememberPublicationForLocation();
                 }
 
@@ -4957,6 +5060,16 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
 
+        getDataSourceIssues(formData).forEach(message => {
+            missingRequired.push({ key: 'data_source', label: message, page: 2 });
+        });
+        if (isLegacySampleWithoutDataSource()) {
+            validationItems.push({
+                type: 'warning',
+                message: publicationFormUtils.DATA_SOURCE_MESSAGES.legacyNotice
+            });
+        }
+
         // Check percentage validation for quantitative data
         // Note: Detailed percentage validation is performed on the backend during save
         if (formData.has_quantitative_data === 'yes') {
@@ -5019,10 +5132,13 @@ document.addEventListener('DOMContentLoaded', function() {
             'Sampling Event Information': [
                 'device_installation_period',
                 'start_date_summary', 'end_date_summary',
-                'sample_time', 'sample_description',
-                'publication_present',
-                'publication_id_num', 'publication_year', 'publication_authors', 'publication_journal',
-                'publication_full_citation_apa', 'publication_pub_source_code'
+                'sample_time', 'sample_description'
+            ],
+            'Data Source': [
+                'data_source_id', 'data_source_type_id',
+                'source_title', 'authors_or_organization', 'publication_year', 'date_accessed',
+                'journal_publisher_or_repository', 'source_identifier_or_url',
+                'project_or_collection_name', 'citation_text'
             ],
             'Sampling Weather Conditions': [
                 'air_temp', 'current_conditions', 'rainfall'
@@ -5122,13 +5238,18 @@ document.addEventListener('DOMContentLoaded', function() {
             'end_date_summary': 'Device Removal/End Date',
             'sample_time': 'Collection Time',
             'sample_description': 'Sample Description',
-            'publication_present': 'Publication Information Available',
-            'publication_id_num': 'Selected Publication',
+
+            // Data Source
+            'data_source_id': 'Existing Data Source',
+            'data_source_type_id': 'Data Source Type',
+            'source_title': 'Source Title',
+            'authors_or_organization': 'Authors or Organization',
             'publication_year': 'Publication Year',
-            'publication_authors': 'Publication Authors',
-            'publication_journal': 'Publication Journal',
-            'publication_full_citation_apa': 'Full Citation APA',
-            'publication_pub_source_code': 'Publication Source Type',
+            'date_accessed': 'Date Accessed',
+            'journal_publisher_or_repository': 'Journal, Publisher, or Repository',
+            'source_identifier_or_url': 'Identifier or URL',
+            'project_or_collection_name': 'Project or Collection Name',
+            'citation_text': 'Full Citation (APA)',
             'additional_notes': 'Additional Notes',
 
             // Media Information
@@ -5283,7 +5404,7 @@ document.addEventListener('DOMContentLoaded', function() {
             ['fragments_method_polymer_num', particleSummary.fragments.polymerMethod],
             ['fragments_method_percent_estimate', particleSummary.fragments.percentMethod]
         ]);
-        const yesNoFields = new Set(['publication_present', 'additional_info']);
+        const yesNoFields = new Set(['additional_info']);
 
         function getSelectedControlLabel(field, value) {
             const select = Array.from(document.querySelectorAll('select[name]'))
@@ -5798,9 +5919,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         'acres', 'address', 'zip_code',
                         'start_year', 'start_month', 'start_day',
                         'end_year', 'end_month', 'end_day',
-                        'publication_id_num', 'publication_year', 'publication_authors',
-                        'publication_journal', 'publication_full_citation_apa',
-                        'publication_pub_source_code'
+                        ...DATA_SOURCE_FORM_FIELDS
                     ];
 
                     // Save location data
@@ -6235,6 +6354,14 @@ function validatePage2() {
     const validation = validateSamplingEventDates(formData, { showErrors: true });
     if (!validation.ok) {
         displayErrorMessage(validation.issues[0]);
+        return false;
+    }
+
+    const dataSourceIssues = getDataSourceIssues(formData);
+    if (dataSourceIssues.length > 0) {
+        displayErrorMessage(dataSourceIssues.join(' '));
+        document.getElementById('publication-source-section')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return false;
     }
 

@@ -2,13 +2,13 @@
 
 | | |
 |---|---|
-| **Document version** | 1.1.0 |
-| **Date** | 2026-08-18 |
-| **Supersedes** | 1.0.0 (last updated 2026-02-13) |
-| **Application** | `mp-data-entry-nodejs` 1.0.0 (package.json), repository `qirenwang/Refactoring`, branch `main` |
-| **Verified against** | commit `2092d2a` (2026-08-18) and the production schema dump `sweetl23_partner_demo_20260818_105317.sql` |
+| **Document version** | 1.2.0 |
+| **Date** | 2026-11-06 |
+| **Supersedes** | 1.1.0 (2026-08-18) |
+| **Application** | `mp-data-entry-nodejs` 1.0.0 (package.json), repository `qirenwang/Refactoring`, branch `comments-20261103` (to be merged into `main`) |
+| **Verified against** | the `comments-20261103` working tree on 2026-11-06 (commit `8c5f194` plus the uncommitted 2026-11-06 batch fixes), the production schema dump `sweetl23_partner_demo_20260818_105317.sql`, and the two 2026-11-05 migrations rehearsed on local MySQL 9.4 and MariaDB 10.6 |
 
-This manual was rewritten from a full audit of the current code base and the live database schema. Where the previous edition described things that no longer exist (package tables, `layout.ejs`, the old form steps) they have been removed; where legacy artefacts are still present in the repository they are listed explicitly in §12 so nobody has to rediscover them.
+Version 1.1.0 was rewritten from a full audit of the code base and the live database schema. Version 1.2.0 brings it up to date with branch `comments-20261103`: the data-source redesign (eight source types, `DataSourceReference`), the PI's 25-row polymer list, the home-map colours and popups, the sidebar map entry, `DB_PORT` support, the new tests and the removal of the dead files that 1.1.0 listed. **As of 2026-11-06 the two 2026-11-05 migrations and the matching code are not yet deployed**; production still runs the 2026-08-18 state until the release in §9.6 is carried out. Legacy artefacts still present in the repository are listed in §12 so nobody has to rediscover them.
 
 ---
 
@@ -35,7 +35,7 @@ This manual was rewritten from a full audit of the current code base and the liv
 
 **Project name**: MicroPlastics Data Entry System (`mp-data-entry-nodejs`)
 **Owner**: Wayne State University (SweetLab)
-**Purpose**: a web application through which researchers enter, edit and review microplastics / plastic-debris sampling data (locations, sampling events, sample details, particle characterisation, publications). It was refactored from a PHP application to Node.js; a few PHP-era compatibility endpoints remain.
+**Purpose**: a web application through which researchers enter, edit and review microplastics / plastic-debris sampling data (locations, sampling events, sample details, particle characterisation, data sources). It was refactored from a PHP application to Node.js; a few PHP-era compatibility endpoints remain.
 
 **Production**: `https://entry.sweet-lab.org` (Apache reverse proxy → Docker container on the SweetLab VPS, port 3000). See §9.
 
@@ -76,7 +76,7 @@ Apache (HTTPS, entry.sweet-lab.org)  ──►  Docker container "myapp-containe
                                                │  app.js
                                                ├─ helmet → cors → morgan → static(public/) → json/urlencoded → cookie-parser → session → checkSessionTimeout
                                                ├─ /auth/*   routes/auth.js      (login, signup, captcha, password reset)
-                                               ├─ /api/*    routes/api.js       (references, locations, publications, save/edit samples, my-samples, contact, geocode)
+                                               ├─ /api/*    routes/api.js       (references, locations, data sources, save/edit samples, my-samples, contact, geocode)
                                                ├─ /*        routes/pages.js     (EJS pages)
                                                ├─ /*        routes/api.js again (legacy PHP-compat fallback, e.g. /php/get_map_data.php)
                                                ├─ services/ (emailService, accountRecoveryOutbox worker)
@@ -96,15 +96,14 @@ Refactoring/
 ├── Microplastic_sampling_datasheet_v3.xlsx  # PI's datasheet the schema/reference order is modelled on
 │
 ├── config/
-│   ├── database.js                 # mysql2 pool (host/user/pass/name from .env; no DB_PORT support)
+│   ├── database.js                 # mysql2 pool (DB_HOST/DB_PORT/DB_USER/DB_PASS/DB_NAME from the environment or .env)
 │   └── session.js                  # express-session config (MemoryStore)
 ├── middleware/
 │   └── auth.js                     # requireAuth, redirectIfLoggedIn, checkSessionTimeout
 ├── routes/
 │   ├── auth.js                     # /auth/* – captcha, login, signup, logout, password reset, account recovery
 │   ├── pages.js                    # EJS page routes
-│   ├── api.js                      # /api/* – ~4,600 lines, all data endpoints
-│   └── api copy.js                 # DEAD 32 KB stale copy, never required (§12)
+│   └── api.js                      # /api/* – ~4,660 lines, all data endpoints
 ├── services/
 │   ├── emailService.js             # Nodemailer transport + 4 mail functions
 │   └── accountRecoveryOutbox.js    # Durable, lease-based e-mail worker for password-reset mail
@@ -112,22 +111,23 @@ Refactoring/
 │   ├── account-recovery.js         # token hashing, AES-GCM payloads, password policy, base URL
 │   ├── percentage.js               # decimal-safe percentage helpers (tolerance 0.1)
 │   └── sampling-date.js            # year/month/day partial-date normalisation
-├── scripts/                        # CLI tools (§10, §13): backup, migrate, purge, init (stale), check, create-sample-table (dead)
+├── scripts/                        # CLI tools (§10, §13): backup, migrate, purge, init (stale), check
 ├── db/
-│   ├── 2026MMDD_*.sql              # 16 idempotent migrations (§6)
+│   ├── 2026MMDD_*.sql              # 18 idempotent migrations (§6)
 │   ├── sweetl23_partner_demo_202601181155.sql  # Jan-2026 seed dump (pre-refactor baseline)
 │   └── backups/                    # scripts/backup-database.js output – git-ignored
-├── views/                          # EJS pages (standalone HTML each), partials/, data_forms/  (§7)
+├── views/                          # EJS pages (standalone HTML each), partials/, data_forms/ (formpage2–5)  (§7)
 ├── public/
-│   ├── css/  js/  assets/          # static files served by express.static (§7)
-│   └── test.html, test-cors.html, test-stagewise.html   # ad-hoc dev pages, publicly served (§12)
-├── test/                           # 16 node --test files (§8)
-├── Testing/                        # manual QA artefacts: bug report, Excel verification toolkit (python)
-├── tasks/                          # prompt/spec artefacts only, no runtime code (git-ignored)
+│   └── css/  js/  assets/          # static files served by express.static (§7)
+├── test/                           # 21 node --test files (§8)
+├── Testing/                        # manual QA artefacts: bug report, Excel verification toolkit (python; pre-2026-11 table names, §12)
 ├── docs/                           # this manual (EN + ZH), quick starts, env template
-├── uploads/  logs/  controllers/   # empty directories
-└── (root leftovers)                # check-*.js, test-*.js, run-5-test-cases.js, error.log … see §12
+├── img/                            # unnamed.png only – referenced nowhere, not served (§12)
+├── developer_manual/               # pandoc exports of this manual – git-ignored (§14)
+└── uploads/  logs/  controllers/   # empty directories
 ```
+
+The dead files that 1.1.0 listed (unused views and backups, dead client scripts, `public/test*.html`, `routes/api copy.js`, root `check-*.js`/`test-*.js` scripts, `error.log`, `scripts/create-sample-table.js`, …) were deleted from the repository on 2026-11-06; `.gitignore` now also ignores `__pycache__/`.
 
 ### 2.3 Middleware order in `app.js`
 
@@ -161,10 +161,10 @@ Copy `docs/env.template.txt` to `.env` in the project root. Complete list of var
 | `PORT` | app.js | `3001` (production container uses `3000`) |
 | `ALLOWED_ORIGINS` | app.js (production CORS) | comma-separated; **unset in production means CORS origin `false`** – uncomment it in the template |
 | `SESSION_SECRET` | config/session.js, utils/account-recovery.js (fallback key) | `'your-secret-key-here'` |
-| `SESSION_TIMEOUT` | middleware/auth.js, session, auth, api | seconds; `parseInt(x)*1000 || 1800000` → 30 min if unset or non-numeric |
+| `SESSION_TIMEOUT` | middleware/auth.js, session, auth, api | seconds; `parseInt(x)*1000 \|\| 1800000` → 30 min if unset or non-numeric |
 | `COOKIE_HTTP_ONLY` | config/session.js | `true` unless the literal string `false` |
 | `DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME` | config/database.js and every script | app defaults `localhost` / `root` / `mysql` / `sweetl23_partner_demo`; `backup-database.js` has no defaults and requires `DB_NAME` |
-| `DB_PORT` | **only** `scripts/update-database.js` and `scripts/purge-data-entered-before.js` | `3306`; **the application pool ignores it** (config/database.js has no `port`) |
+| `DB_PORT` | config/database.js, `scripts/backup-database.js`, `scripts/update-database.js`, `scripts/purge-data-entered-before.js` | `3306` when unset; the production container must leave it unset or set `3306` (§9.5). `scripts/check-database.js` and `scripts/init-database.js` ignore it and always connect on 3306 |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | services/emailService.js | port 465 → implicit TLS, otherwise STARTTLS required; transport is verified at import time |
 | `ADMIN_EMAIL_1/2/3` | emailService (contact form recipients) | `ADMIN_EMAIL_1` falls back to `SMTP_USER` |
 | `PUBLIC_BASE_URL` | utils/account-recovery.js | reset-link origin; derived from the request in development, **required in production** |
@@ -175,22 +175,46 @@ Copy `docs/env.template.txt` to `.env` in the project root. Complete list of var
 
 `COOKIE_SECURE` appears in some `.env` files but is dead: `config/session.js` hard-codes `secure: false`.
 
+`dotenv` never overrides a variable that is already set in the environment, so `DB_*` values given on the command line win over `.env`. The repository's `.env` points at the **production** database; every local run against a test database must therefore pass all five `DB_*` variables explicitly (§3.4).
+
 ### 3.2 Local development
 
 ```bash
 npm install
 npm run dev        # nodemon app.js on PORT (default 3001)
 npm start          # node app.js
-npm test           # 16 test files, no database needed
+npm test           # 21 test files (122 tests), no database needed
 ```
 
 The local port defaults to 3001 so it does not collide with a production-style container on 3000.
+
+Run all four with the five `DB_*` variables pointing at a local server (§3.4). The repository `.env` points at production: `npm run dev`/`npm start` connect to it, and several test files load `routes/api.js`, which creates a mysql2 pool from it (§8).
 
 ### 3.3 Database access
 
 - Production database: MariaDB 10.6 `sweetl23_partner_demo` on the SweetLab VPS (`DB_HOST=104.247.77.90`), `utf8mb4_unicode_ci`, pool of 10 connections.
 - From a developer Mac the database is reachable **only when cPanel → Remote MySQL whitelists your current IP**. `Host … is not allowed to connect` means the IP changed (VPN, new lease, other office), not a wrong password.
-- The `mysql` CLI is not required: every maintenance task is a Node script (`scripts/`). If you want a throwaway local server for rehearsing migrations, MySQL 9.4 lives in `/usr/local/mysql/bin` on the main dev Mac; initialise a scratch data directory with `mysqld --initialize-insecure`, start it on a spare port (e.g. 33306), load the latest `db/backups/*.sql` (replace `date NOT NULL DEFAULT current_timestamp()` with `date NOT NULL`, a MariaDB-only default), and point the scripts at it with `DB_HOST=127.0.0.1 DB_PORT=33306`. The application pool itself has no `DB_PORT` support, so run the app against it only through a small harness that builds its own pool.
+- The `mysql` CLI is not required: every maintenance task is a Node script (`scripts/`). If you do use the CLI to run a migration, pass `--default-character-set=utf8mb4` (§6.1).
+- Develop, test and rehearse against a local throwaway database (§3.4); production is touched only by the backup, migration and data-operation steps of a release (§9).
+
+### 3.4 Local test databases
+
+Two throwaway servers are used on the main dev Mac. Both are started by hand on a loopback-only port with a scratch data directory outside the repository, are never registered as system services, and are loaded from the latest `db/backups/*.sql` dump (the dump contains `CREATE DATABASE`/`USE sweetl23_partner_demo`).
+
+| | MySQL 9.4 — everyday local DB | MariaDB 10.6 — migration rehearsal on the production engine |
+|---|---|---|
+| Binaries | `/usr/local/mysql/bin` (not on `PATH`; a system instance already owns 3306) | native Apple-silicon Homebrew at `/opt/homebrew`, formula `mariadb@10.6` (keg-only, but linked on this Mac, so the bare `mysqld`, `mysql` and `mysqladmin` on `PATH` are MariaDB 10.6); the init script is `/opt/homebrew/opt/mariadb@10.6/scripts/mariadb-install-db` (not on `PATH`) |
+| Address | `127.0.0.1:33306` | `127.0.0.1:33307` |
+| Set-up | `/usr/local/mysql/bin/mysqld --no-defaults --initialize-insecure --datadir=<scratch>/data`, then start `/usr/local/mysql/bin/mysqld --no-defaults --datadir=<scratch>/data --port=33306 --bind-address=127.0.0.1 --socket=<short dir>/mysql.sock --mysqlx=OFF`. Always type the full path: a bare `mysqld` starts MariaDB, not MySQL 9.4. macOS socket paths must stay under ~100 characters, so symlink a short `/tmp` directory to the scratch folder | initialise a scratch data directory with `/opt/homebrew/opt/mariadb@10.6/scripts/mariadb-install-db` and start `mariadbd` with `--no-defaults`, that data directory, `--port=33307 --bind-address=127.0.0.1` and a short socket path; do **not** use `brew services` (it would register a background service with the default configuration) |
+| Loading a dump | replace `date NOT NULL DEFAULT current_timestamp()` with `date NOT NULL` first (a MariaDB-only default MySQL rejects) | loads unchanged |
+| Why | runs the app and the browser checks | MariaDB-only behaviour (e.g. the collation failure in §6.2) only shows up here |
+
+Rules that keep these runs away from production:
+
+- **Always pass `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS` and `DB_NAME` explicitly** for the app, scripts and harnesses — the repository `.env` points at production and `dotenv` only fills in what is missing. Example: `DB_HOST=127.0.0.1 DB_PORT=33306 DB_USER=… DB_PASS=… DB_NAME=sweetl23_partner_demo node scripts/update-database.js db/<file>.sql`. Use a throwaway local account, never a real password. `scripts/check-database.js` and `scripts/init-database.js` ignore `DB_PORT` and always connect on 3306, so they cannot reach these two servers.
+- The application pool honours `DB_PORT`, so the app itself can run against a local server. The local `.claude/launch.json` has a `sweetlab-localdb` profile that starts `node app.js` on `PORT=3001` with `NODE_ENV=development` and the five `DB_*` variables pointing at `127.0.0.1:33306`. `.claude/` is untracked but **not** git-ignored: never stage it with `git add -A`/`git add .` (it holds that profile's throwaway password and session notes). Adding `.claude/` to `.gitignore` is an open follow-up (§12).
+- Logging in locally still needs the CAPTCHA, so a person types it in the browser (or use the session-stub harness in §8).
+- The dumps hold real user data: keep the scratch directories outside the repository, stop the servers with `/usr/local/mysql/bin/mysqladmin … shutdown` (MySQL) and `mariadb-admin … shutdown` (MariaDB), and delete the data directories when done.
 
 ---
 
@@ -252,11 +276,11 @@ Password policy (`utils/account-recovery.js:88`): ≥ 8 characters with lower-ca
 | `/logout` (GET) | – | → `/login` | |
 | `/captcha_test` | – | `captcha_test` | debug page, still routed |
 
-`pageSpecificJS` locals passed by some routes are consumed only by the unused `views/layout.ejs`; every rendered view hard-codes its own `<script>` tags.
+There is no layout file and no `pageSpecificJS` mechanism (both were removed on 2026-11-06); every rendered view hard-codes its own `<script>` tags. `/home` passes `currentPage: 'home'`, which highlights the sidebar's **Interactive Map** entry.
 
-### 4.4 API (`routes/api.js`, ~4,600 lines)
+### 4.4 API (`routes/api.js`, ~4,660 lines)
 
-All responses are JSON `{ success, message?, data?, errors? }`. Auth = `requireAuth`.
+All responses are JSON `{ success, message?, data?, errors? }`. Auth = `requireAuth`. The router has 28 registrations (the two data-source routes each answer on two paths); the tables below list all of them. Removed on this branch: `POST /api/test-save` (unauthenticated session echo), `POST /api/add-test-location-data` (seeded test rows) and a second, shadowed `GET /api/map-data`.
 
 **Health / diagnostics**
 
@@ -264,30 +288,30 @@ All responses are JSON `{ success, message?, data?, errors? }`. Auth = `requireA
 |---|---|---|---|
 | GET | `/api/health` | – | liveness; echoes `NODE_ENV`, origin, host, UA |
 | GET | `/api/cors-test` | – | echoes CORS headers |
-| POST | `/api/test-save` | – | debug echo of headers/body/**session** (see §12) |
-| POST | `/api/add-test-location-data` | ✔ | seeds five hard-coded Detroit locations/events/samples |
 
 **Map**
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/api/map-data` | – | all geolocated samples with partial-date presentation (a second, shadowed registration exists at `api.js:4533`) |
+| GET | `/api/map-data` | – | all geolocated samples of every user with partial-date presentation, media type (`sample_type`), size-class counts (`fragments_count`, `microplastics_count`), the fragment / microplastic / total sample amounts and their `Units_Ref` codes (the home-map popup computes count ÷ amount per unit, §7.4) |
 | GET | `/api/php/get_map_data.php` | – | legacy PHP-shaped payload; `?zipcode`, `?plastic_type` |
 
 **Reference data**
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/api/references` | – | one call: `polymers, purposes, colors, forms, methods (MethodType <> 'Count'), opacities, soilTextures, units, sizes, pubSources` — every list `ORDER BY SortOrder, <ID>` (§5.4) |
-| GET | `/api/ref/methods` | – | `Methods_Ref`; `?type`, `?appliesTo=MP|Debris|SoilType` |
+| GET | `/api/references` | – | one call: `polymers, purposes, colors, forms, methods (MethodType <> 'Count'), opacities, soilTextures, units, sizes, dataSourceTypes` plus `pubSources` (the same eight types under the pre-redesign `PubSource*` keys, kept for older clients) — every list `ORDER BY SortOrder, <ID>` (§5.4). It returns **no data-source list** |
+| GET | `/api/ref/methods` | – | `Methods_Ref`; `?type`, `?appliesTo=MP\|Debris\|SoilType` |
 | GET | `/api/ref/opacity`, `/api/ref/soil-texture`, `/api/ref/units` | – | single tables |
 
-**Publications**
+**Data sources** (`DataSourceReference`, §5.3; `/publications` is the pre-redesign alias of each path)
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/api/publications` | – | list, newest year first (snake_case aliases) |
-| POST | `/api/publications` | ✔ | create (year, authors, journal, citation, source code required) |
+| GET | `/api/data-sources`, `/api/publications` | – | **only the signed-in user's data sources**: rows they entered (`EnteredBy = me`) or that one of their own sampling events already cites; any `?scope` is ignored (the form still sends `?scope=mine`); signed out → empty list without a query. Rows carry the ten PI fields, `source_type_name`, `publication_status`, `is_mine`, and `publication_*` aliases; own entries first, newest first. There is no endpoint for the full list |
+| POST | `/api/data-sources`, `/api/publications` | ✔ | create one data source; validated by the shared `validateDataSourceDetails()` (§7.2), `EnteredBy` = session user; returns `{ data_source_id, publication_id_num }` |
+
+The listing (`listDataSources`) and the save-time check (`resolvePublicationId`) share one SQL condition, `MY_DATA_SOURCE_CONDITION`, so a source the user can see is exactly a source the user can save against.
 
 **Locations**
 
@@ -303,7 +327,7 @@ All responses are JSON `{ success, message?, data?, errors? }`. Auth = `requireA
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/api/save-form-data` | ✔ | create a full sample (transaction below) |
+| POST | `/api/save-form-data` | ✔ | create a full sample (transaction below); a data source is **mandatory** |
 | GET | `/api/my-samples` | ✔ | paginated list (`?page`, `?limit` 1–100, default 10) |
 | GET | `/api/my-samples/:id` | ✔ | summary; ownership enforced via `UserSamplingID` |
 | GET | `/api/my-samples/:id/form-data` | ✔ | full edit payload `{sampleId, formData}` |
@@ -321,26 +345,28 @@ All responses are JSON `{ success, message?, data?, errors? }`. Auth = `requireA
 | POST | `/api/upload-file-data` | ✔ | multer upload (`dataFile`, csv/xlsx/json ≤ 10 MB) — acknowledges only |
 | GET | `/api/download-template` | ✔ | CSV template |
 
-**`POST /api/save-form-data` transaction** (`api.js:1799-2312`):
+**`POST /api/save-form-data` transaction** (`api.js:1864-2380`):
 
 ```
-pre-checks: validatePercentageGroups, validateNewSaveRules, normalizeSamplingEventDates
+pre-checks: validatePercentageGroups, validateNewSaveRules({ requireDataSource: true }), normalizeSamplingEventDates
 BEGIN
- 1. Publications         resolvePublicationId(): null when publication_present='no', existing id, or INSERT (id = MAX+1)
- 2. SamplingEvent        id = MAX+1; weather → WeatherType_Ref ids; DeviceInstallationPeriod = date mode; UserSamplingID = session user
+ 1. DataSourceReference  resolvePublicationId(): the selected data_source_id (400 "no longer exists" / "This data source is
+                         not one of yours…" unless it passes MY_DATA_SOURCE_CONDITION), or INSERT a new row
+                         (id = MAX+1 via nextTableId(), EnteredBy = session user); no data source → 400
+ 2. SamplingEvent        id = MAX+1; PublicationID_Num = step 1; weather → WeatherType_Ref ids; DeviceInstallationPeriod = date mode; UserSamplingID = session user
  3. SampleDetails        id = MAX+1; ~40 columns via insertFromMap() (filtered against the live schema by getTableColumns())
  4. MicroplasticsInSample (only if microplastics data present; id = MAX+1) → MicroplasticsPolymerDetails via insertPolymerDetails()
  5. FragmentsInSample     (only if fragments data present; id = MAX+1)      → FragmentsPolymerDetails
  6. detail rows via insertDetailRows(): FragmentsColor/Form/Opacity/Purposes, MicroplasticsColor/Opacity/Size/Form(shape)/Form(texture)
-COMMIT → { success, samplingEventId, sampleDetailsId, publicationId }
+COMMIT → { success, samplingEventId, sampleDetailsId, publicationId, dataSourceId }   (the last two are the same id)
 ROLLBACK on error → status error.statusCode || 500 (stack only in development)
 ```
 
 Polymer inserts assert the schema before writing (`assertDecimalPercentageStorage`, `assertAutoIncrementColumn`, `assertPolymerOtherDescColumn`, `assertSubmittedPolymerTotal`) and read the rows back afterwards (`assertStoredPolymerDetails`).
 
-**Edit flow** (`GET` then `PUT /api/my-samples/:id/form-data`): `buildSampleFormData()` joins `SampleDetails ⋈ SamplingEvent ⋈ Location ⋈ MediaType ⋈ WaterEnvType ⋈ Units_Ref×4` (gated on ownership), flattens to the form's snake_case keys, then loads the two `*InSample` rows, polymer fields (`loadPolymerFieldsForForm`) and each detail group (`loadDetailRowsForForm`). `PUT` validates (`includeLegacyColumnGroups: false`), then in one transaction: ownership check → `resolvePublicationId` → `UPDATE SamplingEvent` → `UPDATE SampleDetails` → `upsertChildRow` for both `*InSample` → `replacePolymerDetails` ×2 → nine `replaceDetailRows` configs. **An omitted detail group is left untouched; an explicitly submitted `[]` clears it.** Shape and texture share `MicroplasticsFormDetails`, so both must be sent together (400 otherwise).
+**Edit flow** (`GET` then `PUT /api/my-samples/:id/form-data`): `buildSampleFormData()` joins `SampleDetails ⋈ SamplingEvent ⋈ DataSourceReference ⋈ Location ⋈ MediaType ⋈ WaterEnvType ⋈ Units_Ref×4` (gated on ownership), flattens to the form's snake_case keys (the data source as `data_source_id`, `data_source_type_id` and the other detail field names), then loads the two `*InSample` rows, polymer fields (`loadPolymerFieldsForForm`) and each detail group (`loadDetailRowsForForm`). `PUT` validates (`includeLegacyColumnGroups: false`; `validateNewSaveRules` **without** `requireDataSource`), then in one transaction: ownership check → `resolvePublicationId` (same ownership rule as a new sample) → `UPDATE SamplingEvent` → `UPDATE SampleDetails` → `upsertChildRow` for both `*InSample` → `replacePolymerDetails` ×2 → nine `replaceDetailRows` configs. **An omitted detail group is left untouched; an explicitly submitted `[]` clears it.** Shape and texture share `MicroplasticsFormDetails`, so both must be sent together (400 otherwise). Data source on edit: a payload without any data-source field keeps the sample's current one; a sample that has a data source cannot lose it (400 "…cannot be removed"); a legacy sample saved before data sources became mandatory may stay without one, and the response then carries `notice: 'This sample has no data source yet…'`.
 
-`module.exports._internals` exposes the pure helpers used by the tests (`getFragmentDebrisCount`, `buildFragmentCountColumns`, `validateNumericRanges`, `validateNewSaveRules`, `insertPolymerDetails`, `replacePolymerDetails`, `loadPolymerFieldsForForm`, …).
+`module.exports._internals` exposes the pure helpers used by the tests (`getFragmentDebrisCount`, `buildFragmentCountColumns`, `validateNumericRanges`, `validateNewSaveRules`, `validateDataSourceRules`, `getPublicationInputState`, `listDataSources`, `resolvePublicationId`, `insertPolymerDetails`, `replacePolymerDetails`, `loadPolymerFieldsForForm`, …). Data-source input is read under the new field names first, with the pre-redesign `publication_*` names as fallbacks (`DATA_SOURCE_FIELD_ALIASES`).
 
 ### 4.5 E-mail (`services/emailService.js`)
 
@@ -359,7 +385,7 @@ Started once from `app.listen`'s callback (`startAccountRecoveryOutboxWorker`). 
 
 ### 4.7 Configuration
 
-`config/database.js`: `mysql.createPool({ host, user, password, database, charset:'utf8mb4', connectionLimit:10 })`; exports `pool`, `testConnection()`. No `port` (3306 only).
+`config/database.js`: `mysql.createPool({ host, port, user, password, database, charset:'utf8mb4', connectionLimit:10 })` with `port = DB_PORT` (default 3306); exports `pool`, `testConnection()`.
 
 `config/session.js`: `{ secret: SESSION_SECRET, resave:false, saveUninitialized:false, cookie:{ secure:false, httpOnly: COOKIE_HTTP_ONLY !== 'false', maxAge: SESSION_TIMEOUT*1000 || 30 min, sameSite: production ? 'strict' : 'lax' }, name:'sessionId' }`. **No store → MemoryStore**: sessions are per-process and lost on restart, and the app cannot be scaled horizontally without adding a store.
 
@@ -371,19 +397,21 @@ Started once from `app.listen`'s callback (`startAccountRecoveryOutboxWorker`). 
 | `utils/percentage.js` | `PERCENTAGE_DECIMAL_PLACES=4`, `PERCENTAGE_TOLERANCE=0.1`, `parsePercentage`, `sumPercentages`, `isPercentageTotalValid`, `toDatabasePercentage`, `isBlankPercentage` | the tolerance is duplicated in `form-handler.js` and `formpage5.ejs` (must stay 0.1 in all three) |
 | `utils/sampling-date.js` | `normalizeSamplingEventDates`, `addPartialDatePresentation` | year / year-month / full-date components, `mode` → `DeviceInstallationPeriod`, `collection_date_display` for read APIs |
 
+`routes/api.js` also `require`s the browser module `public/js/publication-form-utils.js` (UMD), so the data-source rules and messages exist once and are applied identically in the form and on the server (§7.2).
+
 ---
 
 ## 5. Database Schema
 
-Source of truth: the latest dump in `db/backups/` (currently `sweetl23_partner_demo_20260818_105317.sql`, 40 tables, InnoDB, `utf8mb4_unicode_ci`). `database_init.sql` and the January-2026 seed dump are **not** current (§6.3).
+Source of truth: the latest dump in `db/backups/` (currently `sweetl23_partner_demo_20260818_105317.sql`, 40 tables, InnoDB, `utf8mb4_unicode_ci`) **plus the two 2026-11-05 migrations** (§6.2). This section describes the schema after those migrations; until they are deployed (§9.6), production still has `Publications` / `PubSource_Ref` and the 20-row polymer list. The migrations only rename and extend tables, so the count stays at 40. `database_init.sql` and the January-2026 seed dump are **not** current (§6.3).
 
 ### 5.1 Table inventory
 
 | Group | Tables |
 |---|---|
-| Core (18) | `users`, `Location`, `Publications`, `SamplingEvent`, `SampleDetails`, `MicroplasticsInSample`, `FragmentsInSample`, `MicroplasticsPolymerDetails`, `MicroplasticsColorDetails`, `MicroplasticsFormDetails`, `MicroplasticsOpacityDetails`, `MicroplasticsSizeDetails`, `FragmentsPolymerDetails`, `FragmentsColorDetails`, `FragmentsFormDetails`, `FragmentsOpacityDetails`, `FragmentsPurposes`, `RamanDetails` |
+| Core (18) | `users`, `Location`, `DataSourceReference` (was `Publications`), `SamplingEvent`, `SampleDetails`, `MicroplasticsInSample`, `FragmentsInSample`, `MicroplasticsPolymerDetails`, `MicroplasticsColorDetails`, `MicroplasticsFormDetails`, `MicroplasticsOpacityDetails`, `MicroplasticsSizeDetails`, `FragmentsPolymerDetails`, `FragmentsColorDetails`, `FragmentsFormDetails`, `FragmentsOpacityDetails`, `FragmentsPurposes`, `RamanDetails` |
 | Auth / support (4) | `password_reset_tokens`, `account_recovery_outbox`, `account_recovery_cooldowns`, `contact_submissions` |
-| Reference (18) | `PolymerType_Ref`, `Purpose_Ref`, `ColorType_Ref`, `Form_Ref`, `Methods_Ref`, `Opacity_Ref`, `SoilTexture_Ref`, `Units_Ref`, `SizeClass_Ref`, `PubSource_Ref` (these ten carry `SortOrder`), `Country_Ref` (249), `State_Ref` (51), `OrganizationType_Ref` (12), `MediaType_WithinLitterWaterSoil_Ref` (4), `WaterEnvType_Ref` (6), `WeatherType_Ref` (3), `Wavelength_Ref` (5), `LocType_Env-Indoor_Ref` (2, note the hyphen) |
+| Reference (18) | `PolymerType_Ref`, `Purpose_Ref`, `ColorType_Ref`, `Form_Ref`, `Methods_Ref`, `Opacity_Ref`, `SoilTexture_Ref`, `Units_Ref`, `SizeClass_Ref`, `DataSourceTypeReference` (was `PubSource_Ref`) (these ten carry `SortOrder`), `Country_Ref` (249), `State_Ref` (51), `OrganizationType_Ref` (12), `MediaType_WithinLitterWaterSoil_Ref` (4), `WaterEnvType_Ref` (6), `WeatherType_Ref` (3), `Wavelength_Ref` (5), `LocType_Env-Indoor_Ref` (2, note the hyphen) |
 
 There is no session table and no audit table.
 
@@ -392,7 +420,9 @@ There is no session table and no audit table.
 ```
 users ──< Location (UserCreated)
 users ──< SamplingEvent (UserSamplingID)
-Location ──< SamplingEvent (LocationID_Num)         Publications ──< SamplingEvent (PublicationID_Num, nullable)
+users ──< DataSourceReference (EnteredBy, nullable)
+DataSourceTypeReference ──< DataSourceReference (source_type_id)
+Location ──< SamplingEvent (LocationID_Num)         DataSourceReference ──< SamplingEvent (PublicationID_Num → data_source_id, nullable)
 SamplingEvent ──< SampleDetails (SamplingEvent_Num)
 SampleDetails ──< MicroplasticsInSample ──< Microplastics{Polymer,Color,Form,Opacity,Size}Details
 SampleDetails ──< FragmentsInSample     ──< Fragments{Polymer,Color,Form,Opacity}Details, FragmentsPurposes
@@ -400,7 +430,7 @@ SampleDetails ──< RamanDetails
 users ──< password_reset_tokens ──< account_recovery_outbox
 ```
 
-Delete rules: parent links from `SamplingEvent`/`SampleDetails`/`*InSample` upward are RESTRICT; the Color/Form/Opacity/Size/Purposes detail tables cascade from their `*InSample` parent, **but the two `*PolymerDetails` tables do not** (RESTRICT). Reference FKs are RESTRICT except `Opacity_Ref` and `SizeClass_Ref` links, which cascade. `password_reset_tokens` and `account_recovery_outbox` cascade from `users`/tokens. Deleting sample data therefore has to go bottom-up (this is what `scripts/purge-data-entered-before.js` does).
+Delete rules: parent links from `SamplingEvent`/`SampleDetails`/`*InSample` upward are RESTRICT; the Color/Form/Opacity/Size/Purposes detail tables cascade from their `*InSample` parent, **but the two `*PolymerDetails` tables do not** (RESTRICT). Reference FKs are RESTRICT except `Opacity_Ref` and `SizeClass_Ref` links, which cascade. `password_reset_tokens` and `account_recovery_outbox` cascade from `users`/tokens. Data sources: `FK_Event_Publication` (SamplingEvent → DataSourceReference) is ON UPDATE CASCADE and restricts deletes; `FK_DataSource_SourceType` has no `ON UPDATE`/`ON DELETE` clause, so a referenced type can be neither renumbered nor deleted (MySQL refuses a CHECK constraint on a column whose FK cascades, and the eight type IDs never change); `FK_DataSource_EnteredBy` is ON UPDATE CASCADE, ON DELETE SET NULL. Deleting sample data therefore has to go bottom-up (this is what `scripts/purge-data-entered-before.js` does).
 
 ### 5.3 Core tables
 
@@ -427,13 +457,32 @@ Delete rules: parent links from `SamplingEvent`/`SampleDetails`/`*InSample` upwa
 | `LocationType_Environment`, `LocationType_Indoor` mediumtext; `LandUseCover` varchar(255) | NULL | |
 | `DateCreated` datetime NOT NULL default now; `UserCreated` **int NOT NULL → users** | | creator (converted from username text by the 2026-07-10 FK migration) |
 
-**Publications** — PK `PublicationUniqueID` (application-assigned MAX+1). `Year` int, `Authors`, `Journal`, `FullCitation_APA` mediumtext (all NOT NULL), `PubSource_Code` → `PubSource_Ref`, `PubSource_Legacy` mediumtext (label snapshot), `DateEntered` date.
+**DataSourceReference** (was `Publications`; renamed and extended by `20261105_redesign_data_source_tables.sql` to the PI's ten-field structure; the PI's column names are used verbatim because the team browses the tables in phpMyAdmin) — PK `data_source_id` (was `PublicationUniqueID`; application-assigned MAX+1 via `nextTableId()`).
+
+| Column | Type | Meaning |
+|---|---|---|
+| `source_type_id` → `DataSourceTypeReference` | int NOT NULL | was `PubSource_Code`; 1–4 Published, 5–8 Unpublished (§5.4) |
+| `authors_or_organization` | mediumtext NULL | was `Authors`; authors (First Last; …) or the responsible organisation |
+| `publication_year` | int NULL | was `Year`; required for types 1–4, must be NULL for types 5–8 |
+| `source_title` | varchar(500) NOT NULL | article / book / report / dataset / project title; migrated rows were back-filled from the title segment of the APA citation, else the whole citation, else the journal, else `Untitled source` |
+| `journal_publisher_or_repository` | mediumtext NULL | was `Journal` |
+| `source_identifier_or_url` | varchar(500) NULL | DOI, ISBN, report number, dataset ID or URL |
+| `project_or_collection_name` | varchar(255) NULL | associated project or collection |
+| `date_accessed` | date NULL | required for type 4 (Public Database or Data Repository), must be NULL otherwise |
+| `citation_text` | mediumtext NULL | was `FullCitation_APA`; complete APA citation |
+| `PubSource_Legacy` | mediumtext NULL | the pre-2026-11 `PubSource_Ref` code of migrated rows (appended as ` [PubSource_Ref n]` when the column already held a different value); NULL on new rows |
+| `EnteredBy` → `users` | int NULL | who entered the source; drives the per-user reuse list. Migrated rows were back-filled when every event citing the source belongs to one user; otherwise NULL |
+| `DateEntered` | date NOT NULL default now | |
+
+CHECK constraints (the PI's rules, MariaDB syntax): `chk_publication_year` — `(source_type_id IN (1,2,3,4) AND publication_year IS NOT NULL) OR (source_type_id IN (5,6,7,8) AND publication_year IS NULL)`; `chk_date_accessed` — `(source_type_id = 4 AND date_accessed IS NOT NULL) OR (source_type_id <> 4 AND date_accessed IS NULL)`. Authors/organisation, journal/publisher/repository and the citation are nullable in the database but required by the application for every new data source (§7.2).
+
+**DataSourceTypeReference** (was `PubSource_Ref`) — PK `source_type_id` (was `PubSourceUniqueID`; 1–8, fixed), `SortOrder` (10–80), `source_type_name` varchar(100) NOT NULL (was `PubSourceLabel`), `publication_status` varchar(20) NOT NULL with CHECK `chk_source_type_publication_status` (`'Published'` / `'Unpublished'`), `description` varchar(255) NOT NULL (was `PubSourceDescription`), `DateEntered`. The eight rows are listed in §5.4.
 
 **SamplingEvent** — **no primary key**, UNIQUE `SamplingEventUniqueID` (application-assigned MAX+1).
 
 | Column | Type | Meaning |
 |---|---|---|
-| `LocationID_Num` → `Location` NOT NULL; `PublicationID_Num` → `Publications` NULL; `UserSamplingID` → `users` NOT NULL | | |
+| `LocationID_Num` → `Location` NOT NULL; `PublicationID_Num` → `DataSourceReference.data_source_id` NULL; `UserSamplingID` → `users` NOT NULL | | `PublicationID_Num` kept its pre-redesign name; the application requires it on every new sample, NULL survives only on legacy samples |
 | `StartYear` smallint unsigned NOT NULL; `StartMonth`, `StartDay` tinyint unsigned NULL | | collection (or device start) date at the precision the user knows |
 | `EndYear`, `EndMonth`, `EndDay` | NULL | device removal date; only for device-period events |
 | `DeviceInstallationPeriod` enum('no','yes') NOT NULL default `no` | | single collection vs installed device |
@@ -489,24 +538,25 @@ All measurement columns were unified to `DECIMAL(12,6)` on 2026-08-11 (six integ
 
 | Table | Content (rows) | Notes |
 |---|---|---|
-| `PolymerType_Ref` (20) | `Polymer_Code` (UNIQUE), `Polymer_FullName`, `RecycleCode` 1–7, `Category`; row 20 = `Other` / "Other polymer type" | AUTO_INCREMENT already at 41 — IDs are not contiguous and never will be |
+| `PolymerType_Ref` (25, the PI's 2026-11 list) | `Polymer_Code` (UNIQUE), `Polymer_AltCodes` (PI alternates such as PETE, PE-HD, PE-LD, PUR, MULTI — display only), `Polymer_FullName`, `RecycleCode` (1–6 on PET … PS, NULL elsewhere), `Category`, `CommonApplications`, `ClassificationNotes`. Codes in PI order: PET, HDPE, PVC, LDPE, PP, PS, ABS, CA, EVA, PAN, PA, PBT, PC, PE, PMMA, PTFE, PU, SAN, MIX, OTHER, UNKNOWN, BITUMEN, RUBBER, RTB, OSM | migration `20261105_polymer_table_v2.sql`. IDs are not contiguous: continuing rows keep theirs (1–8, 10, 11, 14, 17–20; PETE became PET in place), the ten new rows got MAX+1. The retired PLA, PB, PE_UHMW, HIPS, EPS are deleted when no polymer-details row references them, otherwise kept at `SortOrder` 1010–1050 and marked "Legacy option" in `ClassificationNotes` |
+| `DataSourceTypeReference` (8) | Published: 1 Journal Article, 2 Book or Conference Publication, 3 Government or Technical Report, 4 Public Database or Data Repository; Unpublished: 5 Research or Laboratory Data, 6 Government or Industry Data, 7 Community-Collected Data, 8 Citizen Science or Personal Collection Data | the IDs are hard-coded in `publication-form-utils.js` and the CHECK constraints (§5.3): adding or renumbering a type is a code + migration change, not a data edit |
 | `Purpose_Ref` (7) | `single_use`, `multi_use`, `consumer_product`, `bag_container`, `packing`, `other_purpose`, `unknown_purpose`; `Purpose_Name` UNIQUE | names were edited to the PI's wording after the seed dump |
 | `ColorType_Ref` (13) | `Color_Set` = `Simple` (4, legacy MP set) / `Detailed` (9 incl. `other_mixed`) | the form offers only `Detailed`; a legacy `Simple` value is kept as a disabled option on edit |
 | `Form_Ref` (8) | flags `AppliesTo_MP_Shape`, `AppliesTo_Texture`; `Other_Mixed` applies to both | |
 | `Methods_Ref` (13) | `MethodType` Polymer / Count / Percent / SoilTexture with `AppliesTo_MP/Debris/SoilType` flags | `Count` rows are excluded from `/api/references` |
-| `Opacity_Ref` (4), `SoilTexture_Ref` (12, USDA classes), `Units_Ref` (3: L, g, km2), `SizeClass_Ref` (5), `PubSource_Ref` (6) | | |
+| `Opacity_Ref` (4), `SoilTexture_Ref` (12, USDA classes), `Units_Ref` (3: L, g, km2), `SizeClass_Ref` (5) | | |
 | `Country_Ref` (249, ISO 3166-1, `ISOAlpha2`; id 1 = United States), `State_Ref` (51), `OrganizationType_Ref` (12) | signup/profile | |
 | `MediaType_WithinLitterWaterSoil_Ref` (4), `WaterEnvType_Ref` (6), `WeatherType_Ref` (3), `Wavelength_Ref` (5), `LocType_Env-Indoor_Ref` (2) | | |
 
 **Display order is data, not code.** The ten tables served by `/api/references` carry `SortOrder INT NOT NULL DEFAULT 0` (migration `20260817_add_reference_sort_order.sql`) and every list on the form is rendered in `ORDER BY SortOrder, <ID>`:
 
 - regular options count in tens (10, 20, 30, …) so a new option can be slotted between neighbours;
-- catch-alls are pinned high: `Other …` = 900, `Unknown` = 990, so they always close a list;
-- Purposes follow the PI's datasheet order (Products one time → Products multiple times → Other durable goods → Bag → Packing → Other → Unknown); polymers follow recycle codes 1–6, then the remaining polymers, then Other; the other tables keep their historical order.
+- catch-alls are pinned high: `Other …` = 900, `Unknown` = 990, so they always close a list — **except** in `PolymerType_Ref`, which follows the PI's numbered list (`SortOrder` = PI No. × 10, 10–250, so Other Polymer = 200 and Unknown Polymer = 210 sit inside the list on purpose);
+- Purposes follow the PI's datasheet order (Products one time → Products multiple times → Other durable goods → Bag → Packing → Other → Unknown); data-source types are 10–80 in ID order; the other tables keep their historical order.
 
-To reorder or add an option no code changes: `UPDATE Purpose_Ref SET SortOrder = 35 WHERE Purpose_Code = '…';` or `INSERT INTO PolymerType_Ref (Polymer_Code, Polymer_FullName, RecycleCode, Category, SortOrder) VALUES ('PTFE', 'Polytetrafluoroethylene', NULL, 'Synthetic', 175);`. Never write the ID yourself, and never renumber IDs — sample rows reference them. A row left at `SortOrder = 0` sorts **first**, on purpose, as a reminder to assign a value. `Polymer_Code` doubles as the form field suffix (`mp_polymer_<code>`), so it must stay unique; the code `Other` is special-cased in the application and must not be renamed.
+To reorder or add an option no code changes: `UPDATE Purpose_Ref SET SortOrder = 35 WHERE Purpose_Code = '…';` or `INSERT INTO PolymerType_Ref (Polymer_Code, Polymer_FullName, RecycleCode, Category, CommonApplications, ClassificationNotes, SortOrder) VALUES ('PEEK', 'Polyether ether ketone', NULL, 'Plastic polymer', '…', '…', 165);`. Never renumber IDs — sample rows reference them. On the AUTO_INCREMENT tables (`PolymerType_Ref`, `Purpose_Ref`, `ColorType_Ref`, `Form_Ref`, `SizeClass_Ref`) leave the ID to the database; the others need an explicit unused ID (MAX+1). A row left at `SortOrder = 0` sorts **first**, on purpose, as a reminder to assign a value. `Polymer_Code` doubles as the form field suffix — lower-cased, non-alphanumerics replaced by `_` (`mp_polymer_pet`, `fragment_polymer_pet`) — so it must stay unique after that normalisation; the code `OTHER` (normalised `other`) is special-cased in the application (it gets the "Describe the other polymer(s)" box) and must not be renamed. `Polymer_AltCodes`, `ClassificationNotes` and `CommonApplications` are shown as the polymer row's hover text on form page 5.
 
-Removing an option: `DELETE` works only while no sample row references it (RESTRICT FKs). Once real data references an option, retire it with a soft-delete flag plus "keep it visible on samples that already use it" logic instead of deleting — that logic does not exist yet (see §12).
+Removing an option: `DELETE` works only while no sample row references it (RESTRICT FKs) — this is how the polymer v2 migration retires the five dropped polymers, which is why the 2026-11 release purges old sample data before running it (§9.6). Once real data references an option, retire it with a soft-delete flag plus "keep it visible on samples that already use it" logic instead of deleting — that logic does not exist yet (see §12).
 
 ---
 
@@ -514,7 +564,7 @@ Removing an option: `DELETE` works only while no sample row references it (RESTR
 
 ### 6.1 How migrations work
 
-- One SQL file per change in `db/`, named `YYYYMMDD_description.sql`, applied with `node scripts/update-database.js db/<file>.sql` (the runner refuses paths outside `db/` or without `.sql`, and executes the file as a single multi-statement query).
+- One SQL file per change in `db/`, named `YYYYMMDD_description.sql`, applied with `node scripts/update-database.js db/<file>.sql` (the runner refuses paths outside `db/` or without `.sql`, connects with `charset: 'utf8mb4'`, executes the file as a single multi-statement query, stops at the first error, and does not print `SELECT` results — run the pre-flight/post-check queries by hand, e.g. in phpMyAdmin, if you want to see them). If you must use the `mysql`/`mariadb` CLI instead, pass `--default-character-set=utf8mb4`: a latin1 connection fails mid-way on the `COLLATE utf8mb4_unicode_ci` clauses of `20261105_redesign_data_source_tables.sql`.
 - **There is no migration ledger.** Every migration is written to be idempotent (INFORMATION_SCHEMA guards, `IF(...)` + `PREPARE/EXECUTE`, "only rows still at default" back-fills) so re-running is a no-op.
 - Migrations are run **from a developer machine against the production database** (needs the Remote MySQL whitelist), never inside the container. Always `node scripts/backup-database.js` first.
 - Each file's header states its deploy order relative to the code. Two patterns exist: *migration first* (adds columns the new code needs) and *code first* (drops columns the old code still reads).
@@ -538,15 +588,38 @@ Removing an option: `DELETE` works only while no sample row references it (RESTR
 | `20260811_unify_sample_numeric_precision.sql` | measurements → `DECIMAL(12,6)`; two pre-flight SELECTs must return no rows | **migration first**, then `formpage2/4.ejs` |
 | `20260815_add_polymer_other_description.sql` | `PolymerOther_Desc` on both polymer detail tables; relabel Other → "Other polymer type" | either order, but before the next one |
 | `20260815_merge_fragment_purpose_counts.sql` | `FragmentsInSample.FragLargerThan5mm_Count`, back-fill, drop `PurposeKnown/Unknown_Count` | **code first** (`api.js`, `form-handler.js`, `formpage5.ejs`, `mp_style.css`), then migration |
-| `20260817_add_reference_sort_order.sql` | `SortOrder` on the ten reference tables + back-fill (§5.4) | **migration first**, then `routes/api.js` |
+| `20260817_add_reference_sort_order.sql` | `SortOrder` on the ten reference tables + back-fill (§5.4). **Do not re-run after the next migration**: it still targets `PubSource_Ref` and fails once that table is renamed | **migration first**, then `routes/api.js` |
+| `20261105_redesign_data_source_tables.sql` ("T1") | data-source redesign, details below | **migration first, code in the same maintenance window** (§9.6) |
+| `20261105_polymer_table_v2.sql` ("T3") | the PI's 25-row polymer list, details below | after T1 and the deploy-day purge; then code (§9.6) |
 
-All sixteen have been applied to production (last on 2026-08-18).
+The first sixteen have been applied to production (last on 2026-08-18). **The two 2026-11-05 migrations are not yet applied** (as of 2026-11-06); run them in the order T1 → purge → T3 given in §9.6, not in file-name order.
+
+**`20261105_redesign_data_source_tables.sql` (T1)** — PI request Comments-20261103; every step is guarded, so a re-run is a no-op.
+1. Self-check before any change: if a data source that is or will be on a Published type (1–4) has no year, the run aborts with `Table '<db>.ABORTED - type 1-4 data source has no Year - fill Year first' doesn't exist` (the file selects from a non-existent table because `SIGNAL` needs a stored program). On the current production schema `Publications.Year` is `INT NOT NULL`, so this only guards a NULL-able year column (e.g. after an earlier failed run).
+2. `RENAME TABLE PubSource_Ref → DataSourceTypeReference`, `Publications → DataSourceReference` (data and incoming FKs survive).
+3. Legacy type remap (once, while `PubSource_Code` still exists): old 1 Peer-reviewed publication → 1 Journal Article; old 2 Federal, 3 State/provincial, 4 Local/regional, 5 NGO and 6 Other → 3 Government or Technical Report. The old code is kept in `PubSource_Legacy`. Old type-6 rows must be **reviewed by hand** afterwards: `SELECT * FROM DataSourceReference WHERE PubSource_Legacy = '6' OR PubSource_Legacy LIKE '%[PubSource_Ref 6]';` (mind the CHECK rules when you change their type).
+4. Column renames/additions to the ten PI fields plus `PubSource_Legacy` and `EnteredBy` (§5.3); `source_title` back-filled, then made NOT NULL; `EnteredBy` back-filled from `SamplingEvent.UserSamplingID`.
+5. The six type rows are rewritten in place to the PI's types 1–6 (`SortOrder` = ID × 10), 7–8 inserted, `publication_status` added.
+6. FKs: `FK_DataSource_SourceType` (no `ON UPDATE`/`ON DELETE` clause), `FK_DataSource_EnteredBy` (→ `users`, ON UPDATE CASCADE ON DELETE SET NULL), and `FK_Event_Publication` dropped and re-created identically around the parent-column rename (ON UPDATE CASCADE) so the rename behaves the same on MariaDB 10.6 and MySQL 8+.
+7. CHECKs `chk_publication_year`, `chk_date_accessed`, `chk_source_type_publication_status`; a pre-check `SELECT` shows violating rows (expect zero).
+
+Collation: the non-breaking-space variable used by the `source_title` back-fill is declared `CONVERT(X'C2A0' USING utf8mb4) COLLATE utf8mb4_unicode_ci`. Without the `COLLATE`, MariaDB 10.6 stops with "Illegal mix of collations … for operation 'replace'" after the renames, leaving the database half-migrated; MySQL 9.4 does not reproduce it. This was proven on 2026-11-06 by running the unfixed file against a MariaDB 10.6.28 copy of the 2026-08-18 dump; the fixed file then passed the full release sequence (backup → T1 → purge → T3, then T1 and T3 re-run) on MariaDB 10.6, and T1 → T3 → T1 re-run on MySQL 9.4 (§3.4). The abort of the self-check was also confirmed on MariaDB (year set to NULL → stop before any change, schema unchanged).
+
+The old `routes/api.js` reads `PubSource_Ref` / `Publications` and fails with "Table … doesn't exist" against a migrated database; the new `routes/api.js` fails the same way against an un-migrated one — hence one maintenance window for both.
+
+**`20261105_polymer_table_v2.sql` (T3)** — replaces the 20-row list with the PI's 25 rows.
+- Adds `Polymer_AltCodes`, `CommonApplications`, `ClassificationNotes`.
+- Updates the 15 continuing rows **in place** (matched by old or new code, only while `CommonApplications` IS NULL), so their `PolymerUniqueID` — the FK target of both polymer-details tables — never changes. Only PETE → PET changes a form field name (`mp_polymer_pete` → `mp_polymer_pet`); Rubber/Bitumen/Other only change case, which the field-name normalisation ignores. `PolymerType_Legacy = 'PETE'` snapshots on saved detail rows are rewritten to `'PET'`, because the edit-sample loader refuses a snapshot that disagrees with its reference code.
+- Inserts CA, PBT, PE, PTFE, PU, SAN, MIX, UNKNOWN, RTB, OSM with MAX+1 IDs, each skipped if its code exists.
+- `SortOrder` = PI No. × 10; `RecycleCode` 1–6 on PET … PS, NULL elsewhere.
+- Deletes PLA, PB, PE_UHMW, HIPS, EPS only when no `FragmentsPolymerDetails` / `MicroplasticsPolymerDetails` row references them; a referenced one is kept at `SortOrder` 1010–1050 and stays selectable. In the 2026-08-18 backup all five are still referenced (events 197–200), hence the purge before T3 in §9.6.
+- Post-check: `SELECT COUNT(*) FROM PolymerType_Ref` = 25 when all five were deleted. The new list appears on the form immediately (the API reads it per request); deploy `data-summary-utils.js`, `form-handler.js` and `routes/api.js` from the same commit for the label polish, hover help and CSV template header.
 
 ### 6.3 Bootstrap files — status
 
-- **`database_init.sql`** (repo root, run by `npm run init-db`): a June-2025 phpMyAdmin dump that was partly hand-edited. It still creates the dropped `PackagesInSample`, lacks all ten detail tables, `FragmentsPurposes`, `Publications`, `contact_submissions` and nine reference tables, has no `SortOrder`, and declares `Location.UserCreated` as text. **A database built from it cannot serve the current application.** `scripts/init-database.js` additionally prints a success banner about tables and users it does not create. Treat both as legacy.
+- **`database_init.sql`** (repo root, run by `npm run init-db`): a June-2025 phpMyAdmin dump that was partly hand-edited. It still creates the dropped `PackagesInSample`, lacks all ten detail tables (`FragmentsPurposes` included), `DataSourceReference` (or its old name `Publications`), `contact_submissions` and nine of the ten `SortOrder` reference tables (`PolymerType_Ref` and `DataSourceTypeReference` among them; only `Units_Ref` is there), has no `SortOrder`, and declares `Location.UserCreated` as text. **A database built from it cannot serve the current application.** Regenerating it from the migrated schema is an open follow-up (§12). `scripts/init-database.js` additionally prints a success banner about tables and users it does not create. Treat both as legacy.
 - **`db/sweetl23_partner_demo_202601181155.sql`**: the January-2026 pre-refactor snapshot (26 tables, package family, no publications/methods/opacity/etc.). Useful as a migration-rehearsal fixture; not a deployment artefact.
-- **To stand up a fresh, current database**, restore the latest `db/backups/*.sql` dump (it contains `CREATE DATABASE`/`USE` and every table) — do not use `init-db`.
+- **To stand up a fresh, current database**, restore the latest `db/backups/*.sql` dump (it contains `CREATE DATABASE`/`USE` and every table) and apply any migration newer than the dump (for the 2026-08-18 dump: T1, then T3) — do not use `init-db`.
 
 ---
 
@@ -554,11 +627,11 @@ All sixteen have been applied to production (last on 2026-08-18).
 
 ### 7.1 Pages are standalone
 
-`views/layout.ejs` is **never rendered**. Every route renders a self-contained EJS file with its own `<head>`, CSS links and `<script>` tags, and includes `partials/header.ejs` (logo, title, user menu), `partials/sidebar.ejs` (Review Data / Enter and Edit Data / Documentation / About), `partials/timeout_modal.ejs` and, on a few pages, `partials/footer.ejs`. Adding a page therefore means copying an existing page's skeleton (see §11).
+There is **no layout file**. Every route renders a self-contained EJS file with its own `<head>`, CSS links and `<script>` tags, and includes `partials/header.ejs` (logo, title, user menu), `partials/sidebar.ejs` (Interactive Map → `/home` / Review Data / Enter and Edit Data / Documentation / About), `partials/timeout_modal.ejs` and, on a few pages (`about`, `captcha_test`, `enter_data_by_form`, `error`), `partials/footer.ejs`. Adding a page therefore means copying an existing page's skeleton (see §11).
 
-Live views: `home`, `login`, `signup`, `about`, `documentation`, `review`, `contact`, `enter_and_edit_data`, `enter_data_by_form`, `enter_data_by_file`, `my_locations_fixed`, `my_locations_view`, `my_samples`, `my_profile`, `admin-contact`, `reset_password`, `reset_password_expired`, `captcha_test`, `error`. Dead views are listed in §12.
+Views (every file in `views/` is live): `home`, `login`, `signup`, `about`, `documentation`, `review`, `contact`, `enter_and_edit_data`, `enter_data_by_form`, `enter_data_by_file`, `my_locations_fixed`, `my_locations_view`, `my_samples`, `my_profile`, `admin-contact`, `reset_password`, `reset_password_expired`, `captcha_test`, `error`; partials `header`, `sidebar`, `timeout_modal`, `footer`, `detail_percent_rows`; form pages `data_forms/formpage2.ejs` … `formpage5.ejs`.
 
-Stagewise dev toolbar (`stagewise-toolbar.js`) is included by 11 views inside `<% if (process.env.NODE_ENV !== 'production') %>`.
+Stagewise dev toolbar (`stagewise-toolbar.js`) is referenced by 14 views: 10 load it inside `<% if (process.env.NODE_ENV !== 'production') %>`, and 4 (`login`, `signup`, `reset_password`, `reset_password_expired`) have it switched off with `if (false && …)`.
 
 ### 7.2 The data-entry wizard (`views/enter_data_by_form.ejs` + `views/data_forms/`)
 
@@ -566,33 +639,52 @@ Progress-bar labels vs page headings:
 
 | Step | Progress label | Page heading | Source | Collects |
 |---|---|---|---|---|
-| 1 | Location | Location Information | inline in `enter_data_by_form.ejs` (`data_forms/formpage1.ejs` is a diverged dead copy) | either an existing location (`location_id`) or a new one: name, short code, description, lat/long via Leaflet map, acres, street/city/state/country with **Find Address on Map** (`/api/geocode/address`), or ZIP only |
-| 2 | Sampling Event | Sampling Event Information | `formpage2.ejs` | `device_installation_period` (no/yes); start date as `start_year` (required) + optional `start_month`/`start_day`; end date components shown only for device periods; `sample_time`, `sample_description`; publication block (`publication_present` yes/no, pick existing or enter year/authors/journal/APA/source); weather (`air_temp`, `current_conditions`, `rainfall`) |
+| 1 | Location | Location Information | inline in `enter_data_by_form.ejs` | either an existing location (`location_id`) or a new one: name, short code, description, lat/long via Leaflet map, acres, street/city/state/country with **Find Address on Map** (`/api/geocode/address`), or ZIP only |
+| 2 | Sampling Event | Sampling Event Information | `formpage2.ejs` | `device_installation_period` (no/yes); start date as `start_year` (required) + optional `start_month`/`start_day`; end date components shown only for device periods; `sample_time`, `sample_description`; **Data Source** section (mandatory, see below); weather (`air_temp`, `current_conditions`, `rainfall`) |
 | 3 | Media Information | From what media did you collect plastic? | `formpage3.ejs` | `media_type`: water (+ `water_type`, other description), soil_sediment (+ `sediment_type`), in_soil, soil_litter, mixed_composite (+ description) |
 | 4 | Additional Information | Additional Sampling Information | `formpage4.ejs` | `additional_info` yes/no gating one media-specific block: water measurements, sediment/soil depth-weight-organic-texture (+ texture method), surface area/permeability, mixed notes |
 | 5 | Particle Details | Sample Details | `formpage5.ejs` | `has_quantitative_data`; `total_sample_amount` + `sample_unit`; **counts** `microplastics_count`, `fragments_count`; **Microplastics Details** (mass, polymer-ID method, percent-estimate method, detail sections Size Classes / Color Types / Opacity Types / Shapes / Textures, dynamic polymer list); **Fragments Details** (mass, methods, sections Purposes / Color Types / Textures / Opacity Types, dynamic polymer list) |
-| 6 | Confirmation | Review and Submit | inline `<template id="template-form-page6">` (`data_forms/formpage6.ejs` is dead) | Data Summary (`generateSummary()`), `additional_notes`, **Save and Continue**, then next-step buttons A) new location/date, B) different media type, C) additional sample, D) new case same publication |
+| 6 | Confirmation | Review and Submit | inline `<template id="template-form-page6">` | Data Summary (`generateSummary()`), `additional_notes`, **Save and Continue**, then next-step buttons A) new location/date, B) different media type, C) additional sample, D) new case, same data source |
 
 **Loading**: pages 2–5 are server-rendered once into hidden `<template id="template-form-pageN">` elements; `loadAndAppendNextPage(n)` clones and appends them progressively (all pages stay in the DOM), then runs the page's `updatePageNContent()`. Revisiting a page calls `updateExistingPageContent()`.
 
-**State**: one `formData` object mirrored into `sessionStorage['microplastics_form_data']`; publication carry-forward per location in `sessionStorage['microplastics_publication_by_location']`; `window.resetInMemoryFormData()` clears the in-memory copy so a reload cannot resurrect stale values.
+**State**: one `formData` object mirrored into `sessionStorage['microplastics_form_data']`; data-source carry-forward per location in `sessionStorage['microplastics_publication_by_location']` (key name unchanged); `window.resetInMemoryFormData()` clears the in-memory copy so a reload cannot resurrect stale values. Pre-redesign `publication_*` keys found in either store are migrated to the new field names on load (`migrateLegacyDataSourceFields`).
 
-**Reference lists**: `initializeReferenceData()` fetches `/api/references` and `/api/publications` once, then `populateReferenceDrivenControls()` fills unit/soil-texture/method/publication selects, `restoreDetailRowsFromFormData()` rebuilds detail rows, and `loadPolymerOptions()` renders one percentage input per polymer into `#mp-polymer-dynamic-container` / `#fragment-polymer-dynamic-container` (field names `mp_polymer_<code>` / `fragment_polymer_<code>`; the Other row gets a "Describe the other polymer(s)" box `<prefix>other_specify`, shown only while Other has a value). `mapReferenceOptions()` applies the per-list rules (Detailed colours only, shape/texture flags, retained legacy value kept as a disabled option). Detail rows (`partials/detail_percent_rows.ejs`) are `select + percentage + remove`, with duplicate options disabled across sibling rows and a live `Total: N%` badge.
+**Reference lists**: `initializeReferenceData()` fetches `/api/references` and `/api/data-sources?scope=mine` once, then `populateReferenceDrivenControls()` fills unit/soil-texture/method selects and the data-source type select, `populatePublicationControls()` fills the "Select Existing Data Source" list, `restoreDetailRowsFromFormData()` rebuilds detail rows, and `loadPolymerOptions()` renders one percentage input per polymer into `#mp-polymer-dynamic-container` / `#fragment-polymer-dynamic-container` in `SortOrder` (field names `mp_polymer_<code>` / `fragment_polymer_<code>` with the normalised code; each label's hover text shows the polymer's alternate codes, classification note and common sources; the OTHER row gets a "Describe the other polymer(s)" box `<prefix>other_specify`, shown only while Other has a value). `mapReferenceOptions()` applies the per-list rules (Detailed colours only, shape/texture flags, retained legacy value kept as a disabled option). Detail rows (`partials/detail_percent_rows.ejs`) are `select + percentage + remove`, with duplicate options disabled across sibling rows and a live `Total: N%` badge.
 
-**Validation**: numeric guards (`min=0`, percent `max=100`), partial-date validation via `PartialDateUtils`, per-group "Current Total" banners for the polymer lists (green at 100 ± 0.1, red above, grey "stored total" for untouched groups in edit mode), and a capture-phase interceptor on page 5's Continue button that lists any percentage group off 100 %.
+**Data Source section (page 2, `formpage2.ejs` + `form-handler.js` + `publication-form-utils.js`)**. Every new sample must name its data source.
 
-**Edit mode** (`/enter_data_by_form?editSampleId=N`): the form is locked, `GET /api/my-samples/N/form-data` replaces `formData`, pages 2–6 are force-loaded, reference data must load (hard failure otherwise), the button becomes **Update Data**, and `captureEditPercentageSnapshots()` records the loaded groups so `buildSubmissionPayload()` can **omit untouched percentage groups from the `PUT`** — a legacy record whose stored totals are not 100 % is neither rewritten nor rejected unless the user edits that group. Save = `PUT /api/my-samples/N/form-data`, then redirect to `/my-samples`.
+- **Select Existing Data Source** (`data_source_id`): lists only the user's own previous sources (`GET /api/data-sources`). Choosing one autofills every detail field and **locks** them (read-only / disabled, `is-autofilled`); choosing "-- Enter a new data source --" clears and unlocks them.
+- **Step 1: Source type** (`data_source_type_id`, required): the eight `DataSourceTypeReference` rows grouped Published / Unpublished; the help text shows the chosen type's status and description. Step 2 stays hidden until a type is chosen (or a source is reused).
+- **Step 2: Source details**:
+
+| Field | Required | Rule |
+|---|---|---|
+| `source_title` | yes | ≤ 500 characters |
+| `authors_or_organization` | yes | authors "First Last; …" or an organisation |
+| `publication_year` | types 1–4 only (row hidden otherwise) | four digits, 1900 ≤ year ≤ current **UTC** year + 1 (in-press work); must be blank for types 5–8 |
+| `date_accessed` | type 4 only (row hidden otherwise) | valid `YYYY-MM-DD`; must be blank for other types |
+| `journal_publisher_or_repository` | yes | |
+| `source_identifier_or_url` | no | ≤ 500 characters |
+| `project_or_collection_name` | no | ≤ 255 characters |
+| `citation_text` (Full Citation, APA) | yes | |
+
+The rules and messages live once in `public/js/publication-form-utils.js` (UMD: `window.PublicationFormUtils` in the browser, `require`d by `routes/api.js`): `validateDataSourceDetails()` for a new source, `validateDataSourceSelection()` for the page/submit checks, `getSourceTypeRules()` for which fields apply, and `normalizeDataSourcePayload()`, which drops a year or access date the chosen type does not allow (e.g. typed before switching type) instead of rejecting it. The checks run on page 2's Continue, in the page-6 summary's missing-items list, before submit, and again on the server, with identical wording. The database CHECKs (§5.3) are the last line of defence. After a save, **Option A (new location/date)** clears the form and unlocks the data-source fields so a different source can be chosen or entered; **Option D** keeps only the data-source fields.
+
+**Validation**: numeric guards (`min=0`, percent `max=100`), partial-date validation via `PartialDateUtils`, data-source rules (above), per-group "Current Total" banners for the polymer lists (green at 100 ± 0.1, red above, grey "stored total" for untouched groups in edit mode), and a capture-phase interceptor on page 5's Continue button that lists any percentage group off 100 %.
+
+**Edit mode** (`/enter_data_by_form?editSampleId=N`): the form is locked, `GET /api/my-samples/N/form-data` replaces `formData`, pages 2–6 are force-loaded, reference data must load (hard failure otherwise), the button becomes **Update Data**, and `captureEditPercentageSnapshots()` records the loaded groups so `buildSubmissionPayload()` can **omit untouched percentage groups from the `PUT`** — a legacy record whose stored totals are not 100 % is neither rewritten nor rejected unless the user edits that group. The sample's own data source is shown (and kept selectable even if the reuse list lacks it); a data source is required when the sample already had one (`isDataSourceRequired()`), while a legacy sample saved without one shows a notice and can still be saved — any data-source input it gets must be complete. Save = `PUT /api/my-samples/N/form-data`, then redirect to `/my-samples`.
 
 ### 7.3 Client-side modules (`public/js/`)
 
 | File | Lines | Used by | Purpose |
 |---|---|---|---|
-| `form-handler.js` | 6,387 | enter_data_by_form | the wizard engine (state, navigation, reference lists, detail rows, polymer lists, validation, save/edit, summary, next steps) |
-| `data-summary-utils.js` | 207 | enter_data_by_form, tests | UMD `DataSummaryUtils` (particle summary, labels) |
+| `form-handler.js` | 6,514 | enter_data_by_form | the wizard engine (state, navigation, reference lists, data source, detail rows, polymer lists, validation, save/edit, summary, next steps) |
+| `data-summary-utils.js` | 221 | enter_data_by_form, tests | UMD `DataSummaryUtils` (particle summary, labels; `formatPolymerName` shows word codes such as OTHER/UNKNOWN/RUBBER by their full name alone) |
 | `partial-date-utils.js` | 181 | form, home, my_samples, tests | UMD `PartialDateUtils` (leap years, precision, formatting, ordering) |
-| `publication-form-utils.js` | 98 | enter_data_by_form | UMD publication select/lock helpers |
+| `publication-form-utils.js` | 363 | enter_data_by_form, **routes/api.js**, tests | UMD `PublicationFormUtils`: the shared data-source rules and messages, legacy-key migration, select/autofill/lock helpers (§7.2) |
 | `map-data-entry.js` | 266 | enter_data_by_form | Leaflet map + draggable marker for step 1 |
-| `map-home.js` | 214 | home | public sample map |
+| `map-home.js` | 341 | home, tests | public sample map: media-type colours, legend, concentration popups (§7.4) |
 | `enter-and-edit-map.js` | 172 | enter_and_edit_data | landing-page map |
 | `my-locations.js` | 756 | my_locations_fixed | `MyLocationsManager`: grid/list, pagination, search, modal map, save/delete |
 | `session-timeout.js` | 204 | 10 views | polls `/api/check-session` every 30 s, shows the timeout modal |
@@ -601,34 +693,64 @@ Progress-bar labels vs page headings:
 | `common.js` | 186 | most pages | shared bootstrap helpers |
 | `file-upload.js` | 342 | enter_data_by_file | drop-zone UI |
 | `app.js` | 188 | via footer partial | jQuery helpers (jQuery not loaded on all of those pages) |
-| `stagewise-toolbar.js` | 827 | 11 views (non-production) | dev toolbar |
-| dead: `dashboard.js`, `form-validation.js`, `main.js`, `map-handler.js`, `map-review.js`, `form-loader.js`, `multi-form-handler.js`, `stagewise-toolbar-enhanced.js`, `form-handler.js.bak`, `form-handler.js.bak2` | | none | see §12 |
+| `stagewise-toolbar.js` | 827 | 10 views (non-production; 4 more disabled) | dev toolbar |
 
-CSS: `mp_style.css` (3,575 lines, main), `auth-pages.css` (login/signup/reset), `fancy-modal.css`, `auth.css` (only captcha_test); `style.css` and `fourcolumns.css` are unused. Assets: `public/assets/` (logo, two home GIFs, favicon).
+Every file in `public/js/` is loaded by a live page; the dead scripts listed in 1.1.0 were deleted.
+
+CSS: `mp_style.css` (3,553 lines, main; the unused `.legend-marker.red/.blue/…` colour classes were removed — marker colours come from `map-home.js`), `auth-pages.css` (login/signup/reset), `fancy-modal.css`, `auth.css` (only captcha_test). Assets: `public/assets/` (logo, two home GIFs, favicon).
+
+### 7.4 Home map (`views/home.ejs` + `public/js/map-home.js`)
+
+`/home` is public. `initHomeMap()` draws a Leaflet/OpenStreetMap map centred on the Great Lakes and fetches `GET /api/map-data` (all users' geolocated samples), one circular marker per sample, then fits the view to the markers.
+
+- **Colour = sampling medium, never severity** (field users read the old red/orange hash colours as a heat scale). `MEDIA_TYPE_COLORS`: In Water `#1E90FF`, In Soil/Sediment `#5C4033`, On Soil `#D8B14A`, Mixed Media `#888888`; any other or missing `MediaTypeOverall` → `#666666` ("Other / Unspecified"). Matching ignores case and stray whitespace (`normalizeMediaTypeKey`).
+- **Legend** is built from the same palette (`buildLegendEntries` → `updateMapLegend`): only the media types present in the data, in fixed order, unknown last. `home.ejs` only ships a "Loading map data…" placeholder.
+- **Popup**: media type, location name, two concentration lines, coordinates and the collection date (partial dates via `PartialDateUtils`). `formatConcentration()` computes count ÷ sample amount per size class:
+  - `Plastic fragments (>5mm)` uses `FragLargerThan5mm_Count` with `FragmentsSampleAmount` + its unit; `Microplastics (<5mm)` uses `Micro5mmAndSmaller_Count` with `MicroplasticsSampleAmount` + its unit;
+  - when the class amount is missing or ≤ 0, `TotalSampleAmount` + `SampleUnit_Num` is used instead; when the class amount is usable but has no unit, the total's unit is borrowed;
+  - no count → `Not analyzed`; a count but no usable amount → `<n> particles (no sample amount recorded)`; an amount with no unit anywhere → `<value> per sample amount (unit not recorded)`;
+  - values ≥ 10 are rounded to whole numbers with thousands separators, smaller values keep two significant digits; unit suffixes `/L`, `/g`, `/km²`.
+- **Every text value in the popup is HTML-escaped** (`escapeHtml`: media type, location name, concentration lines, date): location names are free text from any signed-in user and the page is public.
+- The pure helpers are exported under Node for `test/map-home-colors.test.js` and `test/map-home-concentration.test.js`.
 
 ---
 
 ## 8. Testing
 
-Node's built-in runner, no database required (fake connections / pure helpers):
+Node's built-in runner, no database required (fake connections / pure helpers; the route tests swap `config/database` for a recording pool through `require.cache`):
 
 ```bash
-npm test                      # all 16 files (~3 s)
+npm test                      # all 21 files, 122 tests (~3 s)
 npm run test:partial-dates    # or test:percentages, test:data-summary, test:publication, test:account-recovery, test:signup
-node --test test/reference-sort-order.test.js
+node --test test/data-source-ownership.test.js
 ```
+
+The `test` script in `package.json` lists every file explicitly, so **add a new test file to that list** or `npm test` will not run it.
+
+No test needs a database, but five files (`data-source-redesign`, `data-source-ownership`, `fragment-count-and-numeric-range`, `other-polymer-description`, `publication-ui`) `require('../routes/api')` without stubbing `config/database`, and that module builds a mysql2 pool from `.env`, which points at production. Run the suite with the five `DB_*` variables pointing at a local server (§3.4), e.g. `DB_HOST=127.0.0.1 DB_PORT=33306 DB_USER=… DB_PASS=… DB_NAME=sweetl23_partner_demo npm test`.
 
 | File | Covers |
 |---|---|
 | `account-recovery.test.js`, `account-recovery-outbox.test.js`, `email-account-recovery.test.js` | identifier normalisation, token hashing, outbox lease/claim, mail content |
 | `signup.test.js`, `user-profile-route.test.js`, `user-profile-view.test.js` | required fields, ISO country set, profile round-trip |
 | `partial-date-utils.test.js`, `sampling-date-api.test.js`, `partial-date-integration.test.js` | leap years, precision, single vs device-period rules, form uses six components |
-| `percentage-utils.test.js`, `data-summary-utils.test.js`, `publication-ui.test.js` | decimal percentages, summary completeness, publication disambiguation |
+| `percentage-utils.test.js`, `data-summary-utils.test.js` | decimal percentages, summary completeness |
+| `publication-ui.test.js` | data-source form: option labels, autofill/lock/unlock, mandatory type select + detail block, type rules (year 1–4, access date 4), identical form/API messages, journal and APA citation required, year 1900 … next UTC year, legacy-edit rules, legacy session-key migration, payload normalisation, script load order |
+| `data-source-redesign.test.js` | year/access-date rules per type, required fields, `publication_*` aliases, new samples need a data source while legacy edits do not, T1 migration (renames, kept `PublicationID_Num`, CHECKs), list limited to own/cited sources |
+| `data-source-ownership.test.js` | save-time ownership (own and cited-by-own-event accepted, another user's rejected, missing id → "no longer exists"), list and save share one condition, `GET /api/data-sources` only the user's own whatever `?scope`, empty when signed out; `add-test-location-data` and `test-save` return 404 |
+| `polymer-table-v2.test.js` | T3 migration: `SortOrder` = No. × 10, guarded in-place updates, PETE → PET snapshots, MAX+1 inserts, guarded deletes, 25 distinct field names, polymer labels and summary order |
 | `fragment-count-and-numeric-range.test.js`, `other-polymer-description.test.js` | merged fragments count, negative-number guard, Other-polymer description persistence |
-| `reference-sort-order.test.js` | API orders every reference table by `SortOrder`; migration covers each table; Purposes/Other/Unknown order |
+| `reference-sort-order.test.js` | API orders every reference table by `SortOrder`; `/api/references` does not read the data-source list; migration covers each table; Purposes/Other/Unknown order |
+| `map-home-colors.test.js`, `map-home-concentration.test.js` | fixed media-type palette, case-insensitive matching, legend content/order, no placeholder legend in `home.ejs`; concentration maths, unit fallbacks, number formatting |
 | `migration-runner.test.js` | runner path rules |
 
-Manual/UI verification patterns that have worked: mount `routes/api.js` on a bare express app with a hand-built pool pointed at a local restored dump (stub `config/database` via `require.cache`), or run the whole app against that dump with a preload shim that stubs `express-session` (auto-login) — this lets you open the auth-gated form locally with real data. `Testing/excel_verification/` holds the Python toolkit that compared the PI's Excel workbook against a dump (2026-08-04).
+Manual/UI verification patterns that have worked:
+- run the real app against a local restored dump with explicit `DB_*` variables (§3.4, `sweetlab-localdb` profile) and log in through the browser;
+- mount `routes/api.js` on a bare express app with a hand-built pool pointed at a local dump (stub `config/database` via `require.cache`), for endpoint checks with `curl`;
+- for an unattended page check, a preload shim that stubs `express-session` (auto-login) opens the auth-gated form without the CAPTCHA;
+- rehearse every migration on a MariaDB 10.6 copy before production (§3.4).
+
+`Testing/excel_verification/` holds the Python toolkit that compared the PI's Excel workbook against a dump (2026-08-04); it still uses the pre-2026-11 table names and polymer codes (§12).
 
 ---
 
@@ -641,7 +763,7 @@ Manual/UI verification patterns that have worked: mount `routes/api.js` on a bar
 | Host | InMotion cPanel VPS `vps86226.inmotionhosting.com` (104.247.77.90), CSF firewall |
 | Public URL | `https://entry.sweet-lab.org` (Apache reverse proxy → container port 3000); `http://104.247.77.90:3000` also answers |
 | Container | `myapp-container`, app at `/app`, `PORT=3000`, `NODE_ENV=production`; started by hand from a locally built image (the repo's `docker-compose.yml` with `container_name: mp-data-entry` is a reference, not what is running); a nodemon-style watcher restarts the app when files under `/app` change |
-| Database | MariaDB 10.6 on the VPS host, reached from the container as `host.docker.internal` (172.17.0.1); CSF must allow `tcp|in|d=3306|s=172.17.0.0/16` and `tcp|out|d=3000|d=172.17.0.0/16`, and `DOCKER="1"` in `csf.conf` |
+| Database | MariaDB 10.6 on the VPS host, reached from the container as `host.docker.internal` (172.17.0.1); CSF must allow `tcp\|in\|d=3306\|s=172.17.0.0/16` and `tcp\|out\|d=3000\|d=172.17.0.0/16`, and `DOCKER="1"` in `csf.conf` |
 | Health | `GET /api/health` (Docker HEALTHCHECK every 30 s) |
 | Access | SSH only from IPs listed in `/etc/csf/csf.allow`; user `sweetl23` (docker yes, sudo no) via SSH or the cPanel Terminal; root via WHM → Terminal. Never run parallel ssh/scp sessions (CSF connection limits on port 22) |
 | Backups | `docker commit myapp-container mp:v8-backup-<date>` before risky container work; database dumps via `scripts/backup-database.js` (git-ignored) |
@@ -666,17 +788,19 @@ curl -s -o /dev/null -w 'local %{http_code}\n' http://127.0.0.1:3000/api/health
 Rules of thumb:
 - Hash with `tr -d '\r'` on both sides so CRLF/LF differences do not count; the repo is LF-normalised.
 - Static JS/CSS changes need a hard refresh in the browser (`Cmd-Shift-R`); server-side changes do not.
+- `public/js/publication-form-utils.js` is both a browser script and a server module (`routes/api.js` `require`s it). A change to it changes server-side validation, so deploy it together with `routes/api.js`; browsers still need a hard refresh.
 - SQL files are never copied into the container; migrations run from the Mac (§6.1).
+- `docker cp` only adds or overwrites. A file the release **deletes** stays in the container (and, under `public/`, stays publicly served) until you remove it there: `docker exec myapp-container rm -f /app/<path>`. List them with `git diff --name-status --diff-filter=D <deployed commit> -- routes public views`.
 - After a deploy, verify from outside: `curl https://entry.sweet-lab.org/api/health` and, for reference changes, `/api/references`.
 - Rollback = copy the previous version of the file back (`git show HEAD~1:routes/api.js > /tmp/old.js`) with the same two commands. If a container is stopped or the daemon restarted, `unless-stopped` will not restart a manually stopped container — `docker start myapp-container`.
 - Firewall gotcha (2026-08-15 outage): a CSF flush deletes Docker's iptables chains. Fix order is `csf -ra` **then** `systemctl restart docker`; a `docker restart` alone does not recreate the chains.
 
 ### 9.3 Standard release sequence
 
-1. `npm test` locally; verify UI changes on a local restored dump when possible.
+1. `npm test` locally; verify UI changes on a local restored dump when possible; rehearse any migration on a local MariaDB 10.6 copy (§3.4).
 2. `node scripts/backup-database.js`.
 3. Run any migration marked *migration first* (§6.2).
-4. `scp` + `docker cp` each changed runtime file (routes/, public/, views/, services/, config/, middleware/, utils/); confirm the restart in `docker logs`.
+4. `scp` + `docker cp` each changed runtime file (routes/, public/, views/, services/, config/, middleware/, utils/), and `rm -f` inside the container every runtime file the release deleted; confirm the restart in `docker logs`.
 5. Run any migration marked *code first*.
 6. Post-check: health, the affected endpoint(s), a hard-refreshed page.
 7. Commit on a branch and open a PR (deploy state is not visible in git, so keep the two in step).
@@ -688,9 +812,35 @@ Rules of thumb:
 ### 9.5 Production checklist
 
 - `NODE_ENV=production`, `PORT`, real `SESSION_SECRET`, `ACCOUNT_RECOVERY_ENCRYPTION_KEY`, `PUBLIC_BASE_URL=https://entry.sweet-lab.org`, SMTP settings, `ADMIN_EMAIL_*`, `ALLOWED_ORIGINS` (uncommented).
+- `DB_PORT` unset (or `3306`) in the container environment: since 2026-11 `config/database.js` honours it.
 - Remote MySQL whitelist for the developer IPs; CSF rules for Docker as above.
 - Fresh database backup before every migration or data operation.
 - Session store is in-memory: a restart logs everyone out; keep it in mind when timing deploys.
+
+### 9.6 Release 2026-11: data sources and polymer list v2 (deploy order)
+
+Status on 2026-11-06: **not yet deployed**. A command-by-command runbook is prepared separately and reviewed before use (`.claude/cross-check-20261105/deploy/RUNBOOK.md` with helper scripts, local and untracked); this section records the order and the reasons, and its file counts match the runbook's. The release also clears the existing sampling data so that it can be re-entered through the new form (decision of 2026-11-05; user accounts are kept).
+
+Before the window:
+- the MariaDB 10.6 rehearsal of steps 1–4 has passed (done 2026-11-06, §6.2);
+- users are told not to enter data during the window and to submit or discard any entry in progress — a browser draft from before the deploy can carry old field names (`mp_polymer_pete`, retired polymers, pre-redesign source-type codes) that the new code rejects or misreads;
+- the container does not set `DB_PORT` to anything but 3306 (§9.5);
+- the container matches the repository: hash every tracked runtime file in `/app` and compare it with the repository copy (`tr -d '\r'` on both sides, §9.2). Apart from the 13 files step 5 replaces, every file must match; the update and delete lists of step 5 assume this. If any file differs, stop and find out why before deleting anything (the runbook's read-only `remote-sweep.sh` does this check);
+- one SSH session at a time (§9.1).
+
+Order (from step 2 until step 5 the old code's `/api/references` and data-source queries fail against the renamed tables, so the entry form is unusable — hence the window):
+
+| # | Step | Why here |
+|---|---|---|
+| 1 | `node scripts/backup-database.js`; keep the file name. Then, still before T1, save the `PolymerType_Ref` rows of PLA, PB, PE_UHMW, HIPS and EPS as INSERT statements in a file next to the dump in `db/backups/` (decided 2026-11-05; the runbook's `save-retired-polymers.js` writes `retired_polymers_<DB_NAME>_<timestamp>.sql`). Keep both files and never delete them | rollback point and the only pre-T1 copy of the data; the `--backup=` the purge requires (< 2 h old when the purge executes); the only way to re-add the five polymers T3 deletes |
+| 2 | T1: `node scripts/update-database.js db/20261105_redesign_data_source_tables.sql` | the purge script already uses the new table names |
+| 3 | Purge, run by the maintainer: `node scripts/purge-data-entered-before.js --before=<deploy date + 1 day> --include-locations --include-publications` as a dry run, then again with `--execute --backup=<step-1 dump>`. If more than 2 h have passed since step 1, the script refuses that file: run `node scripts/backup-database.js` again and pass the new file to `--backup=`. The step-1 dump stays the rollback point, because the new one is taken after T1; keep both | `--before` is exclusive, so the next day's date also clears rows entered on deploy day; removes every sample, location and data source while keeping users; removes the samples that still reference the five retired polymers |
+| 4 | T3: `node scripts/update-database.js db/20261105_polymer_table_v2.sql` | with no references left, it deletes the five retired polymers |
+| 5 | Code. First `docker commit myapp-container mp:v9-backup-<date>` and copy out (`docker cp myapp-container:/app/<path> …`) the current version of every file you are about to replace or delete. Then `scp` + `docker cp` the 13 changed runtime files — `package.json` (only the `test` script changed; no runtime effect), `config/database.js`, `routes/api.js`, `routes/pages.js`, `public/css/mp_style.css`, `public/js/data-summary-utils.js`, `public/js/form-handler.js`, `public/js/map-home.js`, `public/js/publication-form-utils.js`, `views/data_forms/formpage2.ejs`, `views/enter_data_by_form.ejs`, `views/home.ejs`, `views/partials/sidebar.ejs` — and `rm -f` in the container the 29 runtime files deleted on this branch (`git diff --name-status --diff-filter=D 2092d2a -- routes public views`, relative to the 2026-08-18 deploy) | new code needs the migrated schema; the image and the file copies are the code rollback point |
+| 6 | Checks: `SELECT COUNT(*) FROM PolymerType_Ref` = 25; `DataSourceTypeReference` has 8 rows; T1's last post-check `SELECT` (run by hand — the runner prints nothing) lists `FK_DataSource_SourceType`, `FK_DataSource_EnteredBy`, `FK_Event_Publication` and the three CHECKs; `/home` loads; anonymous `GET /api/data-sources` → `{"success":true,"data":[]}`; `/api/references` has `dataSourceTypes` and no `dataSources`; `POST /api/add-test-location-data`, `POST /api/test-save`, `POST /test-save` (root mount, §2.1), `/test.html`, `/js/form-validation.js`, `/js/map-review.js` → 404 (the last three confirm the in-container deletions); one new entry with a data source saves and appears on the map | |
+| 7 | Tell users they can resume, and inform the PI (data cleared, five polymers removed, data-source field rules) | |
+
+If step 2, 3 or 4 fails (the container still runs the old code): restore the step-1 backup, fix the cause and start again at step 2. If step 5 or 6 fails: roll back code and database together, because old code only works with the old schema. Put the previous runtime files back and re-create the deleted ones (from the `docker commit` image or the file copies taken at the start of step 5), then restore the step-1 backup. Anything entered after the deploy is lost. Both migrations are guarded and re-runnable, but the rule is a clean restart. Never run `20260817_add_reference_sort_order.sql` after step 2.
 
 ---
 
@@ -698,11 +848,11 @@ Rules of thumb:
 
 ### 10.1 Backups
 
-`node scripts/backup-database.js` writes `db/backups/<DB_NAME>_YYYYMMDD_HHMMSS.sql` (mode 0600, git-ignored): consistent-snapshot logical dump of every table (`DROP TABLE IF EXISTS` + `SHOW CREATE TABLE` + 250-row `INSERT` batches, `SET FOREIGN_KEY_CHECKS=0`, `CREATE DATABASE IF NOT EXISTS`). Set `PRUNE_DATABASE_BACKUPS=true` to delete older dumps after a successful run. Restore by piping the file into any MySQL/MariaDB (see §3.3 for the one MariaDB-only default to patch on MySQL).
+`node scripts/backup-database.js` writes `db/backups/<DB_NAME>_YYYYMMDD_HHMMSS.sql` (mode 0600, git-ignored): consistent-snapshot logical dump of every table (`DROP TABLE IF EXISTS` + `SHOW CREATE TABLE` + 250-row `INSERT` batches, `SET FOREIGN_KEY_CHECKS=0`, `CREATE DATABASE IF NOT EXISTS`). Set `PRUNE_DATABASE_BACKUPS=true` to delete older dumps after a successful run. Restore by piping the file into any MySQL/MariaDB (see §3.4 for the one MariaDB-only default to patch on MySQL). It honours `DB_PORT` (default 3306) and has no other connection defaults, so set `DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME` explicitly when it must not read the production values from `.env`.
 
 ### 10.2 Purging entered data
 
-`scripts/purge-data-entered-before.js` deletes every sampling entry whose `SamplingEvent.DateEntered` is before a cutoff, bottom-up through the FK graph, and never touches `users`, `password_reset_tokens` or the account-recovery tables.
+`scripts/purge-data-entered-before.js` deletes every sampling entry whose `SamplingEvent.DateEntered` is before a cutoff, bottom-up through the FK graph, and never touches `users`, `password_reset_tokens` or the account-recovery tables. The cutoff is exclusive (`DateEntered < 'YYYY-MM-DD'`): to include rows entered today, pass tomorrow's date. With `--include-publications` (flag name kept) it also deletes unreferenced rows of `DataSourceReference`; since 2026-11 the script uses the new table names, so it only runs against a database migrated with T1 (§6.2). It honours `DB_PORT` (default 3306), like `backup-database.js` and `update-database.js`; `check-database.js` and `init-database.js` do not.
 
 ```bash
 node scripts/purge-data-entered-before.js --before=2026-08-01                                   # dry run (counts only)
@@ -711,11 +861,11 @@ node scripts/purge-data-entered-before.js --before=2026-08-01 --include-location
      --execute --backup=db/backups/sweetl23_partner_demo_20260818_105317.sql                     # really delete
 ```
 
-`--execute` requires `--backup=` pointing at a dump ≥ 10 kB and less than two hours old; everything runs in one transaction, each step's `affectedRows` must equal the plan, all remaining counts are re-verified before `COMMIT`, otherwise it rolls back. Locations/publications are only removed with the flags and only when no remaining event references them. Used on 2026-08-18 to remove everything entered before 2026-08-01 (backup `…_20260818_105317.sql` is the only copy of that data). ID counters are not reset.
+`--execute` requires `--backup=` pointing at a dump ≥ 10 kB and less than two hours old; everything runs in one transaction, each step's `affectedRows` must equal the plan, all remaining counts are re-verified before `COMMIT`, otherwise it rolls back. Locations / data sources are only removed with the flags and only when no remaining event references them. Used on 2026-08-18 to remove everything entered before 2026-08-01 (backup `…_20260818_105317.sql` is the only copy of that data), and planned again for the 2026-11 release to clear all sampling data before re-entry (§9.6). ID counters are not reset.
 
 ### 10.3 Editing reference lists
 
-See §5.4. The cheapest moment to add/remove/rename options is while nothing references them (e.g. right after a purge); afterwards, deletions are blocked by FKs and need a soft-delete design.
+See §5.4. The cheapest moment to add/remove/rename options is while nothing references them (e.g. right after a purge — the 2026-11 release relies on exactly this to drop five polymers); afterwards, deletions are blocked by FKs and need a soft-delete design. `DataSourceTypeReference` is the exception: its eight IDs are wired into code and CHECK constraints, so only labels, descriptions and `SortOrder` are data edits.
 
 ---
 
@@ -728,46 +878,55 @@ See §5.4. The cheapest moment to add/remove/rename options is while nothing ref
 - Percentages are stored with four decimals (`DECIMAL(7,4)`); numeric inputs reject negatives (`min=0`), percent fields `max=100`; measurements are `DECIMAL(12,6)`.
 - Dates: `start_year` required; month/day optional and hierarchical; end components only for device periods (validated client-side, server-side and by CHECK constraints).
 - The Other polymer requires a description when its percentage is > 0, and vice versa.
-- Reference lists are never hard-coded: read `/api/references` and respect `SortOrder`.
+- Data sources: one validator, `public/js/publication-form-utils.js`, serves the browser and `routes/api.js` — change rules and messages only there. Its type rules (year for 1–4, none for 5–8, access date only for 4) mirror the CHECK constraints of `DataSourceReference`; the required text fields (title, authors/organisation, journal/publisher/repository, APA citation) are enforced by the application only. The publication-year bound is computed from the UTC year so browser and server agree.
+- A data source is mandatory for new samples; edits of legacy samples without one stay possible. Any endpoint that accepts or lists data sources must apply `MY_DATA_SOURCE_CONDITION` (own or cited by the user's own events).
+- Reference lists are never hard-coded: read `/api/references` and respect `SortOrder` (the eight data-source type IDs are the one deliberate exception, §5.4).
 
 **Database patterns**
 - Parameterised queries only; multi-table writes in one transaction with rollback.
-- Business-key IDs for `SamplingEvent`, `SampleDetails`, `*InSample`, `Publications` are `MAX(id)+1` inside the transaction; detail tables use AUTO_INCREMENT.
+- Business-key IDs for `SamplingEvent`, `SampleDetails`, `*InSample`, `DataSourceReference` are `MAX(id)+1` inside the transaction (`nextTableId()` or an inline `MAX`); detail tables use AUTO_INCREMENT.
 - Inserts go through `insertFromMap()`/`updateFromMap()`, which drop columns that do not exist in the live table (`getTableColumns()`), so code can be deployed shortly before/after a migration when the header allows it.
-- New migration: `db/YYYYMMDD_short_name.sql`, idempotent, header explaining purpose and deploy order, pre-flight and post-check `SELECT`s, and a test if it changes behaviour (see `test/reference-sort-order.test.js`).
+- New migration: `db/YYYYMMDD_short_name.sql`, idempotent, header explaining purpose and deploy order, pre-flight and post-check `SELECT`s, and a test if it changes behaviour (see `test/reference-sort-order.test.js`, `test/polymer-table-v2.test.js`). Rehearse it on MariaDB 10.6 (§3.4) — MySQL accepts things MariaDB rejects (collations, §6.2) — and make it safe to re-run after a mid-way failure (guard each step on the state it changes, not on a flag set earlier in the file). Variables compared with table columns need an explicit `COLLATE utf8mb4_unicode_ci`.
 
-**Adding a page**: copy the `<head>`/partials skeleton of an existing standalone view (there is no layout), add a route in `routes/pages.js` (`requireAuth` if needed, pass `title`, `currentPage`, `user`), add the sidebar entry, hard-code the page's scripts (do not rely on `pageSpecificJS`).
+**Adding a page**: copy the `<head>`/partials skeleton of an existing standalone view (there is no layout), add a route in `routes/pages.js` (`requireAuth` if needed, pass `title`, `currentPage`, `user`), add the entry to `views/partials/sidebar.ejs` if it needs one, and hard-code the page's scripts.
 
-**Adding an API**: `router.<method>('/path', requireAuth, [validators], async (req,res) => { … })` in `routes/api.js`; remember it will also be reachable at the root path because of the legacy mount.
+**Adding an API**: `router.<method>('/path', requireAuth, [validators], async (req,res) => { … })` in `routes/api.js`; remember it will also be reachable at the root path because of the legacy mount. An endpoint without `requireAuth` must not return other users' private data (filter by `req.session.user_id`, as `GET /api/data-sources` does), and debug or test-data endpoints do not belong in the router.
 
-**Code style**: kebab-case file names, async/await, underscore-based DB column names (legacy hyphenated names were renamed; the one remaining hyphen is the table `LocType_Env-Indoor_Ref`), LF line endings, no secrets in the repo (`.env`, `db/backups/*.sql` and `tasks/` are git-ignored).
+**Code style**: kebab-case file names, async/await, underscore-based DB column names (legacy hyphenated names were renamed; the one remaining hyphen is the table `LocType_Env-Indoor_Ref`), LF line endings, no secrets in the repo (`.env`, `db/backups/*.sql`, `tasks/`, `developer_manual/` and `__pycache__/` are git-ignored; the local `.claude/` folder is **not**, so never stage it, §12).
 
 ---
 
 ## 12. Known Issues and Technical Debt
 
-Verified against commit `2092d2a`; none of these are blocking, but each has bitten someone or will.
+Verified against the 2026-11-06 working tree of `comments-20261103`; none of these are blocking, but each has bitten someone or will.
 
 **Runtime behaviour**
 - `PUT /api/admin/contact-submissions/:id/status` with `status=resolved` throws (`req.session.user.username` — `req.session.user` is never set) → 500. `GET …/contact-submissions` computes `stats` but never populates them.
-- A second `GET /api/map-data` handler (`api.js:4533`) is shadowed by the first and is dead.
-- `POST /api/test-save` is unauthenticated and echoes the whole `req.session`; `POST /api/add-test-location-data` seeds test rows into production tables. Both should be removed or guarded.
 - No role/permission checks anywhere (`users.role` exists but is not enforced): `/admin/contact` and `/api/admin/*` are open to any logged-in user.
+- `/captcha_test` is still a public debug route (page and view kept).
 - Sessions live in the express-session MemoryStore (single process, lost on restart); `secure: false` is hard-coded on the cookie.
-- `config/database.js` ignores `DB_PORT`; `ALLOWED_ORIGINS` is commented out in the template although production CORS depends on it; three geocoding variables and `PRUNE_DATABASE_BACKUPS` are undocumented in the template.
+- `ALLOWED_ORIGINS` is commented out in the template although production CORS depends on it; `DB_PORT`, three geocoding variables and `PRUNE_DATABASE_BACKUPS` are undocumented in the template.
 - `/api/locations` returns every location when there is no session (intended for the public map, but worth knowing).
+- `views/partials/footer.ejs` injects jQuery asynchronously and loads `bootstrap.min.js` right after it, so pages with the footer log "Bootstrap requires jQuery" in the console (also on `main`; harmless so far).
+- Data sources are strictly per user: a user sees and reuses only sources they entered or that their own sampling events cite. There is no sharing or de-duplication across users (two users citing the same paper create two rows). Migrated sources cited by several users have `EnteredBy` = NULL and appear only through the "cited by my events" rule.
+- `SamplingEvent.PublicationID_Num` kept its pre-redesign name although it now points at `DataSourceReference.data_source_id`; `/api/references` still returns the `pubSources` alias and the API still accepts the `publication_*` field names. Renaming / dropping these compatibility layers is a possible follow-up.
+- After T1, migrated sources that were old type 6 "Other" sit on type 3 until someone reviews them (§6.2); the planned deploy-day purge removes them anyway.
+- A data source with a publication year before 1900 (none exist) cannot be reused, and a sample that cites one cannot be saved on edit. The reused source's year field is autofilled and locked (read-only), but page 2's number check still tests it against `min="1900"`, so Continue is blocked and the user cannot correct the value. Fix it if such sources ever appear.
 - `/api/upload-file-data` accepts files but never parses them; `/api/download-template` always returns CSV headers.
 - Legacy flat percentage columns on `MicroplasticsInSample`/`FragmentsInSample` and `SampleDetails.PackagingSampleAmount/Unit_Num` are still written; `SamplingEvent.WeatherPrecedent24` duplicates `Weather_Precedent24`.
 - `SamplingEvent` and `SampleDetails` have no PRIMARY KEY (UNIQUE only); `RamanDetails` has no key at all; `MicroplasticsPolymerDetails`/`FragmentsPolymerDetails` are the only detail tables whose parent FK does not cascade.
-- Retiring a reference option that real data uses needs a soft-delete (`IsActive`) plus "keep visible on samples that already use it" handling in the polymer list; not implemented (the colour drop-down already keeps a retained legacy value as a disabled option, which is the pattern to copy).
+- Retiring a reference option that real data uses needs a soft-delete (`IsActive`) plus "keep visible on samples that already use it" handling in the polymer list; not implemented (the colour drop-down already keeps a retained legacy value as a disabled option, which is the pattern to copy). Until then, a retired polymer that is still referenced when T3 runs stays selectable at `SortOrder` 1010–1050 (§6.2).
 
-**Repository hygiene (dead or misleading files)**
-- Views: `layout.ejs` (never rendered; `pageSpecificJS` locals are dead with it), empty `documentation_new.ejs`, `enter_and_edit_data_new.ejs`, `enter_data_by_file_new.ejs`, `reset_password_test.ejs`; duplicates `my_locations.ejs` (= `my_locations_fixed` + debug script), `my_locations_debug.ejs` (= `my_locations_view`), `data_forms/formpage1.ejs`, `data_forms/formpage6.ejs`; four tracked backups `data_forms/formpage5 copy.ejs.bak`, `formpage5.ejs.bak3`, `formpage5.ejs.bak_3col`, `formpage5.ejs.working`.
-- JS/CSS: `dashboard.js`, `form-validation.js`, `main.js`, `map-handler.js`, `map-review.js` (review page loads only common/session scripts), `form-loader.js` and `multi-form-handler.js` (only referenced through the dead `pageSpecificJS`), `stagewise-toolbar-enhanced.js`, `form-handler.js.bak`, `form-handler.js.bak2`, `style.css`, empty `fourcolumns.css`; `public/test.html`, `test-cors.html`, `test-stagewise.html` are publicly served.
-- Root: `check-all-tokens.js`, `check-password-table.js`, `create-test-token.js`, `run-5-test-cases.js`, `test-auth-fix.js`, `test-database.js`, `test-expired-token.js`, `test-server.js` (ad-hoc scripts, nothing references them), `error.log` (a pasted, stale console log), `backup_PublicationID_Num_2026-06-15T….json`, `microplastics_db_schema_flowchart_fatima.html`, `routes/api copy.js` (32 KB stale copy inside `routes/`), `scripts/create-sample-table.js` (creates tables the app never uses), `Testing/excel_verification/__pycache__/`.
+**Repository hygiene (stale or misleading files)**
+
+The 42 dead tracked files listed in 1.1.0 (unused views, form-page backups, dead client scripts and CSS, `public/test*.html`, `routes/api copy.js`, the ad-hoc root scripts, `error.log`, the publication-ID JSON backup, the schema-flowchart HTML, `scripts/create-sample-table.js`, `Testing/excel_verification/__pycache__/`) and the `pageSpecificJS` locals were deleted on 2026-11-06. What remains:
+- `database_init.sql` / `npm run init-db` are stale (§6.3): no polymer, data-source or detail tables. Regenerating it from the migrated schema is a follow-up.
+- `Testing/excel_verification/verify.py` still reads `Publications` / `PubSource_Ref` and the old 20 polymer codes (PETE, PLA, …); update both before re-running the Excel comparison.
 - `partials/footer.ejs` links to `/pages/about` and `/pages/documentation` (both 404 — routes are `/about`, `/documentation`) and shows "Version 2.0"; `captcha_test.ejs` references a non-existent `/images/logo.png`.
 - Step 5's progress label ("Particle Details") and heading ("Sample Details") disagree; the weather block lives on page 2 although a comment says otherwise.
-- `database_init.sql` / `npm run init-db` are stale (§6.3).
+- `img/unnamed.png` is tracked but referenced nowhere (views, public, routes, `app.js`) and is not served (it is outside `public/`).
+- `scripts/check-database.js` and `scripts/init-database.js` ignore `DB_PORT` (always 3306), unlike the other three scripts.
+- `.claude/` (local launch profiles, cross-check notes, the 2026-11 deploy runbook) is untracked but not git-ignored, and `.claude/launch.json` holds the `sweetlab-localdb` profile's throwaway DB password. Follow-up: add `.claude/` to `.gitignore`, or move the password out of `launch.json` into the environment. Until then, never stage it with `git add -A`/`git add .`.
 
 ---
 
@@ -778,19 +937,24 @@ Verified against commit `2092d2a`; none of these are blocking, but each has bitt
 npm install
 npm run dev                          # nodemon, PORT=3001
 npm start
-npm test                             # 16 test files
+npm test                             # 21 test files, 122 tests
 npm run test:account-recovery        # or test:partial-dates / test:percentages / test:data-summary / test:publication / test:signup
+
+# local test database (§3.4) — always pass every DB_* variable; .env points at production
+DB_HOST=127.0.0.1 DB_PORT=33306 DB_USER=<local user> DB_PASS=<throwaway> DB_NAME=sweetl23_partner_demo node app.js
+DB_HOST=127.0.0.1 DB_PORT=33307 DB_USER=<local user> DB_PASS=<throwaway> DB_NAME=sweetl23_partner_demo node scripts/update-database.js db/<migration>.sql   # MariaDB rehearsal
 
 # database (from the Mac; needs the Remote MySQL whitelist)
 node scripts/backup-database.js
 node scripts/update-database.js db/<migration>.sql
 npm run migrate:account-recovery
 node scripts/purge-data-entered-before.js --before=YYYY-MM-DD [--include-locations --include-publications] [--execute --backup=db/backups/<dump>.sql]
-node scripts/check-database.js       # lists tables (its sample_data checks are legacy)
+node scripts/check-database.js       # lists tables (its sample_data checks are legacy); ignores DB_PORT
 
 # production checks
 curl -s https://entry.sweet-lab.org/api/health
 curl -s https://entry.sweet-lab.org/api/references | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s).data;console.log(j.purposes.map(p=>p.Purpose_Name).join(" | "))})'
+curl -s https://entry.sweet-lab.org/api/data-sources        # after the 2026-11 release: {"success":true,"data":[]} when not signed in
 
 # container (on the VPS)
 docker cp ~/Refactoring/<path> myapp-container:/app/<path>
@@ -815,7 +979,8 @@ git checkout -b <topic>-YYYYMMDD && git add <files> && git commit && git push -u
 |---|---|---|
 | 1.0.0 | 2025-01 (last edited 2026-02-13) | Original manual after the PHP → Node.js refactor |
 | — | 2026-06 → 2026-08 | Codebase changes not reflected in the manual: publications optional, partial dates, FK enforcement, unit references, signup profile, account recovery, percentage precision, ISO countries, merged fragments count, Other-polymer description, SortOrder, data purge |
-| **1.1.0** | **2026-08-18** | Full rewrite against commit `2092d2a` and the 2026-08-18 schema: current routes/APIs, real schema (dropped tables removed, legacy-but-live columns marked), migrations list with deploy order, real frontend structure, testing, actual production topology and deploy runbook, data operations, known issues |
+| 1.1.0 | 2026-08-18 | Full rewrite against commit `2092d2a` and the 2026-08-18 schema: current routes/APIs, real schema (dropped tables removed, legacy-but-live columns marked), migrations list with deploy order, real frontend structure, testing, actual production topology and deploy runbook, data operations, known issues |
+| **1.2.0** | **2026-11-06** | Updated for branch `comments-20261103` (PI comments of 2026-11-03), verified against its 2026-11-06 working tree: data-source redesign (`DataSourceTypeReference` with eight Published/Unpublished types, `DataSourceReference` with the PI's ten fields plus `EnteredBy`, CHECK constraints, mandatory data source for new samples, per-user lists and save-time ownership check, shared browser/server validator, new Data Source form section); the PI's 25-row polymer list; migrations T1/T3 with collation fix, self-check, MariaDB rehearsal and the release order backup → T1 → purge → T3 → code (§9.6, not yet deployed); home-map media-type colours, legend, concentration popups and HTML escaping; sidebar Interactive Map entry; `DB_PORT` in the app pool and backup script; removed test endpoints and 42 dead files; local MySQL 9.4 / MariaDB 10.6 test recipe; 21 test files / 122 tests; known issues refreshed |
 
 ### Document conventions
 

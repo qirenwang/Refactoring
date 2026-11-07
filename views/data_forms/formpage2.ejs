@@ -115,70 +115,119 @@
                 </div>
             </div>
 
-            <div class="publication-source-section" id="publication-source-section">
-                <h3 class="section-subtitle">Publication Source</h3>
-                <div class="option-question">
-                    <p>Is this sample associated with a publication source?</p>
-                    <div class="radio-options">
-                        <label class="radio-option">
-                            <input type="radio" name="publication_present" value="yes" class="toggle-publication-source">
-                            <span class="radio-label">Yes</span>
-                        </label>
-                        <label class="radio-option">
-                            <input type="radio" name="publication_present" value="no" class="toggle-publication-source" checked>
-                            <span class="radio-label">No</span>
-                        </label>
+            <!-- Data source (mandatory for new samples). The eight source types
+                 and their rules come from DataSourceTypeReference via
+                 /api/references; the rules are shared with the API in
+                 public/js/publication-form-utils.js. -->
+            <div class="publication-source-section data-source-section" id="publication-source-section">
+                <h3 class="section-subtitle">Data Source (<span class="required-marker">*</span>)</h3>
+                <p class="instruction">
+                    Every sample must name where its data came from. Reuse one of your previous
+                    data sources, or choose a source type and describe a new one.
+                </p>
+                <div class="data-source-legacy-notice" id="data-source-legacy-notice" role="status" hidden>
+                    This sample was saved before a data source was required. You can still save other changes;
+                    please add its data source when you can.
+                </div>
+
+                <div class="form-row">
+                    <label class="form-label" for="data-source-id">Select Existing Data Source:</label>
+                    <div class="publication-field-control">
+                        <select name="data_source_id" id="data-source-id"
+                                class="form-select publication-select"
+                                aria-describedby="data-source-select-help">
+                            <option value="">-- Enter a new data source --</option>
+                        </select>
+                        <small id="data-source-select-help" class="help-text publication-help-text">
+                            Lists the data sources you entered before. Choosing one fills in and locks the fields below;
+                            choose &ldquo;Enter a new data source&rdquo; to unlock them and enter a new one.
+                        </small>
                     </div>
                 </div>
 
-                <!-- Publication fields - hidden until "Yes" is selected -->
-                <div id="publication-source-fields" style="display: none;">
-                    <div class="form-row">
-                        <label class="form-label" for="publication-id-num">Select Existing Publication:</label>
-                        <div class="publication-field-control">
-                            <select name="publication_id_num" id="publication-id-num"
-                                    class="form-select publication-select"
-                                    aria-describedby="publication-select-help">
-                                <option value="">-- Select Existing Publication --</option>
-                            </select>
-                            <small id="publication-select-help" class="help-text publication-help-text">
-                                Select an existing publication to fill the fields below, or leave this blank to enter a new publication.
-                            </small>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label" for="publication-year">Publication Year:</label>
-                        <input type="number" id="publication-year" name="publication_year"
-                               class="form-input publication-detail-field" min="1900" max="2100">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label" for="publication-authors">Authors:</label>
-                        <div class="publication-field-control">
-                            <input type="text" id="publication-authors" name="publication_authors"
-                                   class="form-input publication-detail-field"
-                                   placeholder="Allen Smith; Maria Chen"
-                                   aria-describedby="publication-authors-help">
-                            <small id="publication-authors-help" class="help-text publication-help-text">
-                                Enter author names in the same order as they appear in the publication, using the format First Last (e.g., Allen Smith). Separate multiple authors with semicolons.
-                            </small>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label" for="publication-journal">Journal:</label>
-                        <input type="text" id="publication-journal" name="publication_journal"
-                               class="form-input publication-detail-field">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label" for="publication-full-citation-apa">Full Citation APA:</label>
-                        <textarea id="publication-full-citation-apa" name="publication_full_citation_apa"
-                                  class="form-textarea publication-detail-field" rows="3"></textarea>
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label" for="publication-pub-source-code">Publication Source Type:</label>
-                        <select id="publication-pub-source-code" name="publication_pub_source_code"
-                                class="form-select publication-source-select publication-detail-field">
+                <h4 class="data-source-step">Step 1: Source type</h4>
+                <div class="form-row">
+                    <label class="form-label" for="data-source-type-id">Data Source Type (<span class="required-marker">*</span>):</label>
+                    <div class="publication-field-control">
+                        <select id="data-source-type-id" name="data_source_type_id"
+                                class="form-select publication-source-select publication-detail-field"
+                                aria-describedby="data-source-type-help">
                             <option value="">-- Select Source Type --</option>
                         </select>
+                        <small id="data-source-type-help" class="help-text publication-help-text">
+                            Published sources (journal articles, books, reports, public databases) need a publication year;
+                            unpublished data (research, agency, community, citizen-science) does not have one.
+                        </small>
+                    </div>
+                </div>
+
+                <div id="data-source-detail-fields" hidden>
+                    <h4 class="data-source-step">Step 2: Source details</h4>
+                    <div class="form-row">
+                        <label class="form-label" for="source-title">Source Title (<span class="required-marker">*</span>):</label>
+                        <div class="publication-field-control">
+                            <input type="text" id="source-title" name="source_title" maxlength="500"
+                                   class="form-input publication-detail-field"
+                                   placeholder="e.g., Microplastics in Great Lakes Tributaries"
+                                   aria-describedby="source-title-help">
+                            <small id="source-title-help" class="help-text publication-help-text">
+                                Title of the article, book, report, dataset, or project.
+                            </small>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label" for="authors-or-organization">Authors or Organization (<span class="required-marker">*</span>):</label>
+                        <div class="publication-field-control">
+                            <input type="text" id="authors-or-organization" name="authors_or_organization"
+                                   class="form-input publication-detail-field"
+                                   placeholder="Allen Smith; Maria Chen  or  Michigan Environmental Agency"
+                                   aria-describedby="authors-or-organization-help">
+                            <small id="authors-or-organization-help" class="help-text publication-help-text">
+                                Enter author names in the same order as they appear in the source, using the format First Last
+                                (e.g., Allen Smith), separated by semicolons; or the responsible organization, group, or program.
+                            </small>
+                        </div>
+                    </div>
+                    <div class="form-row" id="publication-year-row" hidden>
+                        <label class="form-label" for="publication-year">Publication Year (<span class="required-marker">*</span>):</label>
+                        <input type="number" id="publication-year" name="publication_year"
+                               class="form-input publication-detail-field" min="1900"
+                               inputmode="numeric" placeholder="YYYY">
+                    </div>
+                    <div class="form-row" id="date-accessed-row" hidden>
+                        <label class="form-label" for="date-accessed">Date Accessed (<span class="required-marker">*</span>):</label>
+                        <div class="publication-field-control">
+                            <input type="date" id="date-accessed" name="date_accessed"
+                                   class="form-input publication-detail-field"
+                                   aria-describedby="date-accessed-help">
+                            <small id="date-accessed-help" class="help-text publication-help-text">
+                                The date you accessed the database or repository.
+                            </small>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label" for="journal-publisher-or-repository">Journal, Publisher, or Repository (<span class="required-marker">*</span>):</label>
+                        <input type="text" id="journal-publisher-or-repository" name="journal_publisher_or_repository"
+                               class="form-input publication-detail-field"
+                               placeholder="Journal, publisher, agency, institution, or data repository">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label" for="source-identifier-or-url">Identifier or URL:</label>
+                        <input type="text" id="source-identifier-or-url" name="source_identifier_or_url" maxlength="500"
+                               class="form-input publication-detail-field"
+                               placeholder="DOI, ISBN, report number, dataset ID, or URL">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label" for="project-or-collection-name">Project or Collection Name:</label>
+                        <input type="text" id="project-or-collection-name" name="project_or_collection_name" maxlength="255"
+                               class="form-input publication-detail-field"
+                               placeholder="Associated monitoring program, project, or collection">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label" for="citation-text">Full Citation (APA) (<span class="required-marker">*</span>):</label>
+                        <textarea id="citation-text" name="citation_text"
+                                  class="form-textarea publication-detail-field" rows="3"
+                                  placeholder="Complete APA-style citation"></textarea>
                     </div>
                 </div>
             </div>
