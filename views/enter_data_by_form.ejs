@@ -81,6 +81,9 @@
                         <div class="instruction-note" style="color: #e74c3c; background-color: #fdf2f2; padding: 8px; margin: 8px 0; border-left: 4px solid #e74c3c; font-size: 14px;">
                             <strong>Important:</strong> To create a brand new location, clear "Select previously sampled location" first. If an existing location is selected, only location description and coordinates are treated as event-level overrides.
                         </div>
+                        <div class="instruction-note new-location-save-note" style="background-color: #eef6fb; padding: 8px; margin: 8px 0; border-left: 4px solid #3498db; font-size: 14px;">
+                            A new location is checked when you click "Continue" and is saved together with your sample when you click "<%= locals.editSampleId ? 'Update Data' : 'Save' %>" on the last page. You can come back to this page and change it until then (click "Continue" again after a change).
+                        </div>
                         <div class="location-form">                            <div class="form-row">
                                 <label class="form-label">Location Name (<span style="color: red;">*</span>, for pull-down menu):</label>
                             </div>
@@ -275,6 +278,7 @@ window.microplasticsFormConfig = {
 <script src="/js/partial-date-utils.js"></script>
 <script src="/js/publication-form-utils.js"></script>
 <script src="/js/data-summary-utils.js"></script>
+<script src="/js/location-form-utils.js"></script>
 <script src="/js/form-handler.js"></script>
 
 <script>
