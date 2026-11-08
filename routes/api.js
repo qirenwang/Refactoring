@@ -1860,6 +1860,199 @@ router.post(['/publications', '/data-sources'], requireAuth, async (req, res) =>
     }
 });
 
+// ========== SHARED NEW-LOCATION RULES ==========
+// One definition for POST /locations, POST /locations/check and the new
+// location that POST /save-form-data inserts together with the sample, so the
+// three cannot drift. The payload is the camelCase body that page 1 and the
+// My Locations page send.
+const LOCATION_ZIP_MAX = 2147483647; // ZipCode INT(11), signed
+const LOCATION_ZIP_MIN = -2147483648;
+const LOCATION_ACRES_LIMIT = 9999999999.5; // Area_acres DECIMAL(10,0) after rounding
+const LOCATION_VALIDATION_RULES = [
+    body('locationName').notEmpty().withMessage('Location name is required').isLength({ max: 255 }).withMessage('Location name too long'),
+    body('locationShortCode').notEmpty().withMessage('Location short code is required').isLength({ max: 50 }).withMessage('Location short code too long'),
+    body('locationDescription').notEmpty().withMessage('Location description is required').isLength({ max: 500 }).withMessage('Location description too long'),
+    body('latitude').optional({ values: 'falsy' }).isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
+    body('longitude').optional({ values: 'falsy' }).isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude'),
+    body('streetAddress').optional().isLength({ max: 500 }).withMessage('Street address too long'),
+    body('city').optional().isLength({ max: 100 }).withMessage('City name too long'),
+    body('state').optional().isLength({ max: 100 }).withMessage('State name too long'),
+    body('country').optional().isLength({ max: 100 }).withMessage('Country name too long'),
+    body('zipCode').optional().isLength({ max: 20 }).withMessage('Zip code too long'),
+    // insertLocation stores parseInt(zipCode) in ZipCode INT(11); a value
+    // outside its range would only fail at the INSERT. A zip parseInt cannot
+    // read is stored as NULL, as before.
+    body('zipCode').optional({ values: 'falsy' }).custom(value => {
+        const zip = parseInt(value);
+        if (!Number.isNaN(zip) && (zip > LOCATION_ZIP_MAX || zip < LOCATION_ZIP_MIN)) {
+            throw new Error('Zip code is out of range');
+        }
+        return true;
+    }),
+    // insertLocation stores parseFloat(acres) in Area_acres DECIMAL(10,0),
+    // which rounds to a whole number of at most 10 digits.
+    body('acres').optional({ values: 'falsy' }).isFloat({ min: 0, lt: LOCATION_ACRES_LIMIT }).withMessage('Invalid acres')
+];
+
+const LOCATION_GROUP_REQUIRED_MESSAGE = 'Please provide either coordinates, complete address, or zip code';
+const DUPLICATE_LOCATION_MESSAGE = 'A location with this name already exists';
+const LOCATION_REQUIRED_FOR_UPDATE_MESSAGE = 'Please select a location on Page 1.';
+
+// A coordinate counts only when it is a real number, not '' or blank text.
+function isPresentCoordinate(value) {
+    if (value == null || String(value).trim() === '') return false;
+    return !Number.isNaN(parseFloat(value));
+}
+
+// At least one location group: coordinates, a complete address, or a zip
+// code. Page 1 sends null for empty coordinates; an absent key (undefined)
+// counts as missing too.
+//
+// By default (/locations/check and the new location of save-form-data) a
+// coordinate or zip must be one insertLocation actually stores: '' or blank
+// coordinates and a zip parseInt cannot read do not count. `legacy: true`
+// keeps the old truthiness test for POST /locations, whose My Locations form
+// posts '' for empty coordinates.
+function hasLocationGroup(payload = {}, { legacy = false } = {}) {
+    const { latitude, longitude, streetAddress, city, state, country, zipCode } = payload;
+    const hasAddress = streetAddress && city && state && country;
+    if (legacy) {
+        const hasCoordinates = latitude != null && longitude != null;
+        return Boolean(hasCoordinates || hasAddress || zipCode);
+    }
+    const hasCoordinates = isPresentCoordinate(latitude) && isPresentCoordinate(longitude);
+    const hasZip = Boolean(zipCode) && !Number.isNaN(parseInt(zipCode));
+    return Boolean(hasCoordinates || hasAddress || hasZip);
+}
+
+// Runs LOCATION_VALIDATION_RULES and the group rule against a payload that is
+// not req.body itself (the new_location object of a save-form-data body).
+async function validateLocationPayload(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return { isValid: false, message: 'New location details are missing' };
+    }
+    const payloadReq = { body: payload };
+    for (const rule of LOCATION_VALIDATION_RULES) {
+        await rule.run(payloadReq);
+    }
+    const errors = validationResult(payloadReq);
+    if (!errors.isEmpty()) {
+        return { isValid: false, message: errors.array()[0].msg };
+    }
+    if (!hasLocationGroup(payload)) {
+        return { isValid: false, message: LOCATION_GROUP_REQUIRED_MESSAGE };
+    }
+    return { isValid: true };
+}
+
+// Same comparison as the Location UNIQUE key on LocationName (DB collation).
+async function locationNameExists(db, locationName) {
+    const [rows] = await db.execute(
+        'SELECT COUNT(*) as count FROM Location WHERE LocationName = ?',
+        [locationName]
+    );
+    return Number(rows[0].count) > 0;
+}
+
+// Inserts a Location row from a validated payload and returns its ID. `db` is
+// the pool (POST /locations) or the save transaction's connection.
+async function insertLocation(db, payload, userId) {
+    const {
+        locationName,
+        locationShortCode,
+        locationDescription,
+        latitude,
+        longitude,
+        streetAddress,
+        city,
+        state,
+        country,
+        zipCode,
+        acres
+    } = payload;
+
+    const [result] = await db.execute(`
+                INSERT INTO Location (
+                    UserLocID_txt,
+                    LocationName,
+                    Location_Desc,
+                    \`Lat_DecimalDegree\`,
+                    \`Long_DecimalDegree\`,
+                    StreetAddress,
+                    City,
+                    State,
+                    Country,
+                    ZipCode,
+                    \`Area_acres\`,
+                    \`Env_Indoor_SelectID\`,
+                    UserCreated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+        locationShortCode || null, // Add the short code field
+        locationName,
+        locationDescription, // Use the actual location description
+        latitude || null,
+        longitude || null,
+        streetAddress || null,
+        city || null,
+        state || null,
+        country || null,
+        zipCode ? parseInt(zipCode) || null : null, // Convert to integer
+        acres ? parseFloat(acres) : null, // Insert Area_acres
+        1, // Default to Environmental (Outdoors)
+        userId
+    ]);
+
+    return result.insertId;
+}
+
+// The new page-1 location of a save-form-data request, inserted on the save
+// transaction's connection so a later failure rolls it back with the sample.
+// A taken name is a 400 whose message is shown as is.
+async function insertNewLocationForSave(connection, payload, userId) {
+    const duplicateError = () => Object.assign(badRequest(DUPLICATE_LOCATION_MESSAGE), { exposeMessage: true });
+
+    if (await locationNameExists(connection, payload.locationName)) {
+        throw duplicateError();
+    }
+    try {
+        return await insertLocation(connection, payload, userId);
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            throw duplicateError();
+        }
+        // A value the Location columns reject (for example characters the
+        // column charset cannot hold). Say it is the page-1 location, not a
+        // raw save error; the transaction is rolled back by the caller.
+        if (LOCATION_VALUE_ERROR_CODES.has(error.code)) {
+            throw Object.assign(
+                badRequest('The new location details could not be saved (' + (error.sqlMessage || error.message) + '). Please go back to page 1 and correct the location.'),
+                { exposeMessage: true }
+            );
+        }
+        throw error;
+    }
+}
+
+const LOCATION_VALUE_ERROR_CODES = new Set([
+    'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD', // Incorrect string value
+    'ER_WARN_DATA_OUT_OF_RANGE',
+    'ER_DATA_TOO_LONG',
+    'WARN_DATA_TRUNCATED',
+    'ER_TRUNCATED_WRONG_VALUE'
+]);
+
+// The request carries a new page-1 location to create on Save: no location ID
+// and location_type 'new' with a new_location object. With a location ID it is
+// an existing location (also the reuse case after a save created it).
+function getNewLocationPayload(formData = {}) {
+    if (formData.location_id || formData.selected_location_id) return null;
+    if (formData.location_type !== 'new') return null;
+    const payload = formData.new_location;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    return payload;
+}
+
 // Save form data
 router.post('/save-form-data',
     requireAuth,
@@ -1910,13 +2103,24 @@ router.post('/save-form-data',
                 });
             }
 
-            // Get location ID from either field name
-            const locationId = formData.location_id || formData.selected_location_id;
-            if (!locationId) {
+            // Get location ID from either field name, or a new page-1
+            // location that is created below, inside the transaction.
+            let locationId = formData.location_id || formData.selected_location_id;
+            const newLocation = getNewLocationPayload(formData);
+            if (!locationId && !newLocation) {
                 return res.status(400).json({
                     success: false,
                     message: 'Location is required'
                 });
+            }
+            if (newLocation) {
+                const locationValidation = await validateLocationPayload(newLocation);
+                if (!locationValidation.isValid) {
+                    return res.status(400).json({
+                        success: false,
+                        message: locationValidation.message
+                    });
+                }
             }
 
             // Validate and normalize the shared Start date and conditional End
@@ -1929,6 +2133,14 @@ router.post('/save-form-data',
             const eventDates = normalizeSamplingEventDates(formData);
 
             await connection.beginTransaction();
+
+            // The Location row goes first (SamplingEvent.LocationID_Num FK),
+            // on this connection, so it commits or rolls back with the sample.
+            let locationName = formData.location_name || null;
+            if (newLocation) {
+                locationId = await insertNewLocationForSave(connection, newLocation, req.session.user_id);
+                locationName = newLocation.locationName;
+            }
 
             const userId = req.session.user_id || 'system';
             const locationOverrideParts = [];
@@ -2361,7 +2573,10 @@ router.post('/save-form-data',
                 samplingEventId: samplingEventId,
                 sampleDetailsId: sampleDetailsId,
                 publicationId: publicationId,
-                dataSourceId: publicationId
+                dataSourceId: publicationId,
+                locationId: parseInt(locationId, 10),
+                locationName: locationName,
+                locationCreated: Boolean(newLocation)
             });
 
         } catch (error) {
@@ -2370,7 +2585,7 @@ router.post('/save-form-data',
             console.error('Error stack:', error.stack);
             res.status(error.statusCode || 500).json({
                 success: false,
-                message: 'Error saving data: ' + error.message,
+                message: error.exposeMessage ? error.message : 'Error saving data: ' + error.message,
                 error: process.env.NODE_ENV === 'development' ? error.stack : undefined
             });
         } finally {
@@ -3293,6 +3508,19 @@ async function updateSampleFromFormData(connection, sampleId, userId, formData) 
     }
 
     const samplingEventId = ownerRows[0].SamplingEvent_Num;
+
+    // SamplingEvent.LocationID_Num is INT NOT NULL with a Location FK, so an
+    // update must never write NULL or 0. The edit form always loads the
+    // sample's current location_id and a new page-1 location is created by
+    // the PUT route before this runs, so a request without a usable ID means
+    // the location the user picked did not arrive. Refusing it (and rolling
+    // the whole update back) is safer than silently keeping the old location
+    // while the user believes it was changed.
+    const locationId = parseNullableInt(formData.location_id || formData.selected_location_id);
+    if (!locationId || locationId <= 0) {
+        throw Object.assign(badRequest(LOCATION_REQUIRED_FOR_UPDATE_MESSAGE), { exposeMessage: true });
+    }
+
     const eventDates = normalizeSamplingEventDates(formData);
 
     // A sample saved before data sources became mandatory may keep NULL, but a
@@ -3358,7 +3586,7 @@ async function updateSampleFromFormData(connection, sampleId, userId, formData) 
         formData.mixed_additional_notes || null;
 
     await updateFromMap(connection, 'SamplingEvent', {
-        LocationID_Num: parseNullableInt(formData.location_id),
+        LocationID_Num: locationId,
         PublicationID_Num: publicationId,
         StartYear: eventDates.start.year,
         StartMonth: eventDates.start.month,
@@ -3572,7 +3800,7 @@ async function updateSampleFromFormData(connection, sampleId, userId, formData) 
     }
 
     // Truthy result; dataSourceId lets the route add the legacy-sample notice.
-    return { dataSourceId: publicationId };
+    return { dataSourceId: publicationId, locationId };
 }
 
 // Upload and process file data
@@ -3846,7 +4074,30 @@ router.put('/my-samples/:id/form-data', requireAuth, async (req, res) => {
         }
 
         await connection.beginTransaction();
-        const updated = await updateSampleFromFormData(connection, sampleId, req.session.user_id, formData);
+
+        // Edit My Data holds a new page-1 location client-side exactly like
+        // data entry does. It is created here, on this transaction's
+        // connection and before the SamplingEvent update that points at it,
+        // so it commits or rolls back with the sample (including the 404 of
+        // a sample the user does not own).
+        let updateData = formData;
+        let locationName = formData.location_name || null;
+        const newLocation = getNewLocationPayload(formData);
+        if (newLocation) {
+            const locationValidation = await validateLocationPayload(newLocation);
+            if (!locationValidation.isValid) {
+                await connection.rollback();
+                return res.status(400).json({
+                    success: false,
+                    message: locationValidation.message
+                });
+            }
+            const newLocationId = await insertNewLocationForSave(connection, newLocation, req.session.user_id);
+            updateData = { ...formData, location_id: String(newLocationId) };
+            locationName = newLocation.locationName;
+        }
+
+        const updated = await updateSampleFromFormData(connection, sampleId, req.session.user_id, updateData);
         if (!updated) {
             await connection.rollback();
             return res.status(404).json({
@@ -3859,7 +4110,12 @@ router.put('/my-samples/:id/form-data', requireAuth, async (req, res) => {
         const response = {
             success: true,
             message: 'Sample updated successfully',
-            sampleDetailsId: sampleId
+            sampleDetailsId: sampleId,
+            // Same location fields as POST /save-form-data, so the client can
+            // switch a held new location to the saved one.
+            locationId: updated.locationId,
+            locationName: locationName,
+            locationCreated: Boolean(newLocation)
         };
         if (updated.dataSourceId === null) {
             // Legacy sample saved before data sources became mandatory.
@@ -3871,7 +4127,7 @@ router.put('/my-samples/:id/form-data', requireAuth, async (req, res) => {
         console.error('Error updating sample from form data:', error);
         res.status(error.statusCode || 500).json({
             success: false,
-            message: 'Error updating sample: ' + error.message
+            message: error.exposeMessage ? error.message : 'Error updating sample: ' + error.message
         });
     } finally {
         connection.release();
@@ -4198,19 +4454,12 @@ router.get('/locations', async (req, res) => {
 
 });
 
-// Create new location
-router.post('/locations',
-    requireAuth,    [        body('locationName').notEmpty().withMessage('Location name is required').isLength({ max: 255 }).withMessage('Location name too long'),
-        body('locationShortCode').notEmpty().withMessage('Location short code is required').isLength({ max: 50 }).withMessage('Location short code too long'),
-        body('locationDescription').notEmpty().withMessage('Location description is required').isLength({ max: 500 }).withMessage('Location description too long'),
-        body('latitude').optional({ values: 'falsy' }).isFloat({ min: -90, max: 90 }).withMessage('Invalid latitude'),
-        body('longitude').optional({ values: 'falsy' }).isFloat({ min: -180, max: 180 }).withMessage('Invalid longitude'),
-        body('streetAddress').optional().isLength({ max: 500 }).withMessage('Street address too long'),
-        body('city').optional().isLength({ max: 100 }).withMessage('City name too long'),
-        body('state').optional().isLength({ max: 100 }).withMessage('State name too long'),
-        body('country').optional().isLength({ max: 100 }).withMessage('Country name too long'),
-        body('zipCode').optional().isLength({ max: 20 }).withMessage('Zip code too long')
-    ],
+// Read-only pre-check for a new page-1 location: the same rules as POST
+// /locations plus the name check, but it never inserts. The location itself
+// is created by POST /save-form-data, in the same transaction as the sample.
+router.post('/locations/check',
+    requireAuth,
+    LOCATION_VALIDATION_RULES,
     async (req, res) => {
         try {
             const errors = validationResult(req);
@@ -4219,66 +4468,61 @@ router.post('/locations',
                     success: false,
                     message: errors.array()[0].msg
                 });
-            }            const {
-                locationName,
-                locationShortCode,
-                locationDescription,
-                latitude,
-                longitude,
-                streetAddress,
-                city,
-                state,
-                country,
-                zipCode,
-                acres // Extract acres from body
-            } = req.body;
+            }
 
-            // Validate that at least one location group is provided
-            const hasCoordinates = latitude !== null && longitude !== null;
-            const hasAddress = streetAddress && city && state && country;
-            const hasZipCode = zipCode;
-
-            if (!hasCoordinates && !hasAddress && !hasZipCode) {
+            if (!hasLocationGroup(req.body)) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Please provide either coordinates, complete address, or zip code'
-                });            }            // Insert into location table (use lowercase table name)
-            const [result] = await pool.execute(`
-                INSERT INTO Location (
-                    UserLocID_txt,
-                    LocationName,
-                    Location_Desc,
-                    \`Lat_DecimalDegree\`,
-                    \`Long_DecimalDegree\`,
-                    StreetAddress,
-                    City,
-                    State,
-                    Country,
-                    ZipCode,
-                    \`Area_acres\`,
-                    \`Env_Indoor_SelectID\`,
-                    UserCreated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [
-                locationShortCode || null, // Add the short code field
-                locationName,
-                locationDescription, // Use the actual location description
-                latitude || null,
-                longitude || null,
-                streetAddress || null,
-                city || null,
-                state || null,
-                country || null,
-                zipCode ? parseInt(zipCode) || null : null, // Convert to integer
-                acres ? parseFloat(acres) : null, // Insert Area_acres
-                1, // Default to Environmental (Outdoors)
-                req.session.user_id
-            ]);
+                    message: LOCATION_GROUP_REQUIRED_MESSAGE
+                });
+            }
+
+            if (await locationNameExists(pool, req.body.locationName)) {
+                return res.status(400).json({
+                    success: false,
+                    message: DUPLICATE_LOCATION_MESSAGE
+                });
+            }
+
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Error checking location:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error checking location'
+            });
+        }
+    }
+);
+
+// Create new location
+router.post('/locations',
+    requireAuth,
+    LOCATION_VALIDATION_RULES,
+    async (req, res) => {
+        try {
+            const errors = validationResult(req);
+            if (!errors.isEmpty()) {
+                return res.status(400).json({
+                    success: false,
+                    message: errors.array()[0].msg
+                });
+            }
+
+            // Validate that at least one location group is provided
+            if (!hasLocationGroup(req.body, { legacy: true })) {
+                return res.status(400).json({
+                    success: false,
+                    message: LOCATION_GROUP_REQUIRED_MESSAGE
+                });
+            }
+
+            const locationId = await insertLocation(pool, req.body, req.session.user_id);
 
             res.json({
                 success: true,
                 message: 'Location created successfully',
-                locationId: result.insertId
+                locationId: locationId
             });
 
         } catch (error) {
@@ -4287,7 +4531,7 @@ router.post('/locations',
             if (error.code === 'ER_DUP_ENTRY') {
                 return res.status(400).json({
                     success: false,
-                    message: 'A location with this name already exists'
+                    message: DUPLICATE_LOCATION_MESSAGE
                 });
             }
 
@@ -4660,5 +4904,11 @@ module.exports._internals = {
     insertPolymerDetails,
     replacePolymerDetails,
     loadPolymerFieldsForForm,
-    POLYMER_OTHER_DESC_COLUMN
+    POLYMER_OTHER_DESC_COLUMN,
+    LOCATION_VALIDATION_RULES,
+    hasLocationGroup,
+    validateLocationPayload,
+    insertLocation,
+    getNewLocationPayload,
+    DUPLICATE_LOCATION_MESSAGE
 };

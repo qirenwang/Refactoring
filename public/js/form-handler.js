@@ -15,6 +15,10 @@ let editDataReady = !isEditMode;
 const publicationFormUtils = window.PublicationFormUtils;
 const partialDateUtils = window.PartialDateUtils;
 const dataSummaryUtils = window.DataSummaryUtils;
+// Page-1 location state (a new location is only written at the final Save).
+const locationFormUtils = window.LocationFormUtils;
+// Page-1 location UI hooks, set by setupLocationSelectionInteraction().
+let page1LocationUi = null;
 
 let referenceDataCache = null;
 let referenceDataPromise = null;
@@ -169,7 +173,11 @@ function isPolymerGroupChanged(groupKey, state = formData) {
 }
 
 function buildSubmissionPayload(state) {
-    const payload = publicationFormUtils.normalizeDataSourcePayload(state);
+    // A pending new location travels as location_type 'new' + new_location
+    // (no location_id); the server creates it inside the save transaction.
+    const payload = locationFormUtils.prepareLocationForSubmission(
+        publicationFormUtils.normalizeDataSourcePayload(state)
+    );
     payload.device_installation_period = state.device_installation_period || 'no';
 
     ['start_year', 'start_month', 'start_day', 'end_year', 'end_month', 'end_day']
@@ -865,6 +873,13 @@ function rememberPublicationForLocation() {
     sessionStorage.setItem(publicationCarryForwardKey, JSON.stringify(store));
 }
 
+function hasAnyDataSourceInput(state = {}) {
+    return DATA_SOURCE_FORM_FIELDS.some(field => {
+        const value = state[field];
+        return value !== undefined && value !== null && String(value).trim() !== '';
+    });
+}
+
 function applyPublicationCarryForward() {
     // An edited sample keeps its own data source (or, for a legacy sample,
     // none until the user adds one).
@@ -876,13 +891,17 @@ function applyPublicationCarryForward() {
     const publicationData = store[locationId];
     if (!publicationData) return;
 
-    Object.entries(publicationData).forEach(([field, value]) => {
-        if (formData[field]) return;
-        formData[field] = value;
-        document.querySelectorAll(`[name="${field}"]`).forEach(element => {
-            element.value = value;
+    // Carry forward only into a blank data-source block: a source the user
+    // already chose or typed on page 2 (e.g. before going back to page 1 to
+    // change the location) is never replaced.
+    if (!hasAnyDataSourceInput(formData)) {
+        Object.entries(publicationData).forEach(([field, value]) => {
+            formData[field] = value;
+            document.querySelectorAll(`[name="${field}"]`).forEach(element => {
+                element.value = value;
+            });
         });
-    });
+    }
 
     const select = document.querySelector('.publication-select');
     if (formData.data_source_id && select) {
@@ -1364,6 +1383,173 @@ document.addEventListener('change', function(event) {
     }
 });
 
+// A Save whose response never arrived (network error) may still have been
+// committed on the server, together with a held new location. A later
+// duplicate-name error must then not claim that nothing was saved.
+let saveOutcomeUncertain = false;
+// Unsaved input in this tab. A reload, browser Back/Forward or closing the
+// tab would lose it (the view starts every new entry from an empty form), so
+// the browser asks before leaving while this is set.
+let formHasUnsavedChanges = false;
+
+function markFormDirty() {
+    formHasUnsavedChanges = true;
+}
+
+function markFormSaved() {
+    formHasUnsavedChanges = false;
+    saveOutcomeUncertain = false;
+}
+
+// Contract C4, for every successful save request in both modes (POST
+// /api/save-form-data and, in Edit My Data, PUT /api/my-samples/:id/form-data):
+// a held new location has now been created, so the form state switches to
+// the returned locationId. A repeated Save/Update (the Update button stays
+// enabled until the redirect) or options B/C then reuse that location
+// instead of trying to create it a second time. Run it before
+// handleSavedPublication(), which remembers the data source under the
+// location id.
+function applyLocationSaveResponse(data) {
+    const savedLocation = locationFormUtils.applySaveResponse(formData, data);
+    if (savedLocation.created && page1LocationUi) {
+        page1LocationUi.selectSavedLocation(savedLocation.locationId, savedLocation.location);
+    }
+    sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+    return savedLocation;
+}
+
+// Location names are unique in the database under a case-insensitive
+// collation that ignores trailing spaces; compare the same way.
+function normalizeLocationNameForMatch(name) {
+    return String(name === null || name === undefined ? '' : name).trim().toLowerCase();
+}
+
+// locations: GET /api/locations rows ({ id, name, ... }) of the current user.
+function locationNameInList(locations, name) {
+    const wanted = normalizeLocationNameForMatch(name);
+    if (!wanted || !Array.isArray(locations)) return false;
+    return locations.some(location => normalizeLocationNameForMatch(location && location.name) === wanted);
+}
+
+// Text for "a location with this name already exists" (page-1 check or Save).
+// ownLocation: the name is one of the user's own locations (now listed in the
+// refreshed dropdown); otherwise it belongs to another account and cannot be
+// selected. listRefreshed false: the user's list could not be loaded.
+function buildDuplicateLocationText(name, options = {}) {
+    const label = String(name || '').trim();
+    const quoted = label ? `"${label}"` : 'with this name';
+    if (options.atSave && options.outcomeUncertain) {
+        return `Your previous Save may have gone through: the connection was lost before the server answered, and a location ${quoted} now exists. ` +
+            'Please open My Samples and check whether this sample was saved before you save it again.';
+    }
+    if (!options.listRefreshed) {
+        return locationFormUtils.DUPLICATE_LOCATION_HELP;
+    }
+    if (options.ownLocation) {
+        return `You already have a location ${quoted}. If you re-visited it (repeat sampling), select it under ` +
+            '"1. Select previously sampled location" (the list has been refreshed) and click "Continue". ' +
+            'Otherwise enter a different location name.';
+    }
+    return `The location name ${label ? quoted + ' ' : ''}is already used by another location (it may have been entered by another account). ` +
+        'Please enter a different location name.';
+}
+
+// Reloads the "Select previously sampled location" options from
+// GET /api/locations (the list is otherwise filled only once, at page load),
+// keeping the current selection and without firing 'change'. Returns the
+// location rows, or null when they could not be loaded.
+async function refreshLocationSelectOptions() {
+    const select = document.getElementById('location-select');
+    if (!select) return null;
+
+    let data;
+    try {
+        const response = await fetch('/api/locations', { headers: { 'Accept': 'application/json' } });
+        data = await response.json();
+        if (!response.ok || !data || !data.success || !Array.isArray(data.locations)) return null;
+    } catch (error) {
+        console.warn('Could not refresh the location list:', error);
+        return null;
+    }
+
+    const selectedValue = select.value;
+    const previousSelected = selectedValue
+        ? Array.from(select.options).find(option => option.value === selectedValue)
+        : null;
+    Array.from(select.options).forEach(option => {
+        if (option.index > 0) option.remove();
+    });
+
+    data.locations.forEach(location => {
+        const option = document.createElement('option');
+        option.value = location.id;
+        option.textContent = location.userLocId ? `${location.name} (${location.userLocId})` : location.name;
+        option.setAttribute('data-name', location.name ?? '');
+        option.setAttribute('data-user-loc-id', location.userLocId ?? '');
+        option.setAttribute('data-description', location.description ?? '');
+        option.setAttribute('data-city', location.city ?? '');
+        option.setAttribute('data-state', location.state ?? '');
+        option.setAttribute('data-zipcode', location.zipCode ?? '');
+        option.setAttribute('data-latitude', location.latitude ?? '');
+        option.setAttribute('data-longitude', location.longitude ?? '');
+        select.appendChild(option);
+    });
+    if (data.locations.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No locations found';
+        select.appendChild(option);
+    }
+
+    if (selectedValue) {
+        const stillListed = Array.from(select.options).some(option => option.value === selectedValue);
+        if (!stillListed && previousSelected) select.appendChild(previousSelected);
+        select.value = selectedValue;
+    }
+    return data.locations;
+}
+
+async function describeDuplicateLocationName(name, options = {}) {
+    const atSave = Boolean(options.atSave);
+    if (atSave && saveOutcomeUncertain) {
+        return buildDuplicateLocationText(name, { atSave, outcomeUncertain: true });
+    }
+    const locations = await refreshLocationSelectOptions();
+    return buildDuplicateLocationText(name, {
+        atSave,
+        listRefreshed: Array.isArray(locations),
+        ownLocation: locationNameInList(locations, name)
+    });
+}
+
+// Save error text. A taken location name refreshes the location list first,
+// so the advice matches what the dropdown offers.
+async function buildSaveErrorMessage(status, data, currentFormState = {}) {
+    const serverMsg = data && (data.message || data.error);
+    if (status === 400 && locationFormUtils.isDuplicateLocationMessage(serverMsg)) {
+        const state = currentFormState || {};
+        const name = (state.new_location && state.new_location.locationName) || state.location_name;
+        const uncertain = saveOutcomeUncertain;
+        const text = await describeDuplicateLocationName(name, { atSave: true });
+        if (uncertain) return text;
+        return 'Could not save: ' + text + ` Then click "Continue" on Page 1 and click ${finalSaveButtonLabel()} again. ` +
+            'Nothing was saved by this attempt.';
+    }
+    return buildFriendlySaveError(status, data, currentFormState);
+}
+
+// fetch() for the final Save. A request that gets no response at all may
+// still have been committed, so say so instead of a bare network error.
+function fetchSaveRequest(url, options) {
+    return fetch(url, options).catch(error => {
+        saveOutcomeUncertain = true;
+        const lost = new Error('The connection was lost while saving, so it is not known whether this sample was saved. ' +
+            'Please check My Samples before you save it again.');
+        lost.cause = error;
+        throw lost;
+    });
+}
+
 // Build a user-friendly save error message for non-technical users
 function buildFriendlySaveError(status, data, currentFormState = {}) {
     // Prefer server-provided details when present
@@ -1372,6 +1558,32 @@ function buildFriendlySaveError(status, data, currentFormState = {}) {
 
     // Special cases with actionable guidance
     if (status === 400) {
+        // The new location's name was taken (checked again at Save). Nothing
+        // was saved: the location and the sample were rolled back together.
+        // (buildSaveErrorMessage refines this with the refreshed location list.)
+        if (locationFormUtils.isDuplicateLocationMessage(serverMsg)) {
+            if (saveOutcomeUncertain) {
+                return buildDuplicateLocationText(
+                    currentFormState.new_location && currentFormState.new_location.locationName,
+                    { atSave: true, outcomeUncertain: true }
+                );
+            }
+            return 'Could not save: ' + locationFormUtils.DUPLICATE_LOCATION_HELP +
+                ` Then click "Continue" on Page 1 and click ${finalSaveButtonLabel()} again. Nothing was saved by this attempt.`;
+        }
+
+        // The new location's details were rejected at Save.
+        if (serverMsg && serverMsg.toLowerCase().includes('location') &&
+            locationFormUtils.hasPendingNewLocation(currentFormState)) {
+            const details = serverErrors
+                .map(e => (typeof e === 'string' ? e : (e && (e.msg || e.message))))
+                .filter(Boolean)
+                .slice(0, 3);
+            return 'Could not save: The new location on Page 1 needs attention. ' +
+                (details.length > 0 ? details.join('; ') : String(serverMsg).replace(/^Error saving data:\s*/i, '')) +
+                ' Please review Page 1, click "Continue", and Save again. Nothing was saved.';
+        }
+
         // Missing location
         if (serverMsg && serverMsg.toLowerCase().includes('location')) {
             const hasNewLocationInputs = !!(
@@ -1387,9 +1599,9 @@ function buildFriendlySaveError(status, data, currentFormState = {}) {
                 currentFormState.zip_code
             );
             if (hasNewLocationInputs) {
-                return 'Could not save: You entered a new location but it has not been saved yet. Please go to Page 1 and click "Continue" to save the new location, or select a previous location from the dropdown.';
+                return 'Could not save: You entered a new location but it has not been confirmed yet. Please go to Page 1 and click "Continue" to check the new location, or select a previous location from the dropdown.';
             }
-            return 'Could not save: Please select a location on Page 1 (either choose a previous location or enter and save a new one).';
+            return 'Could not save: Please select a location on Page 1 (either choose a previous location or enter a new one and click "Continue").';
         }
 
         // Missing sample date or media type
@@ -1413,7 +1625,11 @@ function buildFriendlySaveError(status, data, currentFormState = {}) {
             }
         }
 
-        // Fallback for 400
+        // Fallback for 400 (a rejected new location also explains why)
+        if (serverMsg && locationFormUtils.hasPendingNewLocation(currentFormState)) {
+            return 'Could not save: ' + String(serverMsg).replace(/^Error saving data:\s*/i, '') +
+                ' Please review the form (including the new location on Page 1) and try again. Nothing was saved.';
+        }
         return 'Could not save: Some required information is missing or invalid. Please review the form and try again.';
     }
 
@@ -1516,17 +1732,27 @@ function preValidateBeforeSubmit(state) {
         Object.assign(state, formData);
     }
 
-    // Location must exist (either selected or saved new location)
-    if (!state.location_id) {
+    // Location must be confirmed on page 1: either a previous location or a
+    // new location that was checked with Continue (it is created on Save).
+    if (!locationFormUtils.hasConfirmedLocation(state)) {
         const newLocationEntered = !!(
             state.location_name || state.location_shortcode || state.location_description ||
             state.latitude || state.longitude || state.streetaddress || state.city ||
             state.state || state.country || state.zip_code
         );
         if (newLocationEntered) {
-            issues.push('Please go to Page 1 and click "Continue" to save the new location, or clear those fields and select a previous location.');
+            issues.push('Please go to Page 1 and click "Continue" to check the new location, or clear those fields and select a previous location.');
         } else {
             issues.push('Please select a location on Page 1.');
+        }
+    } else if ((!isEditMode || locationFormUtils.hasPendingNewLocation(state)) &&
+        document.getElementById('form-page1')) {
+        // Page 1 stays editable after Continue. If it no longer shows the
+        // confirmed location, the edit was never checked: ask for Continue
+        // again instead of silently saving either version.
+        const comparison = locationFormUtils.compareConfirmedLocation(state, validateLocationInput());
+        if (!comparison.matches) {
+            issues.push('The location on Page 1 was changed after you confirmed it. Please go to Page 1 and click "Continue" to confirm the location again.');
         }
     }
 
@@ -1650,18 +1876,10 @@ function validateLocationInput() {
     console.log('validateLocationInput - selectedLocationId:', selectedLocationId);
     console.log('validateLocationInput - locationSelect.value:', locationSelect?.value);
 
-    // Option 2: New location fields
-    const locationName = document.getElementById('location-name')?.value?.trim() || '';
-    const locationShortCode = document.getElementById('location-shortcode')?.value?.trim() || '';
+    // Option 2 fields an existing location may override for this event.
     const locationDescription = document.getElementById('location-description')?.value?.trim() || '';
     const latitude = document.getElementById('latitude')?.value?.trim() || '';
     const longitude = document.getElementById('longitude')?.value?.trim() || '';
-    const streetAddress = document.querySelector('input[name="streetaddress"]')?.value?.trim() || '';
-    const city = document.querySelector('input[name="city"]')?.value?.trim() || '';
-    const state = document.querySelector('input[name="state"]')?.value?.trim() || '';
-    const country = document.querySelector('input[name="country"]')?.value?.trim() || '';
-    const zipCode = document.querySelector('input[name="zip_code"]')?.value?.trim() || '';
-    const acres = document.getElementById('acres')?.value?.trim() || '';
 
     // Priority system: Option 1 overrides Option 2
     // but allows sample-specific overrides for description/coordinates.
@@ -1736,70 +1954,81 @@ function validateLocationInput() {
         };
     }
 
-    // If Option 1 is not selected, validate Option 2
-    if (!locationName) {
-        return {
-            isValid: false,
-            message: 'A location name is required for new locations. Or select an existing location to continue.'
-        };
-    }
+    // If Option 1 is not selected, validate Option 2 (shared with the
+    // server-side rules of /api/locations/check and the final Save).
+    return locationFormUtils.validateNewLocationValues(readPage1LocationValues());
+}
 
-    if (!locationShortCode) {
-        return {
-            isValid: false,
-            message: 'Location short code is required for new locations.'
-        };
-    }
+// Current page-1 location inputs, keyed by input name.
+function readPage1LocationValues() {
+    const page1 = document.getElementById('form-page1');
+    const values = {};
+    locationFormUtils.PAGE1_FORM_KEYS.forEach(name => {
+        const input = page1 ? page1.querySelector(`[name="${name}"]`) : null;
+        values[name] = input ? String(input.value || '').trim() : '';
+    });
+    return values;
+}
 
-    if (!locationDescription) {
-        return {
-            isValid: false,
-            message: 'Location description is required for new locations.'
-        };
-    }
-
-    // Check if at least one location group is provided
-    const hasCoordinates = latitude && longitude;
-    const hasAddress = streetAddress && city && state && country;
-    const hasZipCode = zipCode;
-
-    if (!hasCoordinates && !hasAddress && !hasZipCode) {
-        return {
-            isValid: false,
-            message: 'Please provide either coordinates, complete address, or zip code for the new location.'
-        };
-    }
-
-    // Validate coordinates if provided
-    if (latitude || longitude) {
-        const lat = parseFloat(latitude);
-        const lng = parseFloat(longitude);
-
-        if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-            return {
-                isValid: false,
-                message: 'Please provide valid coordinates (latitude: -90 to 90, longitude: -180 to 180).'
-            };
+function writePage1LocationValues(values) {
+    const page1 = document.getElementById('form-page1');
+    if (!page1) return;
+    locationFormUtils.PAGE1_FORM_KEYS.forEach(name => {
+        const input = page1.querySelector(`[name="${name}"]`);
+        if (input) {
+            input.value = values && values[name] !== undefined && values[name] !== null
+                ? String(values[name])
+                : '';
         }
+    });
+}
+
+// Event-level description/coordinates confirmed (Continue) for this existing
+// location, or {} when the location is not the confirmed one (new entries).
+function getConfirmedOverridesForLocation(locationId) {
+    if (isEditMode || !locationId) return {};
+    if (formData.location_type === 'new' || String(formData.location_id || '') !== String(locationId)) return {};
+    const overrides = {};
+    if (formData.event_location_description) overrides.description = String(formData.event_location_description);
+    if (formData.event_latitude && formData.event_longitude) {
+        overrides.latitude = String(formData.event_latitude);
+        overrides.longitude = String(formData.event_longitude);
+    }
+    return overrides;
+}
+
+function isPage1LocationBlank() {
+    const select = document.getElementById('location-select');
+    return !(select && select.value) &&
+        locationFormUtils.arePage1ValuesBlank(readPage1LocationValues());
+}
+
+// Refills page 1 from the confirmed location in formData. Page 1 is never
+// re-rendered, so this only acts when its inputs were emptied while a
+// confirmed location is still held (it never overwrites what is shown).
+function restorePage1FromFormData() {
+    if (isEditMode || !isPage1LocationBlank()) return false;
+    if (!locationFormUtils.hasConfirmedLocation(formData)) return false;
+
+    const restore = locationFormUtils.getPage1RestoreValues(formData);
+    const select = document.getElementById('location-select');
+    if (restore.mode === 'existing') {
+        const hasOption = select && Array.from(select.options)
+            .some(option => String(option.value) === restore.selectValue);
+        if (!hasOption) return false;
+        select.value = restore.selectValue;
+        writePage1LocationValues(restore.values);
+        if (page1LocationUi) page1LocationUi.markExistingMode();
+    } else if (restore.mode === 'new') {
+        if (select) select.value = '';
+        writePage1LocationValues(restore.values);
+        if (page1LocationUi) page1LocationUi.markNewMode();
+    } else {
+        return false;
     }
 
-    return {
-        isValid: true,
-        isExistingLocation: false,
-        locationData: {
-            locationName,
-            locationShortCode,
-            locationDescription,
-            latitude: latitude || null,
-            longitude: longitude || null,
-            streetAddress: streetAddress || null,
-            city: city || null,
-            state: state || null,
-            country: country || null,
-            zipCode: zipCode || null,
-            acres: acres || null
-        }
-    };
+    syncLocationMapFromInputs({ zoom: 13 });
+    return true;
 }
 
 function clearValidationError() {
@@ -1849,36 +2078,17 @@ async function showExistingLocationConfirmation(locationData) {
         const confirmed = await window.showLocationConfirmationModal(locationData.locationName);
 
         if (confirmed) {
-            // Save the selection to form data
-            formData['location_id'] = locationData.locationId;
-            formData['location_type'] = 'existing';
-
-            const overrides = locationData.locationOverrides;
-            if (overrides) {
-                if (overrides.description) {
-                    formData['event_location_description'] = overrides.description;
-                } else {
-                    delete formData['event_location_description'];
-                }
-
-                if (overrides.latitude && overrides.longitude) {
-                    formData['event_latitude'] = overrides.latitude;
-                    formData['event_longitude'] = overrides.longitude;
-                } else {
-                    delete formData['event_latitude'];
-                    delete formData['event_longitude'];
-                }
-            } else {
-                delete formData['event_location_description'];
-                delete formData['event_latitude'];
-                delete formData['event_longitude'];
-            }
+            // Save the selection to form data. Any new-location details held
+            // from an earlier Continue are dropped, so they cannot be saved.
+            locationFormUtils.applyExistingLocationConfirmation(formData, locationData);
 
             sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+            if (!isEditMode) markFormDirty();
 
             // Clear any validation errors
             clearValidationError();
             proceedToNextPage();
+            refreshSummaryIfLoaded();
         }
     } catch (error) {
         console.error('Error in location confirmation:', error);
@@ -1887,85 +2097,110 @@ async function showExistingLocationConfirmation(locationData) {
 }
 
 async function showNewLocationConfirmation(locationData) {
-    const data = locationData.locationData;
-      const locationDetails = {
-        name: data.locationName,
-        shortcode: data.locationShortCode,
-        description: data.locationDescription,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        address: data.streetAddress ? `${data.streetAddress}, ${data.city}, ${data.state}, ${data.country}` : '',
-        zipcode: data.zipCode
-    };
-
-    try {
-        const confirmed = await window.showNewLocationConfirmationModal(locationDetails);
-
-        if (confirmed) {
-            await saveNewLocationAndProceed(locationData);
-        }
-    } catch (error) {
-        console.error('Error in new location confirmation:', error);
-        window.showErrorMessage('An error occurred while confirming the new location details.');
-    }
+    // New entries and Edit My Data alike: nothing is written on Continue.
+    await checkAndHoldNewLocation(locationData);
 }
 
-async function saveNewLocationAndProceed(locationData) {
+// Label of the button that finally writes the sample (and a held new
+// location) to the database.
+function finalSaveButtonLabel() {
+    return isEditMode ? '"Update Data"' : '"Save"';
+}
+
+// The new location is checked read-only on the server and kept in the form.
+// It is written to the database only by the final Save (POST
+// /api/save-form-data, or PUT /api/my-samples/:id/form-data in Edit My Data),
+// in the same transaction as the sample.
+async function checkAndHoldNewLocation(locationData) {
     const continueButton = document.getElementById('page1-continue');
-    const originalText = continueButton.textContent;
+    const payload = locationData.locationData;
 
+    let checkResult;
     try {
-        // Show progress modal
-        window.showProgress('Saving New Location', 'Please wait while we save your new location...');
-
-        // Disable button
-        continueButton.disabled = true;
-
-        // Clear any validation errors
+        window.showProgress('Checking New Location', 'Please wait while we check the new location details...');
+        if (continueButton) continueButton.disabled = true;
         clearValidationError();
 
-        // Send data to server
-        const response = await fetch('/api/locations', {
+        const response = await fetch('/api/locations/check', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
-            body: JSON.stringify(locationData.locationData)
+            body: JSON.stringify(payload)
         });
-
-        const data = await response.json();
-
-        // Hide progress modal
-        window.hideProgress();
-
-        if (data.success) {
-            // Save the new location ID to form data
-            formData['location_id'] = data.locationId;
-            formData['location_type'] = 'new';
-            formData['location_name'] = locationData.locationData.locationName;
-            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
-
-            // Show success message with fancy modal
-            await window.showSuccessMessage(`Location "${locationData.locationData.locationName}" has been saved successfully!`);
-
-            // Refresh the location dropdown for future use
-            if (typeof fetchLocations === 'function') {
-                fetchLocations();
-            }
-
-            // Proceed to next page
-            proceedToNextPage();
-
-        } else {
-            // Show error message with fancy modal
-            await window.showErrorMessage('Failed to save location: ' + (data.message || 'Unknown error'));
-            continueButton.disabled = false;
-        }
+        let data = null;
+        try { data = await response.json(); } catch (_) { data = null; }
+        checkResult = { ok: response.ok && Boolean(data && data.success), data };
     } catch (error) {
-        console.error('Error saving location:', error);
+        console.error('Error checking new location:', error);
+        checkResult = { ok: false, networkError: true };
+    } finally {
         window.hideProgress();
-        await window.showErrorMessage('Error connecting to server. Please try again.');
-        continueButton.disabled = false;
+        if (continueButton) continueButton.disabled = false;
+    }
+    // fancyModal.hide() resolves the pending modal after its 300 ms close
+    // animation; opening the next modal sooner would auto-cancel it.
+    await new Promise(resolve => setTimeout(resolve, 350));
+
+    if (!checkResult.ok) {
+        const serverMessage = checkResult.data && checkResult.data.message;
+        let message;
+        if (checkResult.networkError) {
+            message = 'The new location could not be checked. Please check your connection and try again.';
+        } else if (locationFormUtils.isDuplicateLocationMessage(serverMessage)) {
+            message = await describeDuplicateLocationName(payload && payload.locationName);
+        } else {
+            const errors = Array.isArray(checkResult.data && checkResult.data.errors)
+                ? checkResult.data.errors
+                    .map(e => (typeof e === 'string' ? e : (e && (e.msg || e.message))))
+                    .filter(Boolean)
+                : [];
+            message = errors.length > 0
+                ? errors.slice(0, 3).join(' ')
+                : (serverMessage || 'The new location details could not be checked. Please try again.');
+        }
+        await showValidationError(message);
+        return;
+    }
+
+    let confirmed = false;
+    try {
+        confirmed = await window.fancyModal.show({
+            type: 'new-location',
+            title: 'Confirm New Location',
+            message: `Please check the new location details below. The location will be saved together with your sample when you click ${finalSaveButtonLabel()} on the last page.`,
+            details: locationFormUtils.buildNewLocationConfirmationDetails(payload),
+            confirmText: 'Continue',
+            cancelText: 'Go back and edit',
+            icon: '✨'
+        });
+    } catch (error) {
+        console.error('Error in new location confirmation:', error);
+        window.showErrorMessage('An error occurred while confirming the new location details.');
+        return;
+    }
+    if (!confirmed) return;
+
+    // Contract C2: hold the checked details; no location id exists yet.
+    locationFormUtils.applyNewLocationConfirmation(formData, payload);
+    sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+    // A new check passed, so an earlier lost Save response no longer
+    // explains a later duplicate-name error.
+    saveOutcomeUncertain = false;
+    markFormDirty();
+
+    clearValidationError();
+    showSuccessMessage(`Location "${payload.locationName}" details checked. The location will be saved together with your sample when you click ${finalSaveButtonLabel()} on the last page.`);
+    proceedToNextPage();
+    refreshSummaryIfLoaded();
+}
+
+// The page-6 summary is built when page 6 is reached; re-confirming the
+// location afterwards (from the summary's Edit button) must refresh it.
+function refreshSummaryIfLoaded() {
+    if (document.getElementById('summary-container') && typeof window.generateSummary === 'function') {
+        window.generateSummary();
     }
 }
 
@@ -2183,13 +2418,13 @@ function saveCurrentPageData() {
             return;
         }
 
-        // Special handling for location select - don't overwrite the stored
-        // location ID when the user added a new location (option 2).
+        // Special handling for location select. An empty select means "new
+        // location" (held in formData.new_location, no id until Save).
         if (element.name === 'location_id') {
             const value = element.value?.trim() || '';
             if (value) {
                 formData[element.name] = value;
-            } else if (formData.location_type !== 'new') {
+            } else {
                 delete formData[element.name];
             }
             return;
@@ -2215,9 +2450,37 @@ function saveCurrentPageData() {
     sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
 }
 
+// Saves the inputs of one loaded page, whichever page currentPage points at
+// (the user can scroll back to an earlier page and continue from there).
+function savePageData(pageNumber) {
+    if (!document.getElementById(`form-page${pageNumber}`)) return false;
+    const savedPage = currentPage;
+    currentPage = pageNumber;
+    try {
+        saveCurrentPageData();
+    } finally {
+        currentPage = savedPage;
+    }
+    return true;
+}
+
+// Before a new-entry Save: capture pages 2-6 as they are shown. currentPage
+// may point at an earlier page (e.g. page 1 was re-confirmed from page 6),
+// and edits made since must not be left out. Page 1 is not read here: its
+// location is the one held by Continue (Save checks that page 1 matches).
+function captureLoadedFormPages() {
+    for (let pageNumber = 2; pageNumber <= 6; pageNumber++) {
+        savePageData(pageNumber);
+    }
+}
+
 // Function to scroll to a specific page
 function scrollToPage(pageNumber) {
     const targetPage = document.getElementById(`form-page${pageNumber}`);
+    if (Number(pageNumber) === 1) {
+        // Going back to page 1 must show the confirmed location again.
+        restorePage1FromFormData();
+    }
     if (targetPage) {
         targetPage.scrollIntoView({ behavior: 'smooth' });
     }
@@ -2573,7 +2836,17 @@ function proceedToNextPage() {
 // left over from a previous one.
 window.resetInMemoryFormData = function resetInMemoryFormData() {
     Object.keys(formData).forEach(key => delete formData[key]);
+    formHasUnsavedChanges = false;
 };
+
+// Everything entered (including a new location held from page 1, which is
+// not in the database until Save) lives only in this tab. The view clears it
+// on every page load, so ask before a reload, Back/Forward or close loses it.
+window.addEventListener('beforeunload', function(event) {
+    if (!formHasUnsavedChanges) return;
+    event.preventDefault();
+    event.returnValue = '';
+});
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('=== Form-handler.js DOMContentLoaded ===');
@@ -2786,14 +3059,16 @@ document.addEventListener('DOMContentLoaded', function() {
             navigationSection.insertBefore(backButton, navigationSection.firstChild);
         }
 
-        // Function to handle "Back to New Media" action
+        // Function to handle "Back to New Media" action. Like option B after a
+        // save, it keeps the location (page 1) and the sampling event and data
+        // source (page 2) and only clears the media-dependent pages 3-6.
         function handleBackToNewMedia() {
             // Show confirmation dialog
             const confirmed = confirm(
                 'Are you sure you want to go back to media selection?\n\n' +
                 'This will:\n' +
-                '• Clear all currently entered data\n' +
-                '• Reset all validation states\n' +
+                '• Keep the location (Page 1) and the sampling event and data source (Page 2)\n' +
+                '• Clear the media type and everything entered on Pages 3-6\n' +
                 '• Return to the media type selection page\n\n' +
                 'Click OK to continue or Cancel to stay on this page.'
             );
@@ -2802,10 +3077,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            console.log('Back to New Media: Clearing data and returning to media selection');
+            console.log('Back to New Media: clearing media pages 3-6 and returning to media selection');
 
-            // 1. Clear all form data
-            clearAllFormData();
+            // 1. Clear media-dependent data only (pages 3-6)
+            clearMediaPagesData();
 
             // 2. Reset all validation states
             resetAllValidationStates();
@@ -2820,7 +3095,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             // 5. Show success message
-            showTemporaryMessage('Returned to media selection. All data has been cleared.', 'info');
+            showTemporaryMessage('Returned to media selection. Location, sampling event and data source were kept; media and sample details were cleared.', 'info');
 
             // 6. Clear any selected media types
             setTimeout(() => {
@@ -2828,18 +3103,40 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 500);
         }
 
-        // Function to clear all form data completely
-        function clearAllFormData() {
-            // Clear global formData object
-            formData = {};
+        // Keeps pages 1-2 (form state and inputs) and clears pages 3-6.
+        function clearMediaPagesData() {
+            // Capture the latest page-2 inputs first so nothing typed there is
+            // lost (page 1's location is already held from its Continue), then
+            // drop every field that lives on pages 3-6.
+            savePageData(2);
 
-            // Clear session storage
-            sessionStorage.removeItem(formStorageKey);
+            const mediaFieldNames = new Set();
+            [3, 4, 5, 6].forEach(pageNumber => {
+                const page = document.getElementById(`form-page${pageNumber}`);
+                if (!page) return;
+                page.querySelectorAll('[name]').forEach(element => {
+                    if (element.name) mediaFieldNames.add(element.name);
+                });
+            });
+            [
+                'media_type', 'water_type', 'water_type_other_description',
+                'sediment_type', 'sediment_type_other_description', 'mixed_media_description'
+            ].forEach(name => mediaFieldNames.add(name));
+            mediaFieldNames.forEach(name => {
+                if (!DATA_SOURCE_FORM_FIELDS.includes(name)) delete formData[name];
+            });
+            DETAIL_TABLES.forEach(tableId => { delete formData[tableId]; });
+            deletePolymerFieldsFromFormData();
+            Object.keys(formData)
+                .filter(key => /^packaging_/.test(key))
+                .forEach(key => { delete formData[key]; });
 
-            // Clear all form fields in all pages
-            clearAllFormFields();
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
 
-            console.log('All form data cleared');
+            // Clear the inputs of pages 3-6 only
+            clearMediaSpecificFields();
+
+            console.log('Media pages 3-6 cleared; pages 1-2 kept');
         }
 
         // Function to reset all validation states
@@ -2960,11 +3257,18 @@ document.addEventListener('DOMContentLoaded', function() {
             const selectedState = (selectedOption.getAttribute('data-state') || '').trim();
             const selectedZip = (selectedOption.getAttribute('data-zipcode') || '').trim();
 
+            // Re-selecting the location confirmed with Continue shows the
+            // event-level description/coordinates confirmed for it again.
+            const confirmedOverrides = getConfirmedOverridesForLocation(selectedOption.value);
+            const shownDescription = confirmedOverrides.description || selectedDescription;
+            const shownLatitude = confirmedOverrides.latitude || selectedLatitude;
+            const shownLongitude = confirmedOverrides.longitude || selectedLongitude;
+
             if (locationNameInput) locationNameInput.value = selectedName;
             if (locationShortCodeInput) locationShortCodeInput.value = selectedShortCode;
-            if (locationDescriptionInput) locationDescriptionInput.value = selectedDescription;
-            if (latitudeInput) latitudeInput.value = selectedLatitude;
-            if (longitudeInput) longitudeInput.value = selectedLongitude;
+            if (locationDescriptionInput) locationDescriptionInput.value = shownDescription;
+            if (latitudeInput) latitudeInput.value = shownLatitude;
+            if (longitudeInput) longitudeInput.value = shownLongitude;
             if (cityInput) cityInput.value = selectedCity;
             if (stateInput) stateInput.value = selectedState;
             if (zipInput) zipInput.value = selectedZip;
@@ -2973,9 +3277,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
             formData['location_name'] = selectedName;
             formData['location_shortcode'] = selectedShortCode;
-            formData['location_description'] = selectedDescription;
-            formData['latitude'] = selectedLatitude;
-            formData['longitude'] = selectedLongitude;
+            formData['location_description'] = shownDescription;
+            formData['latitude'] = shownLatitude;
+            formData['longitude'] = shownLongitude;
             formData['existing_location_description'] = selectedDescription;
             formData['existing_location_latitude'] = selectedLatitude;
             formData['existing_location_longitude'] = selectedLongitude;
@@ -3002,141 +3306,138 @@ document.addEventListener('DOMContentLoaded', function() {
             delete formData['existing_location_description'];
             delete formData['existing_location_latitude'];
             delete formData['existing_location_longitude'];
-            delete formData['event_location_description'];
-            delete formData['event_latitude'];
-            delete formData['event_longitude'];
+            if (isEditMode) {
+                delete formData['event_location_description'];
+                delete formData['event_latitude'];
+                delete formData['event_longitude'];
+            }
             sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
         }
 
-        function handleLocationSelectionChange() {
+        // Values typed for a new location (Option 2) are kept here while an
+        // existing location is selected, so clearing the selection again
+        // brings them back instead of losing them or leaving the existing
+        // location's details in the new-location inputs.
+        let newLocationDraft = null;
+        let lastLocationMode = null;
+
+        function syncPage1ValuesToFormData() {
+            const values = readPage1LocationValues();
+            Object.entries(values).forEach(([name, value]) => {
+                formData[name] = value;
+            });
+        }
+
+        function handleLocationSelectionChange(fromUserChange = false) {
             const selectedLocationId = locationSelect.value;
 
             if (selectedLocationId && selectedLocationId !== '') {
                 console.log('Previous location selected:', selectedLocationId);
+                if (fromUserChange && lastLocationMode !== 'existing') {
+                    const typed = readPage1LocationValues();
+                    newLocationDraft = locationFormUtils.arePage1ValuesBlank(typed) ? null : typed;
+                }
                 clearValidationError();
                 populateFieldsFromSelectedLocation();
                 setExistingLocationMode();
+                lastLocationMode = 'existing';
             } else {
                 console.log('No previous location selected');
+                if (fromUserChange && lastLocationMode === 'existing') {
+                    // Drop the existing location's details from the inputs and
+                    // bring back what was typed for a new location (if any).
+                    writePage1LocationValues(newLocationDraft || {});
+                    newLocationDraft = null;
+                    syncPage1ValuesToFormData();
+                    resetOrSyncLocationMap();
+                }
                 setNewLocationMode();
+                lastLocationMode = 'new';
+            }
+        }
+
+        function resetOrSyncLocationMap() {
+            const values = readPage1LocationValues();
+            if (values.latitude && values.longitude) {
+                syncLocationMapFromInputs({ zoom: 13 });
+            } else if (typeof window.resetDataEntryMap === 'function') {
+                window.resetDataEntryMap();
             }
         }
 
         // Set up event listener
         locationSelect.addEventListener('change', function() {
-            handleLocationSelectionChange();
-
-            // Clear all form data from pages 2-6 when location changes
-            clearDataFromPages2to6();
-        });
-
-        // Function to clear all data from pages 2-6 when location changes
-        function clearDataFromPages2to6() {
-            console.log('Clearing all data from pages 2-6 due to location change');
-
-            // Define all fields from pages 2-6 to clear
-            const fieldsToClean = [
-                // Existing location override info
-                'event_location_description', 'event_latitude', 'event_longitude',
-                'existing_location_description', 'existing_location_latitude', 'existing_location_longitude',
-
-                // Page 2: Sampling Event Information
-                'device_installation_period',
-                'start_year', 'start_month', 'start_day',
-                'end_year', 'end_month', 'end_day',
-                'sample_time', 'sample_description',
-
-                // Page 3: Media Information
-                'media_type', 'water_type', 'water_type_other_description',
-                'sediment_type', 'sediment_type_other_description',
-                'mixed_media_description',
-
-                // Page 4: Additional Sampling Information
-                'additional_info', 'air_temp', 'current_conditions', 'rainfall', 'environment_type',
-                'volume_sampled', 'total_water_depth', 'sample_water_depth',
-                'water_flow_velocity', 'turbidity', 'total_suspended_solids',
-                'dissolved_oxygen',
-                'soil_depth', 'soil_sample_dry_weight', 'soil_organic_matter', 'soil_moisture',
-                'soil_sand', 'soil_silt', 'soil_clay', 'soil_additional_notes',
-                'sediment_depth', 'sediment_dry_weight', 'sediment_organic_matter', 'sediment_moisture',
-                'sediment_sand', 'sediment_silt', 'sediment_clay', 'sediment_additional_notes',
-                'surface_area_sampled', 'permeable_surfaces', 'impermeable_surfaces', 'surface_additional_notes',
-                'mixed_additional_notes',
-
-                // Page 5: Sample Details
-                'has_quantitative_data', 'replicates_count',
-                'microplastics_count', 'fragments_count',
-                'total_sample_amount', 'sample_unit',
-                'microplastics_sample_amount', 'microplastics_sample_unit',
-                'fragments_sample_amount', 'fragments_sample_unit',
-                'packaging_sample_amount', 'packaging_sample_unit',
-                'micro_mass_mp_total', 'micro_method_polymer_num', 'micro_method_polymer_other', 'micro_method_percent_estimate',
-                'fragments_mass_debris_total', 'fragments_method_polymer_num', 'fragments_method_polymer_other', 'fragments_method_percent_estimate',
-                ...DETAIL_TABLES,
-
-                // Microplastics size distribution
-                'mp_size_lt_1um', 'mp_size_1_20um', 'mp_size_20_100um', 'mp_size_100um_1mm', 'mp_size_1_5mm',
-                // Microplastics color distribution
-                'mp_color_clear', 'mp_color_opaque_light', 'mp_color_opaque_dark', 'mp_color_mixed',
-                // Microplastics form distribution
-                'mp_form_fiber', 'mp_form_pellet', 'mp_form_fragment', 'mp_form_film', 'mp_form_foam',
-                // Microplastics polymer types
-                'mp_polymer_pet', 'mp_polymer_hdpe', 'mp_polymer_pvc', 'mp_polymer_ldpe', 'mp_polymer_pp', 'mp_polymer_ps',
-                'mp_polymer_pc', 'mp_polymer_pan', 'mp_polymer_pmma', 'mp_polymer_pa', 'mp_polymer_abs',
-                'mp_polymer_polyester_fiber', 'mp_polymer_acrylic_fiber', 'mp_polymer_pe_fiber', 'mp_polymer_pp_fiber',
-                'mp_polymer_tire_rubber', 'mp_polymer_natural_rubber', 'mp_polymer_synthetic_rubber',
-
-                // Fragments color distribution
-                'fragment_color_clear', 'fragment_color_opaque_light', 'fragment_color_opaque_dark', 'fragment_color_mixed',
-                // Legacy fragment color keys
-                'frag_color_clear', 'frag_color_opaque_light', 'frag_color_opaque_dark', 'frag_color_mixed',
-                // Fragments form distribution
-                'fragment_form_fiber', 'fragment_form_pellet', 'fragment_form_film', 'fragment_form_foam', 'fragment_form_hardplastic', 'fragment_form_other',
-                // Legacy fragment form keys
-                'frag_form_fiber', 'frag_form_pellet', 'frag_form_fragment', 'frag_form_film', 'frag_form_foam',
-                // Fragments polymer types
-                'fragment_polymer_pet', 'fragment_polymer_hdpe', 'fragment_polymer_pvc', 'fragment_polymer_ldpe', 'fragment_polymer_pp', 'fragment_polymer_ps',
-                'fragment_polymer_pc', 'fragment_polymer_pan', 'fragment_polymer_pmma', 'fragment_polymer_pa', 'fragment_polymer_abs',
-                'fragment_polymer_polyester_fiber', 'fragment_polymer_acrylic_fiber', 'fragment_polymer_pe_fiber', 'fragment_polymer_pp_fiber',
-                'fragment_polymer_tire_rubber', 'fragment_polymer_natural_rubber', 'fragment_polymer_synthetic_rubber',
-                // Legacy fragment polymer keys
-                'frag_polymer_pet', 'frag_polymer_hdpe', 'frag_polymer_pvc', 'frag_polymer_ldpe', 'frag_polymer_pp', 'frag_polymer_ps',
-                'frag_polymer_pc', 'frag_polymer_pan', 'frag_polymer_pmma', 'frag_polymer_pa', 'frag_polymer_abs',
-                'frag_polymer_polyester_fiber', 'frag_polymer_acrylic_fiber', 'frag_polymer_pe_fiber', 'frag_polymer_pp_fiber',
-                'frag_polymer_tire_rubber', 'frag_polymer_natural_rubber', 'frag_polymer_synthetic_rubber',
-
-                // Packaging items
-                'packaging_item_1', 'packaging_item_2', 'packaging_item_3', 'packaging_item_4', 'packaging_item_5',
-                'packaging_item_6', 'packaging_item_7', 'packaging_item_8', 'packaging_item_9', 'packaging_item_10'
-            ];
-
-            // Clear from formData (plus every reference-driven polymer field,
-            // including the "Other" description, whatever its exact key)
-            fieldsToClean.forEach(field => {
-                delete formData[field];
-            });
-            deletePolymerFieldsFromFormData();
-
-            // Save to sessionStorage
-            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
-
-            // Clear visual form fields in pages 2-6
-            for (let pageNum = 2; pageNum <= 6; pageNum++) {
-                const page = document.getElementById(`form-page${pageNum}`);
-                if (page) {
-                    const fields = page.querySelectorAll('input, select, textarea');
-                    fields.forEach(field => {
-                        if (field.type === 'radio' || field.type === 'checkbox') {
-                            field.checked = false;
-                        } else {
-                            field.value = '';
-                        }
-                    });
-                }
+            // In new entries the event-level overrides (event_*) stay with
+            // the location confirmed by Continue (formData.location_id): they
+            // are replaced only by the next Continue, and Save refuses a page
+            // 1 that no longer shows what was confirmed. Edit My Data keeps
+            // dropping them with the previous selection.
+            if (isEditMode) {
+                delete formData['event_location_description'];
+                delete formData['event_latitude'];
+                delete formData['event_longitude'];
             }
 
-            console.log('All data from pages 2-6 cleared');
-        }
+            handleLocationSelectionChange(true);
+
+            // Pages 2-6 are NOT cleared here: going back to page 1 to change
+            // the location must not erase the dates, data source, media and
+            // sample details already entered. The new location choice only
+            // takes effect after Continue on page 1 confirms it.
+            sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+        });
+
+        // Hooks for code outside this closure (restore after going back,
+        // post-save reuse of a just-created location, "Start New" resets).
+        page1LocationUi = {
+            markExistingMode() {
+                setExistingLocationMode();
+                lastLocationMode = 'existing';
+            },
+            markNewMode() {
+                setInputReadonly(locationNameInput, false);
+                setInputReadonly(locationShortCodeInput, false);
+                setInputReadonly(locationDescriptionInput, false);
+                setInputReadonly(latitudeInput, false);
+                setInputReadonly(longitudeInput, false);
+                removeExistingLocationHint();
+                lastLocationMode = 'new';
+            },
+            // A location created by the last Save becomes a normal previous
+            // location: add it to the dropdown (GET /api/locations would not
+            // keep the current selection) and select it without firing
+            // 'change'.
+            selectSavedLocation(locationId, locationPayload) {
+                const id = String(locationId);
+                let option = Array.from(locationSelect.options).find(item => String(item.value) === id);
+                if (!option && locationPayload) {
+                    const spec = locationFormUtils.buildLocationOption(id, locationPayload);
+                    option = document.createElement('option');
+                    option.value = spec.value;
+                    option.textContent = spec.text;
+                    Object.entries(spec.attributes).forEach(([name, value]) => option.setAttribute(name, value));
+                    // Drop a "No locations found" placeholder if present.
+                    Array.from(locationSelect.options)
+                        .filter(item => !item.value && item.index > 0)
+                        .forEach(item => item.remove());
+                    locationSelect.appendChild(option);
+                }
+                if (!option) return false;
+                locationSelect.value = id;
+                newLocationDraft = null;
+                setExistingLocationMode();
+                lastLocationMode = 'existing';
+                return true;
+            },
+            // Blank page 1 for a brand-new case (options A and D).
+            resetForNewCase() {
+                newLocationDraft = null;
+                this.markNewMode();
+                if (typeof window.resetDataEntryMap === 'function') {
+                    window.resetDataEntryMap();
+                }
+            }
+        };
 
         // Initialize on page load
         setTimeout(() => {
@@ -3898,7 +4199,11 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Click event detected on:', event.target);
 
             // Check if the clicked element is a continue button
-            if (event.target.classList.contains('btn-continue')) {
+            // "Find Address on Map" (page 1) reuses the .btn-continue style
+            // but is not a navigation button; it must not skip the page-1
+            // location check by loading page 2.
+            if (event.target.classList.contains('btn-continue') &&
+                event.target.id !== 'find-address-on-map') {
                 console.log('Continue button clicked:', event.target.id, event.target);
 
                 // Special validation for page 1 (location information)
@@ -3933,10 +4238,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
 
-                // Save current page data
-                saveCurrentPageData();
+                // Save the page this Continue button is on. It can be an
+                // earlier page than currentPage after scrolling back.
+                const ownerMatch = currentPageElement && /^form-page(\d+)$/.exec(currentPageElement.id || '');
+                const ownerPage = ownerMatch ? parseInt(ownerMatch[1], 10) : currentPage;
+                if (!savePageData(ownerPage)) saveCurrentPageData();
 
-                const nextPage = event.target.dataset.next ? parseInt(event.target.dataset.next) : currentPage + 1;
+                const nextPage = event.target.dataset.next ? parseInt(event.target.dataset.next) : ownerPage + 1;
 
                 // Check if the page already exists in the DOM
                 const existingPage = document.getElementById(`form-page${nextPage}`);
@@ -3977,8 +4285,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
 
-                // First save to sessionStorage
-                saveCurrentPageData();
+                // First save to sessionStorage: every loaded page in new
+                // entries (see captureLoadedFormPages).
+                if (isEditMode) {
+                    saveCurrentPageData();
+                } else {
+                    captureLoadedFormPages();
+                }
 
                 // Then submit to server and show options after success
                 submitFormDataAndShowNextSteps();
@@ -4234,6 +4547,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         navigateToPage(1);
         clearAllFormFields();
+        if (page1LocationUi) page1LocationUi.resetForNewCase();
         showTemporaryMessage('Data saved! Starting fresh data entry for new location and date', 'success');
 
         // A data source reused for the saved sample left the page-2 details
@@ -4241,6 +4555,21 @@ document.addEventListener('DOMContentLoaded', function() {
         setPublicationDetailsLocked(false);
         updateDataSourceTypeUi();
         syncDataSourceLegacyNotice();
+    }
+
+    // Options B and C keep the sampling event (page 2), which stays on
+    // screen: capture its inputs and return all of its field names, so values
+    // such as the sample description, air temperature, weather and rainfall
+    // are saved with the next sample too, not only shown.
+    function capturePage2FieldNames() {
+        const page2 = document.getElementById('form-page2');
+        if (!page2) return [];
+        savePageData(2);
+        const names = new Set();
+        page2.querySelectorAll('[name]').forEach(element => {
+            if (element.name && element.name.trim() !== '') names.add(element.name);
+        });
+        return Array.from(names);
     }
 
     function preserveNextStepFields(fieldNames) {
@@ -4260,44 +4589,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Preserve the full location context and sampling date/time metadata.
         const preservedData = preserveNextStepFields([
             'location_id',
-            'location_name',
-            'location_shortcode',
-            'location_description',
-            'latitude',
-            'longitude',
-            'streetaddress',
-            'city',
-            'state',
-            'country',
-            'zip_code',
-            'acres',
-            'event_location_description',
-            'event_latitude',
-            'event_longitude',
-            'device_installation_period',
-            'start_year',
-            'start_month',
-            'start_day',
-            'end_year',
-            'end_month',
-            'end_day',
-            'sample_time',
-            ...DATA_SOURCE_FORM_FIELDS
-        ]);
-
-        formData = preservedData;
-        sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
-
-        navigateToPage(3);
-        clearMediaSpecificFields();
-        showTemporaryMessage('Data saved! Select different media type for same location/date', 'success');
-    }
-
-    // Handler for Option C: Additional Sample (same media, location, date)
-    function handleSameMediaSample() {
-        // Preserve location/date context plus media selections/subtypes.
-        const preservedData = preserveNextStepFields([
-            'location_id',
+            'location_type',
             'location_name',
             'location_shortcode',
             'location_description',
@@ -4321,6 +4613,47 @@ document.addEventListener('DOMContentLoaded', function() {
             'end_day',
             'sample_time',
             ...DATA_SOURCE_FORM_FIELDS,
+            ...capturePage2FieldNames()
+        ]);
+
+        formData = preservedData;
+        sessionStorage.setItem(formStorageKey, JSON.stringify(formData));
+
+        navigateToPage(3);
+        clearMediaSpecificFields();
+        showTemporaryMessage('Data saved! Select different media type for same location/date', 'success');
+    }
+
+    // Handler for Option C: Additional Sample (same media, location, date)
+    function handleSameMediaSample() {
+        // Preserve location/date context plus media selections/subtypes.
+        const preservedData = preserveNextStepFields([
+            'location_id',
+            'location_type',
+            'location_name',
+            'location_shortcode',
+            'location_description',
+            'latitude',
+            'longitude',
+            'streetaddress',
+            'city',
+            'state',
+            'country',
+            'zip_code',
+            'acres',
+            'event_location_description',
+            'event_latitude',
+            'event_longitude',
+            'device_installation_period',
+            'start_year',
+            'start_month',
+            'start_day',
+            'end_year',
+            'end_month',
+            'end_day',
+            'sample_time',
+            ...DATA_SOURCE_FORM_FIELDS,
+            ...capturePage2FieldNames(),
             'media_type',
             'water_type',
             'water_type_other_description',
@@ -4350,6 +4683,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         navigateToPage(1);
         clearAllFormFields();
+        if (page1LocationUi) page1LocationUi.resetForNewCase();
         Object.entries(preservedData).forEach(([name, value]) => {
             document.querySelectorAll(`[name="${name}"]`).forEach(element => {
                 if (element.type === 'radio' || element.type === 'checkbox') {
@@ -4852,11 +5186,25 @@ document.addEventListener('DOMContentLoaded', function() {
     // Function to update progress indicator steps    // Function to track changes to form fields and save to session
     function setupFormFieldTracking() {
         // Use event delegation to handle changes on all form fields
-        document.querySelector('.form-pages-container').addEventListener('change', function(event) {
+        const container = document.querySelector('.form-pages-container');
+        // Typing alone (before a field loses focus) already counts as
+        // unsaved input for the leave-page warning.
+        container.addEventListener('input', function(event) {
+            if (!isEditMode && event.target && event.target.name) markFormDirty();
+        });
+        container.addEventListener('change', function(event) {
             const element = event.target;
 
             if (element.name && element.name.trim() !== '') {
                 if (isHiddenLegacyField(element)) {
+                    return;
+                }
+                if (!isEditMode) markFormDirty();
+                // In new entries formData.location_id is the location that
+                // page 1 confirmed with Continue. Picking another option in
+                // the dropdown does not change it until Continue, so Save can
+                // tell that the shown location was never confirmed.
+                if (element.name === 'location_id' && !isEditMode) {
                     return;
                 }
                 if (element.type === 'radio' || element.type === 'checkbox') {
@@ -5038,13 +5386,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Check required fields
         const requiredFields = [
-            { key: 'location_id', label: 'Location', page: 1 },
             { key: 'media_type', label: 'Media Type', page: 2 }
         ];
 
         const missingRequired = [];
         const validationItems = [];
 
+        // A checked new location counts: it is created when Save is clicked.
+        if (!locationFormUtils.hasConfirmedLocation(formData)) {
+            missingRequired.push({ key: 'location_id', label: 'Location', page: 1 });
+        }
         requiredFields.forEach(field => {
             if (!formData[field.key] || formData[field.key].toString().trim() === '') {
                 missingRequired.push(field);
@@ -5123,6 +5474,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // additional info, page 5 sample details, page 6 notes).
         const fieldGroups = {
             'Location Information': [
+                'location_status',
                 'location_id', 'location_name', 'location_shortcode', 'location_description', 'land_use_cover',
                 'latitude', 'longitude',
                 'event_location_description', 'event_latitude', 'event_longitude',
@@ -5213,6 +5565,7 @@ document.addEventListener('DOMContentLoaded', function() {
         };        // Field labels mapping for better display
         const fieldLabels = {
             // Location Information
+            'location_status': 'Location',
             'location_id': 'Selected Location',
             'location_name': 'Location Name',
             'location_shortcode': 'Location Short Code',
@@ -5374,6 +5727,8 @@ document.addEventListener('DOMContentLoaded', function() {
             fieldLabels[entry.field] = entry.label;
         });
 
+        const locationSummaryFields = new Set(fieldGroups['Location Information']);
+
         function getSummaryFieldValue(field) {
             if (field === 'start_date_summary') {
                 return partialDateUtils.formatPartialDate(
@@ -5387,6 +5742,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     getPartialDateParts(formData, 'end'),
                     { emptyLabel: '' }
                 );
+            }
+            if (field === 'location_status' || locationSummaryFields.has(field)) {
+                // A pending new location shows the checked details that
+                // Save will create (not later, unconfirmed page-1 edits).
+                return locationFormUtils.getLocationSummaryValue(formData, field, {
+                    saveLabel: isEditMode ? 'Update Data' : 'Save'
+                });
             }
             return formData[field];
         }
@@ -5461,6 +5823,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'existing_location_latitude',
             'existing_location_longitude',
             'location_type',
+            'new_location',
+            'selected_location_id',
             'edit_mode',
             'sample_id',
             'sampling_event_id',
@@ -5888,7 +6252,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const requestPayload = buildSubmissionPayload(dataToSubmit);
 
         // Use fetch API to submit data
-        fetch(saveRequest.url, {
+        fetchSaveRequest(saveRequest.url, {
                 method: saveRequest.method,
                 headers: {
                     'Content-Type': 'application/json',
@@ -5901,13 +6265,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     let data;
                     try { data = await response.json(); } catch (_) { data = null; }
                     devLogSaveError('save-and-iterate', response.status, data, formData);
-                    const friendly = buildFriendlySaveError(response.status, data, formData);
+                    const friendly = await buildSaveErrorMessage(response.status, data, formData);
                     throw new Error(friendly);
                 }
                 return response.json();
             })
             .then(data => {
                 if (data.success) {
+                    markFormSaved();
+                    applyLocationSaveResponse(data);
                     handleSavedPublication(data);
                     // Show success message
                     alert('Data saved successfully! You can now enter another sample for the same location.');
@@ -6007,7 +6373,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const requestPayload = buildSubmissionPayload(formData);
 
         // Submit data directly to save endpoint
-        return fetch(saveRequest.url, {
+        return fetchSaveRequest(saveRequest.url, {
             method: saveRequest.method,
             headers: {
                 'Content-Type': 'application/json',
@@ -6021,7 +6387,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 let data;
                 try { data = await response.json(); } catch (_) { data = null; }
                 devLogSaveError('silent-save', response.status, data, formData);
-                const friendly = buildFriendlySaveError(response.status, data, formData);
+                const friendly = await buildSaveErrorMessage(response.status, data, formData);
                 throw new Error(friendly);
             }
             return response.json();
@@ -6029,6 +6395,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             console.log('Silent save success:', data);
             if (data.success) {
+                markFormSaved();
+                applyLocationSaveResponse(data);
                 handleSavedPublication(data);
                 return data; // Return success data
             } else {
@@ -6070,7 +6438,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const requestPayload = buildSubmissionPayload(formData);
 
         // Submit data to server
-        fetch(saveRequest.url, {
+        fetchSaveRequest(saveRequest.url, {
             method: saveRequest.method,
             headers: {
                 'Content-Type': 'application/json',
@@ -6084,7 +6452,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 let data;
                 try { data = await response.json(); } catch (_) { data = null; }
                 devLogSaveError('save-and-next-steps', response.status, data, formData);
-                const friendly = buildFriendlySaveError(response.status, data, formData);
+                const friendly = await buildSaveErrorMessage(response.status, data, formData);
                 throw new Error(friendly);
             }
             return response.json();
@@ -6092,6 +6460,10 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             console.log('Save success:', data);
             if (data.success) {
+                markFormSaved();
+                // New entry and Edit My Data alike: the held new location
+                // now exists, so reuse its id from here on.
+                applyLocationSaveResponse(data);
                 handleSavedPublication(data);
                 // Show success message at the top of the page
                 showTemporaryMessage(saveRequest.successMessage, 'success');
@@ -6181,7 +6553,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const requestPayload = buildSubmissionPayload(formData);
 
         // Submit data directly to save endpoint
-        fetch(saveRequest.url, {
+        fetchSaveRequest(saveRequest.url, {
             method: saveRequest.method,
             headers: {
                 'Content-Type': 'application/json',
@@ -6196,7 +6568,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 let data;
                 try { data = await response.json(); } catch (_) { data = null; }
                 devLogSaveError('save-only', response.status, data, formData);
-                const friendly = buildFriendlySaveError(response.status, data, formData);
+                const friendly = await buildSaveErrorMessage(response.status, data, formData);
                 throw new Error(friendly);
             }
             return response.json();
@@ -6204,6 +6576,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             console.log('Save endpoint success:', data);
             if (data.success) {
+                markFormSaved();
+                applyLocationSaveResponse(data);
                 handleSavedPublication(data);
 
                 if (isEditMode) {
@@ -6350,7 +6724,7 @@ function validatePage2() {
         return false;
     }
 
-    saveCurrentPageData();
+    savePageData(2);
     const validation = validateSamplingEventDates(formData, { showErrors: true });
     if (!validation.ok) {
         displayErrorMessage(validation.issues[0]);

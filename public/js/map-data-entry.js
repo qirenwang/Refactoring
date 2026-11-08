@@ -240,6 +240,14 @@ function initMap() {
         return syncMarkerFromInputs(options);
     };
 
+    // Puts the marker back at the default view without touching the inputs
+    // (used when page 1 is blanked for a new case or a new location).
+    window.resetDataEntryMap = function() {
+        marker.setLatLng([defaultLat, defaultLng]);
+        map.setView([defaultLat, defaultLng], 5);
+        return true;
+    };
+
     window.setDataEntryMapCoordinates = function(lat, lng, options = {}) {
         const parsedLat = parseFloat(lat);
         const parsedLng = parseFloat(lng);
